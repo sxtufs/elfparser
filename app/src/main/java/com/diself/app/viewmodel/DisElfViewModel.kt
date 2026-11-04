@@ -1,0 +1,110 @@
+package com.diself.app.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.diself.app.core.JNIBridge
+import com.diself.app.core.models.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+sealed class Screen {
+    object Home : Screen()
+    object Disassembly : Screen()
+    object Decompile : Screen()
+    object Flowchart : Screen()
+    object Trace : Screen()
+    object Strings : Screen()
+}
+
+class DisElfViewModel : ViewModel() {
+
+    private val _bridge = MutableStateFlow<JNIBridge?>(null)
+    val bridge: StateFlow<JNIBridge?> = _bridge.asStateFlow()
+
+    private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
+    val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+
+    private val _elfInfo = MutableStateFlow<ElfInfo?>(null)
+    val elfInfo: StateFlow<ElfInfo?> = _elfInfo.asStateFlow()
+
+    private val _instructions = MutableStateFlow<List<Instruction>>(emptyList())
+    val instructions: StateFlow<List<Instruction>> = _instructions.asStateFlow()
+
+    private val _decompileText = MutableStateFlow("")
+    val decompileText: StateFlow<String> = _decompileText.asStateFlow()
+
+    private val _flowchartText = MutableStateFlow("")
+    val flowchartText: StateFlow<String> = _flowchartText.asStateFlow()
+
+    private val _stringsList = MutableStateFlow<List<StringItem>>(emptyList())
+    val stringsList: StateFlow<List<StringItem>> = _stringsList.asStateFlow()
+
+    private val _traceState = MutableStateFlow<TraceState?>(null)
+    val traceState: StateFlow<TraceState?> = _traceState.asStateFlow()
+
+    private val _currentAddress = MutableStateFlow<Long>(0)
+    val currentAddress: StateFlow<Long> = _currentAddress.asStateFlow()
+
+    private val _selectedSymbolName = MutableStateFlow("")
+    val selectedSymbolName: StateFlow<String> = _selectedSymbolName.asStateFlow()
+
+    fun navigateTo(screen: Screen) {
+        _currentScreen.value = screen
+    }
+
+    fun loadElf(path: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = JNIBridge.open(path) ?: return@launch
+            _bridge.value = b
+            val info = b.getInfo()
+            _elfInfo.value = info
+
+            val firstAddr = info.syms.firstOrNull()?.value ?: info.entry
+            val firstName = info.syms.firstOrNull()?.sym ?: "entry"
+            selectFunction(firstAddr, firstName)
+            _stringsList.value = b.getStrings()
+        }
+    }
+
+    fun selectFunction(address: Long, name: String) {
+        _currentAddress.value = address
+        _selectedSymbolName.value = name
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            _instructions.value = b.disassemble(address, 256)
+            _decompileText.value = b.decompile(address)
+            _flowchartText.value = b.getFlowchartText(address)
+            // Initialize trace at function start
+            b.startTrace(address)
+            _traceState.value = TraceState(pc = address)
+        }
+    }
+
+    fun stepTrace() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            val nextState = b.stepTrace()
+            _traceState.value = nextState
+        }
+    }
+
+    fun stepBackTrace() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            val prevState = b.stepBackTrace()
+            _traceState.value = prevState
+        }
+    }
+
+    fun resetTrace() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            val addr = _currentAddress.value
+            b.startTrace(addr)
+            _traceState.value = TraceState(pc = addr)
+        }
+    }
+}
