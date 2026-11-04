@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "cn.mrack.diself"
+    namespace = "com.diself.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "cn.mrack.diself"
+        applicationId = "com.diself.app"
         minSdk = 24
         targetSdk = 34
         versionCode = 9
@@ -16,6 +16,13 @@ android {
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

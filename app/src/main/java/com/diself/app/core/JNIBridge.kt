@@ -31,6 +31,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         @JvmStatic private external fun traceInit(handle: Long, address: Long)
         @JvmStatic private external fun traceStep(handle: Long): String
         @JvmStatic private external fun traceBack(handle: Long): String
+
+        // Native Cross-References (XREF)
+        @JvmStatic private external fun getXrefs(handle: Long, address: Long): String
     }
 
     fun getInfo(evaluateYara: Boolean = false): ElfInfo {
@@ -99,6 +102,15 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
             gson.fromJson(json, TraceState::class.java) ?: TraceState()
         } catch (e: Exception) {
             TraceState(error = e.message)
+        }
+    }
+
+    fun getXrefs(address: Long): List<XRefItem> {
+        val json = getXrefs(handle, address)
+        return try {
+            gson.fromJson(json, XRefResponse::class.java)?.refs ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 

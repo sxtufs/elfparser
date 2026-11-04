@@ -50,6 +50,19 @@ data class StringItem(
     val string: String = ""
 )
 
+data class XRefItem(
+    val from_address: Long = 0,
+    val to_address: Long = 0,
+    val kind: String = "",
+    val instruction: String = "",
+    val caller_func: String? = null
+)
+
+data class XRefResponse(
+    val target_address: Long = 0,
+    val refs: List<XRefItem> = emptyList()
+)
+
 data class TraceState(
     val pc: Long = 0,
     val sp: Long = 0,
