@@ -67,7 +67,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "VMA: 0x${"%08X".format(currentAddr)} (tap any line to patch/jump)",
+                    text = "VMA: 0x${"%08X".format(currentAddr)}",
                     color = colors.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace

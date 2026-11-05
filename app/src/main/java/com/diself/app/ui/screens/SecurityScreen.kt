@@ -134,10 +134,11 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                                     )
                                     if (item.address != 0L) {
                                         Text(
-                                            "0x${"%08X".format(item.address)} (tap to jump)",
+                                            "0x${"%08X".format(item.address)} ↗",
                                             color = colors.address,
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
                                 }

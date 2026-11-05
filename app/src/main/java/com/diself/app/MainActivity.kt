@@ -1,5 +1,6 @@
 package com.diself.app
 
+import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,9 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.diself.app.ui.screens.*
 import com.diself.app.ui.theme.*
 import com.diself.app.viewmodel.DisElfViewModel
@@ -27,6 +31,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val isDark by viewModel.isDarkMode.collectAsState()
+
+            val view = LocalView.current
+            if (!view.isInEditMode) {
+                SideEffect {
+                    val window = (view.context as Activity).window
+                    val statusBarColor = if (isDark) Color(0xFF181A1F).toArgb() else Color(0xFFFFFFFF).toArgb()
+                    val navBarColor = if (isDark) Color(0xFF21252B).toArgb() else Color(0xFFFFFFFF).toArgb()
+                    window.statusBarColor = statusBarColor
+                    window.navigationBarColor = navBarColor
+
+                    val insetsController = WindowCompat.getInsetsController(window, view)
+                    insetsController.isAppearanceLightStatusBars = !isDark
+                    insetsController.isAppearanceLightNavigationBars = !isDark
+                }
+            }
 
             DisElfTheme(darkTheme = isDark) {
                 val colors = LocalDisElfColors.current
