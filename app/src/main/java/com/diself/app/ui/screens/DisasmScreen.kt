@@ -94,23 +94,8 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 )
             }
 
-            // Action Buttons: Theme Switcher, Go to, Callers
+            // Action Buttons: Go to & Callers
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { viewModel.toggleTheme() },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            if (colors.isDark) R.drawable.ic_light_mode
-                            else R.drawable.ic_dark_mode
-                        ),
-                        contentDescription = "Toggle Theme",
-                        tint = if (colors.isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
                 OutlinedButton(
                     onClick = {
                         gotoAddressInput = ""
@@ -256,14 +241,13 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     Text("QUICK PATCH", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
-                    // 2. Tactile Quick Patch Action Tiles (2x2 Grid)
+                    // 2. Simple & Polished Quick Patch Tiles (2x2 Grid)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         QuickPatchTile(
-                            title = "⊘  NOP",
-                            subLabel = "Skip instruction",
+                            title = "NOP",
                             accentColor = colors.textPrimary,
                             bgColor = if (colors.isDark) Color(0xFF282C34) else Color(0xFFF1F5F9),
                             borderColor = colors.border,
@@ -277,8 +261,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         )
 
                         QuickPatchTile(
-                            title = "✓  Ret True",
-                            subLabel = "Force return 1",
+                            title = "Ret True",
                             accentColor = Color(0xFF2E7D32),
                             bgColor = if (colors.isDark) Color(0x224CAF50) else Color(0xFFF0FDF4),
                             borderColor = Color(0xFF4CAF50).copy(alpha = 0.4f),
@@ -292,15 +275,14 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         )
                     }
 
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         QuickPatchTile(
-                            title = "✕  Ret False",
-                            subLabel = "Force return 0",
+                            title = "Ret False",
                             accentColor = Color(0xFFC62828),
                             bgColor = if (colors.isDark) Color(0x22E53935) else Color(0xFFFEF2F2),
                             borderColor = Color(0xFFE53935).copy(alpha = 0.4f),
@@ -314,8 +296,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         )
 
                         QuickPatchTile(
-                            title = "↩  Ret Void",
-                            subLabel = "Early return",
+                            title = "Ret Void",
                             accentColor = Color(0xFFE65100),
                             bgColor = if (colors.isDark) Color(0x22FFA000) else Color(0xFFFFFBEB),
                             borderColor = Color(0xFFFFA000).copy(alpha = 0.4f),
@@ -465,7 +446,6 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 @Composable
 fun QuickPatchTile(
     title: String,
-    subLabel: String,
     accentColor: Color,
     bgColor: Color,
     borderColor: Color,
@@ -474,28 +454,21 @@ fun QuickPatchTile(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
         modifier = modifier.clickable(onClick = onClick)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
             Text(
                 text = title,
                 color = accentColor,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subLabel,
-                color = accentColor.copy(alpha = 0.8f),
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Default
             )
         }
     }
