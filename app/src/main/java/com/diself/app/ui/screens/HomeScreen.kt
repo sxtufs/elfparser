@@ -50,27 +50,6 @@ fun HomeScreen(viewModel: DisElfViewModel) {
     var showApkPicker by remember { mutableStateOf(false) }
     var apkCachedFile by remember { mutableStateOf<File?>(null) }
 
-    val il2cppPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let {
-            val fileName = queryFileName(context, it)
-            val tempFile = File(context.cacheDir, "metadata_input_$fileName")
-            context.contentResolver.openInputStream(it)?.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            viewModel.resolveIl2CppMetadata(tempFile.absolutePath) { count ->
-                if (count > 0) {
-                    Toast.makeText(context, "Resolved $count Il2Cpp C# methods!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, "Loaded metadata file", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -211,20 +190,6 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                     Text("Entrypoint:    0x${"%08X".format(info.entry)}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.address)
                     if (info.libraries.isNotEmpty()) {
                         Text("Dependencies:  ${info.libraries.joinToString(", ")}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.hexBytes)
-                    }
-
-                    val isIl2Cpp = currentFileName.contains("il2cpp", ignoreCase = true) || info.soname.contains("il2cpp", ignoreCase = true)
-                    if (isIl2Cpp) {
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { il2cppPicker.launch(arrayOf("*/*")) },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Resolve Unity Il2Cpp (script.json / .dat)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
                     }
                 }
             }
@@ -376,17 +341,6 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                                         val extracted = File(context.cacheDir, "extracted_$simpleName")
                                         if (extractSoFromApk(apkCachedFile!!, entry.entryName, extracted)) {
                                             viewModel.loadElf(extracted.absolutePath, simpleName)
-                                            if (simpleName.contains("il2cpp", ignoreCase = true)) {
-                                                val metaEntry = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
-                                                val metaOut = File(context.cacheDir, "extracted_global_metadata.dat")
-                                                if (extractSoFromApk(apkCachedFile!!, metaEntry, metaOut)) {
-                                                    viewModel.resolveIl2CppMetadata(metaOut.absolutePath) { count ->
-                                                        if (count > 0) {
-                                                            Toast.makeText(context, "Auto-resolved $count Unity methods from APK!", Toast.LENGTH_LONG).show()
-                                                        }
-                                                    }
-                                                }
-                                            }
                                             showApkPicker = false
                                         }
                                     }
