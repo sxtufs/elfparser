@@ -66,6 +66,25 @@ class DisElfViewModel : ViewModel() {
         }
     }
 
+    fun resolveIl2CppMetadata(path: String, onComplete: (Int) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(0) }
+                return@launch
+            }
+            val count = if (path.endsWith(".json", ignoreCase = true)) {
+                b.loadScriptJson(path)
+            } else {
+                b.loadGlobalMetadata(path)
+            }
+            if (count > 0) {
+                val info = b.getInfo()
+                _elfInfo.value = info
+            }
+            launch(Dispatchers.Main) { onComplete(count) }
+        }
+    }
+
     fun toggleTheme() {
         isDarkMode.value = !isDarkMode.value
     }

@@ -38,6 +38,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         // Quick Patcher & Security Scanner
         @JvmStatic private external fun quickPatch(handle: Long, address: Long, patchType: Int, thumb: Boolean): String
         @JvmStatic private external fun scanSecurity(handle: Long): String
+
+        // Unity Il2Cpp Metadata Resolvers
+        @JvmStatic private external fun loadScriptJson(handle: Long, path: String): Int
+        @JvmStatic private external fun loadGlobalMetadata(handle: Long, path: String): Int
     }
 
     fun getInfo(evaluateYara: Boolean = false): ElfInfo {
@@ -134,6 +138,14 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         } catch (e: Exception) {
             ScanReport()
         }
+    }
+
+    fun loadScriptJson(path: String): Int {
+        return loadScriptJson(handle, path)
+    }
+
+    fun loadGlobalMetadata(path: String): Int {
+        return loadGlobalMetadata(handle, path)
     }
 
     protected fun finalize() {
