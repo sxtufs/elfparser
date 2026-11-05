@@ -30,6 +30,7 @@ import com.diself.app.viewmodel.DisElfViewModel
 @Composable
 fun DisasmScreen(viewModel: DisElfViewModel) {
     val context = LocalContext.current
+    val colors = LocalDisElfColors.current
     val instructions by viewModel.instructions.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
     val currentAddr by viewModel.currentAddress.collectAsState()
@@ -45,14 +46,14 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(8.dp)
     ) {
-        // Function Bar Header with Caller XREF Button
+        // Function Bar Header with Go to & Caller XREF Buttons
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SurfaceDark, RoundedCornerShape(8.dp))
+                .background(colors.surface, RoundedCornerShape(8.dp))
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -60,14 +61,14 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = symbolName.ifEmpty { "0x${"%08X".format(currentAddr)}" },
-                    color = CyanAccent,
+                    color = colors.primary,
                     fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "VMA: 0x${"%08X".format(currentAddr)} (tap any line to patch/jump)",
-                    color = ColorHexBytes,
+                    color = colors.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
@@ -80,7 +81,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         gotoAddressInput = ""
                         showGotoDialog = true
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanAccent),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -121,7 +122,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 ) {
                     Text(
                         text = "0x${"%08X".format(ins.address)}",
-                        color = ColorAddress,
+                        color = colors.address,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         modifier = Modifier.width(90.dp)
@@ -129,7 +130,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Text(
                         text = ins.bytesHex,
-                        color = ColorHexBytes,
+                        color = colors.hexBytes,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         modifier = Modifier.width(100.dp)
@@ -137,7 +138,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Text(
                         text = ins.mnemonic,
-                        color = ColorMnemonic,
+                        color = colors.mnemonic,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -146,7 +147,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Text(
                         text = ins.op_str,
-                        color = ColorOperands,
+                        color = colors.operands,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp
                     )
@@ -161,23 +162,22 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
             ModalBottomSheet(
                 onDismissRequest = { selectedInsn = null },
-                containerColor = SurfaceDark
+                containerColor = colors.surface
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp)
                 ) {
-                    Text("Modify & Analyze Instruction", style = MaterialTheme.typography.titleMedium, color = CyanAccent)
+                    Text("Modify & Analyze Instruction", style = MaterialTheme.typography.titleMedium, color = colors.primary)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "0x${"%08X".format(ins.address)}: ${ins.mnemonic} ${ins.op_str}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = Color.White
+                        color = colors.textPrimary
                     )
 
-                    // Jump to branch destination if available
                     if (branchTarget != null) {
                         Spacer(Modifier.height(12.dp))
                         Button(
@@ -185,7 +185,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
                                 selectedInsn = null
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
@@ -258,7 +258,6 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Find XREFs
                     Button(
                         onClick = {
                             val target = branchTarget ?: ins.address
@@ -267,10 +266,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             showXrefDialog = true
                             selectedInsn = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263238)),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.card),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Find Cross-References (XREFs)", color = CyanAccent, fontWeight = FontWeight.Bold)
+                        Text("Find Cross-References (XREFs)", color = colors.primary, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -282,11 +281,11 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
         if (showGotoDialog) {
             AlertDialog(
                 onDismissRequest = { showGotoDialog = false },
-                containerColor = SurfaceDark,
-                title = { Text("Go to Address (VMA)", color = CyanAccent, fontSize = 16.sp) },
+                containerColor = colors.surface,
+                title = { Text("Go to Address (VMA)", color = colors.primary, fontSize = 16.sp) },
                 text = {
                     Column {
-                        Text("Enter virtual address to disassemble:", color = ColorHexBytes, fontSize = 12.sp)
+                        Text("Enter virtual address to disassemble:", color = colors.textSecondary, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = gotoAddressInput,
@@ -295,10 +294,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = CyanAccent,
-                                unfocusedBorderColor = ColorHexBytes,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
+                                focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = colors.border,
+                                focusedTextColor = colors.textPrimary,
+                                unfocusedTextColor = colors.textPrimary
                             )
                         )
                     }
@@ -315,14 +314,14 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                     ) {
                         Text("Jump", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showGotoDialog = false }) {
-                        Text("Cancel", color = ColorHexBytes)
+                        Text("Cancel", color = colors.textSecondary)
                     }
                 }
             )
@@ -330,18 +329,24 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
         // XREFs Dialog
         if (showXrefDialog) {
+            val count = xrefsList.size
+            val countText = when (count) {
+                0 -> "No callers found"
+                1 -> "1 caller found"
+                else -> "$count callers found"
+            }
             AlertDialog(
                 onDismissRequest = { showXrefDialog = false },
-                containerColor = SurfaceDark,
-                title = { Text(xrefDialogTitle, color = CyanAccent, fontSize = 16.sp) },
+                containerColor = colors.surface,
+                title = { Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp) },
                 text = {
                     if (xrefsList.isEmpty()) {
-                        Text("No callers or references found for this address in the binary.", color = ColorHexBytes, fontSize = 13.sp)
+                        Text("No callers or references found for this address in the binary.", color = colors.textSecondary, fontSize = 13.sp)
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
                             items(xrefsList) { ref ->
                                 Card(
-                                    colors = CardDefaults.cardColors(containerColor = CardDark),
+                                    colors = CardDefaults.cardColors(containerColor = colors.card),
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                         viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
@@ -350,7 +355,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text("[${ref.kind}] in ${ref.caller_func ?: "unknown"}", color = AmberAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                                        Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -359,7 +364,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 },
                 confirmButton = {
                     TextButton(onClick = { showXrefDialog = false }) {
-                        Text("Close", color = CyanAccent)
+                        Text("Close", color = colors.primary)
                     }
                 }
             )

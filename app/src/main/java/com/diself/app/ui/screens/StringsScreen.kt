@@ -25,6 +25,7 @@ import com.diself.app.viewmodel.Screen
 
 @Composable
 fun StringsScreen(viewModel: DisElfViewModel) {
+    val colors = LocalDisElfColors.current
     val stringsList by viewModel.stringsList.collectAsState()
     var search by remember { mutableStateOf("") }
     var selectedString by remember { mutableStateOf<StringItem?>(null) }
@@ -44,21 +45,21 @@ fun StringsScreen(viewModel: DisElfViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(12.dp)
     ) {
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
             label = { Text("Filter String or Address (e.g. 0x10ED)") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyanAccent) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = CyanAccent,
-                unfocusedBorderColor = ColorHexBytes,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+                focusedBorderColor = colors.primary,
+                unfocusedBorderColor = colors.border,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary
             )
         )
 
@@ -70,7 +71,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
         ) {
             items(filtered) { item ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = CardDark),
+                    colors = CardDefaults.cardColors(containerColor = colors.card),
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -87,14 +88,14 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                     ) {
                         Text(
                             text = "0x${"%08X".format(item.vaddr)}",
-                            color = ColorAddress,
+                            color = colors.address,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             modifier = Modifier.width(90.dp)
                         )
                         Text(
                             text = item.string,
-                            color = Color.White,
+                            color = colors.textPrimary,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp
                         )
@@ -106,21 +107,27 @@ fun StringsScreen(viewModel: DisElfViewModel) {
         // XREF Dialog when tapping a string
         if (selectedString != null) {
             val str = selectedString!!
+            val count = xrefsList.size
+            val titleText = when (count) {
+                0 -> "No Cross-References"
+                1 -> "1 Cross-Reference"
+                else -> "$count Cross-References"
+            }
             AlertDialog(
                 onDismissRequest = { selectedString = null },
-                containerColor = SurfaceDark,
-                title = { Text("String XREFs (${xrefsList.size})", color = CyanAccent) },
+                containerColor = colors.surface,
+                title = { Text(titleText, color = colors.primary) },
                 text = {
                     Column {
                         Text("\"${str.string}\"", color = AmberAccent, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
                         if (xrefsList.isEmpty()) {
-                            Text("No direct instruction references found.", color = ColorHexBytes, fontSize = 12.sp)
+                            Text("No direct instruction references found.", color = colors.textSecondary, fontSize = 12.sp)
                         } else {
                             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
                                 items(xrefsList) { ref ->
                                     Card(
-                                        colors = CardDefaults.cardColors(containerColor = CardDark),
+                                        colors = CardDefaults.cardColors(containerColor = colors.card),
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                             viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
                                             viewModel.codeSubTab.value = 0
@@ -129,8 +136,8 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                                         }
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
-                                            Text("In: ${ref.caller_func ?: "unknown"}", color = CyanAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                                            Text("In: ${ref.caller_func ?: "unknown"}", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                                         }
                                     }
                                 }
@@ -140,7 +147,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                 },
                 confirmButton = {
                     TextButton(onClick = { selectedString = null }) {
-                        Text("Close", color = CyanAccent)
+                        Text("Close", color = colors.primary)
                     }
                 }
             )

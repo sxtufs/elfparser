@@ -24,17 +24,18 @@ import com.diself.app.viewmodel.DisElfViewModel
 
 @Composable
 fun TraceScreen(viewModel: DisElfViewModel) {
+    val colors = LocalDisElfColors.current
     val traceState by viewModel.traceState.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(12.dp)
     ) {
         // Control Toolbar
         Card(
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -47,16 +48,16 @@ fun TraceScreen(viewModel: DisElfViewModel) {
             ) {
                 Button(
                     onClick = { viewModel.stepBackTrace() },
-                    colors = ButtonDefaults.buttonColors(containerColor = CardDark)
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.card)
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Step Back", tint = Color.White)
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Step Back", tint = colors.textPrimary)
                     Spacer(Modifier.width(4.dp))
-                    Text("Back", color = Color.White, fontSize = 12.sp)
+                    Text("Back", color = colors.textPrimary, fontSize = 12.sp)
                 }
 
                 Button(
                     onClick = { viewModel.stepTrace() },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
                     Icon(Icons.Default.ArrowForward, contentDescription = "Step Next", tint = Color.Black)
                     Spacer(Modifier.width(4.dp))
@@ -76,7 +77,7 @@ fun TraceScreen(viewModel: DisElfViewModel) {
 
             // Current Instruction Banner
             Card(
-                colors = CardDefaults.cardColors(containerColor = CardDark),
+                colors = CardDefaults.cardColors(containerColor = colors.card),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -86,7 +87,7 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "PC: 0x${"%08X".format(state.pc)}",
-                            color = ColorAddress,
+                            color = colors.address,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -94,7 +95,7 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = state.current_insn.ifEmpty { "(ready to step)" },
-                            color = Color.White,
+                            color = colors.textPrimary,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp
                         )
@@ -108,20 +109,20 @@ fun TraceScreen(viewModel: DisElfViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SurfaceDark, RoundedCornerShape(8.dp))
+                    .background(colors.surface, RoundedCornerShape(8.dp))
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                FlagBadge("Z (Zero)", state.z)
-                FlagBadge("N (Neg)", state.n)
-                FlagBadge("C (Carry)", state.c)
-                FlagBadge("V (Ovf)", state.v)
+                FlagBadge("Z (Zero)", state.z, colors)
+                FlagBadge("N (Neg)", state.n, colors)
+                FlagBadge("C (Carry)", state.c, colors)
+                FlagBadge("V (Ovf)", state.v, colors)
             }
 
             Spacer(Modifier.height(12.dp))
 
             // Registers Grid
-            Text("REGISTER STATE", color = ColorHexBytes, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("REGISTER STATE", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
 
             val regList = remember(state) {
@@ -143,7 +144,7 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                     val isChanged = state.changed_regs.contains(regName.lowercase())
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isChanged) RedAccent.copy(alpha = 0.2f) else CardDark
+                            containerColor = if (isChanged) colors.changedRegBg else colors.card
                         ),
                         shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -151,13 +152,13 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
                                 text = regName,
-                                color = if (isChanged) RedAccent else ColorRegister,
+                                color = if (isChanged) colors.changedReg else colors.register,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "0x${"%08X".format(regVal)}",
-                                color = Color.White,
+                                color = colors.textPrimary,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp
                             )
@@ -170,10 +171,10 @@ fun TraceScreen(viewModel: DisElfViewModel) {
 }
 
 @Composable
-fun FlagBadge(name: String, active: Boolean) {
+fun FlagBadge(name: String, active: Boolean, colors: DisElfColors) {
     Text(
         text = "$name: ${if (active) "1" else "0"}",
-        color = if (active) GreenAccent else ColorHexBytes,
+        color = if (active) colors.address else colors.textSecondary,
         fontFamily = FontFamily.Monospace,
         fontSize = 11.sp,
         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal

@@ -25,6 +25,7 @@ import com.diself.app.viewmodel.DisElfViewModel
 @Composable
 fun DecompileScreen(viewModel: DisElfViewModel) {
     val context = LocalContext.current
+    val colors = LocalDisElfColors.current
     val clipboardManager = LocalClipboardManager.current
     val decompileCode by viewModel.decompileText.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
@@ -32,21 +33,21 @@ fun DecompileScreen(viewModel: DisElfViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(12.dp)
     ) {
         // Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SurfaceDark)
+                .background(colors.surface)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = "Decompiled: $symbolName",
-                color = CyanAccent,
+                color = colors.primary,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp
             )
@@ -54,7 +55,7 @@ fun DecompileScreen(viewModel: DisElfViewModel) {
                 clipboardManager.setText(AnnotatedString(decompileCode))
                 Toast.makeText(context, "Copied C code to clipboard", Toast.LENGTH_SHORT).show()
             }) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = Color.White)
+                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = colors.textPrimary)
             }
         }
 
@@ -64,14 +65,14 @@ fun DecompileScreen(viewModel: DisElfViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(CardDark)
+                .background(colors.card)
                 .padding(12.dp)
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {
             Text(
                 text = decompileCode.ifEmpty { "// Select a function to decompile" },
-                color = ColorOperands,
+                color = colors.operands,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 lineHeight = 18.sp

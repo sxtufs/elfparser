@@ -11,14 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.diself.app.ui.screens.*
-import com.diself.app.ui.theme.BgDark
-import com.diself.app.ui.theme.CyanAccent
-import com.diself.app.ui.theme.DisElfTheme
-import com.diself.app.ui.theme.SurfaceDark
+import com.diself.app.ui.theme.*
 import com.diself.app.viewmodel.DisElfViewModel
 import com.diself.app.viewmodel.Screen
 
@@ -26,29 +24,61 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: DisElfViewModel by viewModels()
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            DisElfTheme {
+            val isDark by viewModel.isDarkMode.collectAsState()
+
+            DisElfTheme(darkTheme = isDark) {
+                val colors = LocalDisElfColors.current
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 val codeTab by viewModel.codeSubTab.collectAsState()
                 val analysisTab by viewModel.analysisSubTab.collectAsState()
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    containerColor = BgDark,
+                    containerColor = colors.bg,
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    "DisElf",
+                                    color = colors.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                            },
+                            actions = {
+                                IconButton(onClick = { viewModel.toggleTheme() }) {
+                                    Icon(
+                                        painter = painterResource(
+                                            if (isDark) R.drawable.ic_light_mode
+                                            else R.drawable.ic_dark_mode
+                                        ),
+                                        contentDescription = "Toggle Theme",
+                                        tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF00838F),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = colors.surface
+                            )
+                        )
+                    },
                     bottomBar = {
-                        NavigationBar(containerColor = SurfaceDark) {
+                        NavigationBar(containerColor = colors.surface) {
                             NavigationBarItem(
                                 selected = currentScreen == Screen.Files,
                                 onClick = { viewModel.navigateTo(Screen.Files) },
                                 icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
                                 label = { Text("Files", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    selectedIconColor = colors.primary,
+                                    selectedTextColor = colors.primary,
+                                    unselectedIconColor = colors.textSecondary,
+                                    unselectedTextColor = colors.textSecondary
                                 )
                             )
                             NavigationBarItem(
@@ -57,10 +87,10 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Default.Code, contentDescription = "Code") },
                                 label = { Text("Code", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    selectedIconColor = colors.primary,
+                                    selectedTextColor = colors.primary,
+                                    unselectedIconColor = colors.textSecondary,
+                                    unselectedTextColor = colors.textSecondary
                                 )
                             )
                             NavigationBarItem(
@@ -69,10 +99,10 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Tracer") },
                                 label = { Text("Tracer", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    selectedIconColor = colors.primary,
+                                    selectedTextColor = colors.primary,
+                                    unselectedIconColor = colors.textSecondary,
+                                    unselectedTextColor = colors.textSecondary
                                 )
                             )
                             NavigationBarItem(
@@ -81,10 +111,10 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Default.Search, contentDescription = "Analysis") },
                                 label = { Text("Analysis", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    selectedIconColor = colors.primary,
+                                    selectedTextColor = colors.primary,
+                                    unselectedIconColor = colors.textSecondary,
+                                    unselectedTextColor = colors.textSecondary
                                 )
                             )
                         }
@@ -94,7 +124,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding),
-                        color = BgDark
+                        color = colors.bg
                     ) {
                         when (currentScreen) {
                             Screen.Files -> HomeScreen(viewModel)
@@ -103,8 +133,8 @@ class MainActivity : ComponentActivity() {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     TabRow(
                                         selectedTabIndex = codeTab,
-                                        containerColor = SurfaceDark,
-                                        contentColor = CyanAccent
+                                        containerColor = colors.surface,
+                                        contentColor = colors.primary
                                     ) {
                                         Tab(
                                             selected = codeTab == 0,
@@ -136,8 +166,8 @@ class MainActivity : ComponentActivity() {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     TabRow(
                                         selectedTabIndex = analysisTab,
-                                        containerColor = SurfaceDark,
-                                        contentColor = CyanAccent
+                                        containerColor = colors.surface,
+                                        contentColor = colors.primary
                                     ) {
                                         Tab(
                                             selected = analysisTab == 0,

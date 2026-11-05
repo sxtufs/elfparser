@@ -24,17 +24,18 @@ import com.diself.app.viewmodel.Screen
 
 @Composable
 fun SecurityScreen(viewModel: DisElfViewModel) {
+    val colors = LocalDisElfColors.current
     val scanReport by viewModel.scanReport.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(12.dp)
     ) {
         // Toolbar
         Card(
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -46,19 +47,25 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Security, contentDescription = null, tint = CyanAccent)
+                    Icon(Icons.Default.Security, contentDescription = null, tint = colors.primary)
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text("Security & Crypto Scanner", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                        Text("Security & Crypto Scanner", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                        val count = scanReport?.total_findings ?: 0
+                        val statusText = when (count) {
+                            0 -> "No detections found"
+                            1 -> "1 detection found"
+                            else -> "$count detections found"
+                        }
                         Text(
-                            "${scanReport?.total_findings ?: 0} detection(s) found",
+                            statusText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = ColorHexBytes
+                            color = colors.textSecondary
                         )
                     }
                 }
                 IconButton(onClick = { viewModel.runSecurityScan() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Rescan", tint = CyanAccent)
+                    Icon(Icons.Default.Refresh, contentDescription = "Rescan", tint = colors.primary)
                 }
             }
         }
@@ -69,7 +76,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
             val findings = scanReport!!.findings
             if (findings.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No known crypto or root/debug signatures detected.", color = ColorHexBytes)
+                    Text("No known crypto or root/debug signatures detected.", color = colors.textSecondary)
                 }
             } else {
                 LazyColumn(
@@ -84,7 +91,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                         }
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = CardDark),
+                            colors = CardDefaults.cardColors(containerColor = colors.card),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -102,7 +109,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(item.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(item.name, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                     Text(
                                         item.severity.uppercase(),
                                         color = sevColor,
@@ -112,7 +119,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                                 }
 
                                 Spacer(Modifier.height(4.dp))
-                                Text(item.description, color = ColorHexBytes, fontSize = 12.sp)
+                                Text(item.description, color = colors.textSecondary, fontSize = 12.sp)
 
                                 Spacer(Modifier.height(6.dp))
                                 Row(
@@ -121,14 +128,14 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                                 ) {
                                     Text(
                                         "Category: ${item.category}",
-                                        color = CyanAccent,
+                                        color = colors.primary,
                                         fontSize = 11.sp,
                                         fontFamily = FontFamily.Monospace
                                     )
                                     if (item.address != 0L) {
                                         Text(
                                             "0x${"%08X".format(item.address)} (tap to jump)",
-                                            color = ColorAddress,
+                                            color = colors.address,
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace
                                         )

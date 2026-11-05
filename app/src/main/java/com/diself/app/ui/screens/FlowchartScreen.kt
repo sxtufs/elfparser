@@ -16,25 +16,26 @@ import com.diself.app.viewmodel.DisElfViewModel
 
 @Composable
 fun FlowchartScreen(viewModel: DisElfViewModel) {
+    val colors = LocalDisElfColors.current
     val flowchartText by viewModel.flowchartText.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(8.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(CardDark)
+                .background(colors.card)
                 .padding(12.dp)
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {
             Text(
                 text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
-                color = ColorOperands,
+                color = colors.operands,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 lineHeight = 18.sp

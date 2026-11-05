@@ -10,8 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +33,7 @@ import java.io.FileOutputStream
 @Composable
 fun HomeScreen(viewModel: DisElfViewModel) {
     val context = LocalContext.current
+    val colors = LocalDisElfColors.current
     val elfInfo by viewModel.elfInfo.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
@@ -53,12 +54,12 @@ fun HomeScreen(viewModel: DisElfViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BgDark)
+            .background(colors.bg)
             .padding(16.dp)
     ) {
         // Open File Card
         Card(
-            colors = CardDefaults.cardColors(containerColor = CardDark),
+            colors = CardDefaults.cardColors(containerColor = colors.card),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -73,18 +74,18 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                     Text(
                         text = "Binary Inspector",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Open any ELF .so file to inspect and trace",
                         style = MaterialTheme.typography.bodySmall,
-                        color = ColorHexBytes
+                        color = colors.textSecondary
                     )
                 }
                 Button(
                     onClick = { filePicker.launch(arrayOf("*/*")) },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.Black)
@@ -107,12 +108,12 @@ fun HomeScreen(viewModel: DisElfViewModel) {
 
             // Metadata summary card
             Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = CyanAccent, fontWeight = FontWeight.Bold)
+                    Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = colors.primary, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
                     val archName = when (info.e_machine) {
@@ -124,10 +125,10 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                         else -> "Machine ${info.e_machine}"
                     }
 
-                    Text("Architecture:  $archName (64-bit: ${info.is_64})", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Color.White)
-                    Text("Entrypoint:    0x${"%08X".format(info.entry)}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = ColorAddress)
+                    Text("Architecture:  $archName (64-bit: ${info.is_64})", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.textPrimary)
+                    Text("Entrypoint:    0x${"%08X".format(info.entry)}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.address)
                     if (info.libraries.isNotEmpty()) {
-                        Text("Dependencies:  ${info.libraries.joinToString(", ")}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = ColorHexBytes)
+                        Text("Dependencies:  ${info.libraries.joinToString(", ")}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.hexBytes)
                     }
                 }
             }
@@ -139,20 +140,19 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 label = { Text("Search Symbol or Address (e.g. 0x2EB38)") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyanAccent) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CyanAccent,
-                    unfocusedBorderColor = ColorHexBytes,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary
                 )
             )
 
             Spacer(Modifier.height(8.dp))
 
-            // Parsing address & filtering symbols
             val cleanHex = searchQuery.trim().removePrefix("0x").removePrefix("0X")
             val parsedAddr = cleanHex.toLongOrNull(16)
 
@@ -170,11 +170,10 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // If user typed a valid hex address, allow direct jump even if unexported
                 if (parsedAddr != null && cleanHex.length >= 2) {
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = CyanAccent.copy(alpha = 0.15f)),
+                            colors = CardDefaults.cardColors(containerColor = colors.primary.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -190,18 +189,18 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = CyanAccent)
+                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = colors.primary)
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(
                                         text = "Jump directly to VMA 0x${"%08X".format(parsedAddr)}",
-                                        color = CyanAccent,
+                                        color = colors.primary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp
                                     )
                                     Text(
                                         text = "Disassemble arbitrary address (unexported / stripped code)",
-                                        color = ColorHexBytes,
+                                        color = colors.textSecondary,
                                         fontSize = 11.sp
                                     )
                                 }
@@ -212,7 +211,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
 
                 items(filteredSyms) { sym ->
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = CardDark),
+                        colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -232,13 +231,13 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = sym.displayName,
-                                    color = Color.White,
+                                    color = colors.textPrimary,
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 13.sp
                                 )
                                 Text(
                                     text = "0x${"%08X".format(sym.value)}  |  size: ${sym.size} B",
-                                    color = ColorAddress,
+                                    color = colors.address,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp
                                 )

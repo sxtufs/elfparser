@@ -28,6 +28,12 @@ class DisElfViewModel : ViewModel() {
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart
     val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security
 
+    val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
+
+    fun toggleTheme() {
+        isDarkMode.value = !isDarkMode.value
+    }
+
     private val _elfInfo = MutableStateFlow<ElfInfo?>(null)
     val elfInfo: StateFlow<ElfInfo?> = _elfInfo.asStateFlow()
 
