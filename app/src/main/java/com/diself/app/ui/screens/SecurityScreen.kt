@@ -91,7 +91,8 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                                 .clickable {
                                     if (item.address != 0L) {
                                         viewModel.selectFunction(item.address, item.name)
-                                        viewModel.navigateTo(Screen.Disassembly)
+                                        viewModel.codeSubTab.value = 0
+                                        viewModel.navigateTo(Screen.Code)
                                     }
                                 }
                         ) {

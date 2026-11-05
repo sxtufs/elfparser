@@ -117,7 +117,8 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                                         colors = CardDefaults.cardColors(containerColor = CardDark),
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                             viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
-                                            viewModel.navigateTo(Screen.Disassembly)
+                                            viewModel.codeSubTab.value = 0
+                                            viewModel.navigateTo(Screen.Code)
                                             selectedString = null
                                         }
                                     ) {
