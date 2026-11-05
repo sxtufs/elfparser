@@ -63,7 +63,8 @@ data class Instruction(
     val address: Long = 0,
     val bytes: List<Int> = emptyList(),
     val mnemonic: String = "",
-    val op_str: String = ""
+    val op_str: String = "",
+    val comment: String? = null
 ) {
     val bytesHex: String
         get() = bytes.joinToString(" ") { "%02X".format(it and 0xFF) }

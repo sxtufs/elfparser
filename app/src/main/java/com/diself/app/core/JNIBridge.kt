@@ -42,6 +42,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         // Unity Il2Cpp Metadata Resolvers
         @JvmStatic private external fun loadScriptJson(handle: Long, path: String): Int
         @JvmStatic private external fun loadGlobalMetadata(handle: Long, path: String): Int
+
+        // Function Renaming
+        @JvmStatic private external fun renameFunction(handle: Long, address: Long, newName: String): Boolean
     }
 
     fun getInfo(evaluateYara: Boolean = false): ElfInfo {
@@ -146,6 +149,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
 
     fun loadGlobalMetadata(path: String): Int {
         return loadGlobalMetadata(handle, path)
+    }
+
+    fun renameFunction(address: Long, newName: String): Boolean {
+        return renameFunction(handle, address, newName)
     }
 
     protected fun finalize() {

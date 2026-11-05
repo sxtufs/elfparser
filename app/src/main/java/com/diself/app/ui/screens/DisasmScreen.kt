@@ -53,6 +53,9 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
     var showFridaDialog by remember { mutableStateOf(false) }
     var fridaCode by remember { mutableStateOf("") }
 
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameInput by remember { mutableStateOf("") }
+
     // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
     val shortTitle = remember(symbolName, currentAddr) {
         if (symbolName.contains(" -> ")) {
@@ -178,6 +181,17 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp
                     )
+
+                    if (!ins.comment.isNullOrEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = ins.comment,
+                            color = Color(0xFFD97706),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -364,11 +378,25 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // 4. Frida Hook & Export .so Buttons Row
+                    // 4. Action Row: Rename, Frida Hook, Export .so
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        OutlinedButton(
+                            onClick = {
+                                renameInput = symbolName
+                                showRenameDialog = true
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(46.dp)
+                        ) {
+                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
                         OutlinedButton(
                             onClick = {
                                 fridaCode = generateFridaHook(
@@ -384,7 +412,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(46.dp)
                         ) {
-                            Text("Frida Hook", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Frida", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         OutlinedButton(
@@ -403,7 +431,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(46.dp)
                         ) {
-                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Export", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
 
@@ -554,6 +582,56 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 dismissButton = {
                     TextButton(onClick = { showFridaDialog = false }) {
                         Text("Close", color = colors.textSecondary)
+                    }
+                }
+            )
+        }
+
+        // Rename Function Dialog
+        if (showRenameDialog) {
+            AlertDialog(
+                onDismissRequest = { showRenameDialog = false },
+                containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
+                title = { Text("Rename Function", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text("Enter new name for 0x${"%08X".format(currentAddr)}:", color = colors.textSecondary, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = renameInput,
+                            onValueChange = { renameInput = it },
+                            label = { Text("Function Name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = colors.border,
+                                focusedTextColor = colors.textPrimary,
+                                unfocusedTextColor = colors.textPrimary
+                            )
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val newName = renameInput.trim()
+                            if (newName.isNotEmpty()) {
+                                viewModel.renameFunction(currentAddr, newName) { ok ->
+                                    Toast.makeText(context, if (ok) "Function renamed" else "Rename failed", Toast.LENGTH_SHORT).show()
+                                }
+                                showRenameDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
+                    ) {
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRenameDialog = false }) {
+                        Text("Cancel", color = colors.textSecondary)
                     }
                 }
             )

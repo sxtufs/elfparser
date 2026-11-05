@@ -204,4 +204,23 @@ class DisElfViewModel : ViewModel() {
             _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
         }
     }
+
+    fun renameFunction(address: Long, newName: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(false) }
+                return@launch
+            }
+            val ok = b.renameFunction(address, newName)
+            if (ok) {
+                _selectedSymbolName.value = newName
+                val info = b.getInfo()
+                _elfInfo.value = info
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(ok) }
+        }
+    }
 }
