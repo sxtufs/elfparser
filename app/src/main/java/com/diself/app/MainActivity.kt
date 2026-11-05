@@ -5,10 +5,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,8 +39,8 @@ class MainActivity : ComponentActivity() {
             if (!view.isInEditMode) {
                 SideEffect {
                     val window = (view.context as Activity).window
-                    val statusBarColor = if (isDark) Color(0xFF181A1F).toArgb() else Color(0xFFFFFFFF).toArgb()
-                    val navBarColor = if (isDark) Color(0xFF21252B).toArgb() else Color(0xFFFFFFFF).toArgb()
+                    val statusBarColor = if (isDark) Color(0xFF181A1F).toArgb() else Color(0xFFF8F9FA).toArgb()
+                    val navBarColor = if (isDark) Color(0xFF181A1F).toArgb() else Color(0xFFF8F9FA).toArgb()
                     window.statusBarColor = statusBarColor
                     window.navigationBarColor = navBarColor
 
@@ -57,55 +60,76 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = colors.bg,
                     bottomBar = {
-                        NavigationBar(containerColor = colors.surface) {
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Files,
-                                onClick = { viewModel.navigateTo(Screen.Files) },
-                                icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                                label = { Text("Files", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = colors.primary,
-                                    selectedTextColor = colors.primary,
-                                    unselectedIconColor = colors.textSecondary,
-                                    unselectedTextColor = colors.textSecondary
+                        // Floating Rounded-Card Bottom Navigation Bar
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            color = colors.surface,
+                            border = BorderStroke(1.dp, colors.border),
+                            shadowElevation = 3.dp
+                        ) {
+                            NavigationBar(
+                                containerColor = Color.Transparent,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(68.dp)
+                            ) {
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.Files,
+                                    onClick = { viewModel.navigateTo(Screen.Files) },
+                                    icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
+                                    label = { Text("Files", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.primary,
+                                        selectedTextColor = colors.primary,
+                                        unselectedIconColor = colors.textSecondary,
+                                        unselectedTextColor = colors.textSecondary,
+                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
+                                    )
                                 )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Code,
-                                onClick = { viewModel.navigateTo(Screen.Code) },
-                                icon = { Icon(Icons.Default.Code, contentDescription = "Code") },
-                                label = { Text("Code", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = colors.primary,
-                                    selectedTextColor = colors.primary,
-                                    unselectedIconColor = colors.textSecondary,
-                                    unselectedTextColor = colors.textSecondary
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.Code,
+                                    onClick = { viewModel.navigateTo(Screen.Code) },
+                                    icon = { Icon(Icons.Default.Code, contentDescription = "Code") },
+                                    label = { Text("Code", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.primary,
+                                        selectedTextColor = colors.primary,
+                                        unselectedIconColor = colors.textSecondary,
+                                        unselectedTextColor = colors.textSecondary,
+                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
+                                    )
                                 )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Tracer,
-                                onClick = { viewModel.navigateTo(Screen.Tracer) },
-                                icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Tracer") },
-                                label = { Text("Tracer", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = colors.primary,
-                                    selectedTextColor = colors.primary,
-                                    unselectedIconColor = colors.textSecondary,
-                                    unselectedTextColor = colors.textSecondary
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.Tracer,
+                                    onClick = { viewModel.navigateTo(Screen.Tracer) },
+                                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Tracer") },
+                                    label = { Text("Tracer", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.primary,
+                                        selectedTextColor = colors.primary,
+                                        unselectedIconColor = colors.textSecondary,
+                                        unselectedTextColor = colors.textSecondary,
+                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
+                                    )
                                 )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Analysis,
-                                onClick = { viewModel.navigateTo(Screen.Analysis) },
-                                icon = { Icon(Icons.Default.Search, contentDescription = "Analysis") },
-                                label = { Text("Analysis", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = colors.primary,
-                                    selectedTextColor = colors.primary,
-                                    unselectedIconColor = colors.textSecondary,
-                                    unselectedTextColor = colors.textSecondary
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.Analysis,
+                                    onClick = { viewModel.navigateTo(Screen.Analysis) },
+                                    icon = { Icon(Icons.Default.Search, contentDescription = "Analysis") },
+                                    label = { Text("Analysis", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.primary,
+                                        selectedTextColor = colors.primary,
+                                        unselectedIconColor = colors.textSecondary,
+                                        unselectedTextColor = colors.textSecondary,
+                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 ) { innerPadding ->
@@ -120,28 +144,12 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Code -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    // Clean Full-Width TabRow (zero buttons on the side)
-                                    TabRow(
+                                    // Standardized Floating Rounded-Card Top Navigation Bar
+                                    DisElfTopTabBar(
                                         selectedTabIndex = codeTab,
-                                        containerColor = colors.surface,
-                                        contentColor = colors.primary
-                                    ) {
-                                        Tab(
-                                            selected = codeTab == 0,
-                                            onClick = { viewModel.codeSubTab.value = 0 },
-                                            text = { Text("Disassembly", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = codeTab == 1,
-                                            onClick = { viewModel.codeSubTab.value = 1 },
-                                            text = { Text("Decompile", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = codeTab == 2,
-                                            onClick = { viewModel.codeSubTab.value = 2 },
-                                            text = { Text("Flowchart", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                    }
+                                        tabs = listOf("Disassembly", "Decompile", "Flowchart"),
+                                        onTabSelected = { viewModel.codeSubTab.value = it }
+                                    )
 
                                     when (codeTab) {
                                         0 -> DisasmScreen(viewModel)
@@ -155,23 +163,12 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Analysis -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    // Clean Full-Width TabRow (zero buttons on the side)
-                                    TabRow(
+                                    // Standardized Floating Rounded-Card Top Navigation Bar
+                                    DisElfTopTabBar(
                                         selectedTabIndex = analysisTab,
-                                        containerColor = colors.surface,
-                                        contentColor = colors.primary
-                                    ) {
-                                        Tab(
-                                            selected = analysisTab == 0,
-                                            onClick = { viewModel.analysisSubTab.value = 0 },
-                                            text = { Text("Strings", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = analysisTab == 1,
-                                            onClick = { viewModel.analysisSubTab.value = 1 },
-                                            text = { Text("Security Scanner", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                    }
+                                        tabs = listOf("Strings", "Security Scanner"),
+                                        onTabSelected = { viewModel.analysisSubTab.value = it }
+                                    )
 
                                     when (analysisTab) {
                                         0 -> StringsScreen(viewModel)
@@ -182,6 +179,60 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Standardized Floating Rounded-Card Top Navigation Container for DisElf.
+ * Applies uniform horizontal insets, rounded corners, surface background, and clipped active indicator.
+ */
+@Composable
+fun DisElfTopTabBar(
+    selectedTabIndex: Int,
+    tabs: List<String>,
+    onTabSelected: (Int) -> Unit
+) {
+    val colors = LocalDisElfColors.current
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = colors.surface,
+        border = BorderStroke(1.dp, colors.border),
+        shadowElevation = 2.dp
+    ) {
+        TabRow(
+            selectedTabIndex = selectedTabIndex,
+            containerColor = Color.Transparent,
+            contentColor = colors.primary,
+            indicator = { tabPositions ->
+                if (selectedTabIndex < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                        color = colors.primary,
+                        height = 3.dp
+                    )
+                }
+            },
+            divider = {}
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTabIndex == index,
+                    onClick = { onTabSelected(index) },
+                    text = {
+                        Text(
+                            text = title,
+                            fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                )
             }
         }
     }
