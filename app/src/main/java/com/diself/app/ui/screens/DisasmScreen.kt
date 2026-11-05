@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
@@ -82,7 +83,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanAccent),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.NearMe, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Go to", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }

@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
-import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -190,7 +190,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.NearMe, contentDescription = null, tint = CyanAccent)
+                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = CyanAccent)
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(
