@@ -342,7 +342,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                                     fontSize = 11.sp
                                 )
                             }
-                            if (sym.thumb) {
+                            if (info.e_machine == 40 && sym.thumb) {
                                 Text("THUMB", color = AmberAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
