@@ -39,7 +39,6 @@ fun HomeScreen(viewModel: DisElfViewModel) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
-            // Copy file from SAF to app cache directory
             val tempFile = File(context.cacheDir, "target.so")
             context.contentResolver.openInputStream(it)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
@@ -56,7 +55,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             .background(BgDark)
             .padding(16.dp)
     ) {
-        // Open File Card
+        // Open File Card with non-wrapping Open button
         Card(
             colors = CardDefaults.cardColors(containerColor = CardDark),
             shape = RoundedCornerShape(12.dp),
@@ -69,11 +68,12 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = "Binary Inspector",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Open any ELF .so file to inspect and trace",
@@ -83,11 +83,18 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 }
                 Button(
                     onClick = { filePicker.launch(arrayOf("*/*")) },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.Black)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Open", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Open",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
             }
         }
@@ -104,7 +111,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = CyanAccent)
+                    Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = CyanAccent, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
                     val archName = when (info.e_machine) {
@@ -147,7 +154,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             // Symbols List
             val filteredSyms = remember(searchQuery, info.syms) {
                 if (searchQuery.isBlank()) info.syms
-                else info.syms.filter { it.sym.contains(searchQuery, ignoreCase = true) }
+                else info.syms.filter { it.displayName.contains(searchQuery, ignoreCase = true) }
             }
 
             LazyColumn(
@@ -161,8 +168,8 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                viewModel.selectFunction(sym.value, sym.sym)
-                                viewModel.navigateTo(Screen.Disassembly)
+                                viewModel.selectFunction(sym.value, sym.displayName)
+                                viewModel.navigateTo(Screen.Code)
                             }
                     ) {
                         Row(
@@ -174,13 +181,13 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = sym.sym,
+                                    text = sym.displayName,
                                     color = Color.White,
                                     fontWeight = FontWeight.Medium,
-                                    fontSize = 14.sp
+                                    fontSize = 13.sp
                                 )
                                 Text(
-                                    text = "0x${"%08X".format(sym.value)}  |  size: ${sym.size} bytes",
+                                    text = "0x${"%08X".format(sym.value)}  |  size: ${sym.size} B",
                                     color = ColorAddress,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp

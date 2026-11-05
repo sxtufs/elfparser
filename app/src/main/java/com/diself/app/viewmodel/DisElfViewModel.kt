@@ -11,13 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 sealed class Screen {
-    object Home : Screen()
-    object Disassembly : Screen()
-    object Decompile : Screen()
-    object Flowchart : Screen()
-    object Trace : Screen()
-    object Strings : Screen()
-    object Security : Screen()
+    object Files : Screen()
+    object Code : Screen()
+    object Tracer : Screen()
+    object Analysis : Screen()
 }
 
 class DisElfViewModel : ViewModel() {
@@ -25,8 +22,11 @@ class DisElfViewModel : ViewModel() {
     private val _bridge = MutableStateFlow<JNIBridge?>(null)
     val bridge: StateFlow<JNIBridge?> = _bridge.asStateFlow()
 
-    private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
+    private val _currentScreen = MutableStateFlow<Screen>(Screen.Files)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+
+    val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart
+    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security
 
     private val _elfInfo = MutableStateFlow<ElfInfo?>(null)
     val elfInfo: StateFlow<ElfInfo?> = _elfInfo.asStateFlow()
@@ -92,7 +92,6 @@ class DisElfViewModel : ViewModel() {
             val b = _bridge.value ?: return@launch
             val res = b.quickPatch(address, patchType, isThumb)
             if (res.success) {
-                // Refresh disassembly
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)

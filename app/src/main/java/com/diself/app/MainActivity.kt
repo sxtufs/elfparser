@@ -4,14 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.diself.app.ui.screens.*
 import com.diself.app.ui.theme.BgDark
 import com.diself.app.ui.theme.CyanAccent
@@ -29,6 +31,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             DisElfTheme {
                 val currentScreen by viewModel.currentScreen.collectAsState()
+                val codeTab by viewModel.codeSubTab.collectAsState()
+                val analysisTab by viewModel.analysisSubTab.collectAsState()
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -36,10 +40,10 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         NavigationBar(containerColor = SurfaceDark) {
                             NavigationBarItem(
-                                selected = currentScreen == Screen.Home,
-                                onClick = { viewModel.navigateTo(Screen.Home) },
+                                selected = currentScreen == Screen.Files,
+                                onClick = { viewModel.navigateTo(Screen.Files) },
                                 icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                                label = { Text("ELF") },
+                                label = { Text("Files", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CyanAccent,
                                     selectedTextColor = CyanAccent,
@@ -48,10 +52,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                             NavigationBarItem(
-                                selected = currentScreen == Screen.Disassembly,
-                                onClick = { viewModel.navigateTo(Screen.Disassembly) },
-                                icon = { Icon(Icons.Default.Code, contentDescription = "Disasm") },
-                                label = { Text("Disasm") },
+                                selected = currentScreen == Screen.Code,
+                                onClick = { viewModel.navigateTo(Screen.Code) },
+                                icon = { Icon(Icons.Default.Code, contentDescription = "Code") },
+                                label = { Text("Code", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CyanAccent,
                                     selectedTextColor = CyanAccent,
@@ -60,34 +64,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                             NavigationBarItem(
-                                selected = currentScreen == Screen.Decompile,
-                                onClick = { viewModel.navigateTo(Screen.Decompile) },
-                                icon = { Icon(Icons.Default.DataObject, contentDescription = "Decompile") },
-                                label = { Text("Decompile") },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Flowchart,
-                                onClick = { viewModel.navigateTo(Screen.Flowchart) },
-                                icon = { Icon(Icons.Default.AccountTree, contentDescription = "Flowchart") },
-                                label = { Text("Flowchart") },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Trace,
-                                onClick = { viewModel.navigateTo(Screen.Trace) },
+                                selected = currentScreen == Screen.Tracer,
+                                onClick = { viewModel.navigateTo(Screen.Tracer) },
                                 icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Tracer") },
-                                label = { Text("Tracer") },
+                                label = { Text("Tracer", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CyanAccent,
                                     selectedTextColor = CyanAccent,
@@ -96,22 +76,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
                             NavigationBarItem(
-                                selected = currentScreen == Screen.Strings,
-                                onClick = { viewModel.navigateTo(Screen.Strings) },
-                                icon = { Icon(Icons.Default.TextFields, contentDescription = "Strings") },
-                                label = { Text("Strings") },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyanAccent,
-                                    selectedTextColor = CyanAccent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentScreen == Screen.Security,
-                                onClick = { viewModel.navigateTo(Screen.Security) },
-                                icon = { Icon(Icons.Default.Security, contentDescription = "Security") },
-                                label = { Text("Security") },
+                                selected = currentScreen == Screen.Analysis,
+                                onClick = { viewModel.navigateTo(Screen.Analysis) },
+                                icon = { Icon(Icons.Default.Search, contentDescription = "Analysis") },
+                                label = { Text("Analysis", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CyanAccent,
                                     selectedTextColor = CyanAccent,
@@ -129,13 +97,65 @@ class MainActivity : ComponentActivity() {
                         color = BgDark
                     ) {
                         when (currentScreen) {
-                            Screen.Home -> HomeScreen(viewModel)
-                            Screen.Disassembly -> DisasmScreen(viewModel)
-                            Screen.Decompile -> DecompileScreen(viewModel)
-                            Screen.Flowchart -> FlowchartScreen(viewModel)
-                            Screen.Trace -> TraceScreen(viewModel)
-                            Screen.Strings -> StringsScreen(viewModel)
-                            Screen.Security -> SecurityScreen(viewModel)
+                            Screen.Files -> HomeScreen(viewModel)
+
+                            Screen.Code -> {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    TabRow(
+                                        selectedTabIndex = codeTab,
+                                        containerColor = SurfaceDark,
+                                        contentColor = CyanAccent
+                                    ) {
+                                        Tab(
+                                            selected = codeTab == 0,
+                                            onClick = { viewModel.codeSubTab.value = 0 },
+                                            text = { Text("Disassembly", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                        )
+                                        Tab(
+                                            selected = codeTab == 1,
+                                            onClick = { viewModel.codeSubTab.value = 1 },
+                                            text = { Text("Decompile", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                        )
+                                        Tab(
+                                            selected = codeTab == 2,
+                                            onClick = { viewModel.codeSubTab.value = 2 },
+                                            text = { Text("Flowchart", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                        )
+                                    }
+                                    when (codeTab) {
+                                        0 -> DisasmScreen(viewModel)
+                                        1 -> DecompileScreen(viewModel)
+                                        2 -> FlowchartScreen(viewModel)
+                                    }
+                                }
+                            }
+
+                            Screen.Tracer -> TraceScreen(viewModel)
+
+                            Screen.Analysis -> {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    TabRow(
+                                        selectedTabIndex = analysisTab,
+                                        containerColor = SurfaceDark,
+                                        contentColor = CyanAccent
+                                    ) {
+                                        Tab(
+                                            selected = analysisTab == 0,
+                                            onClick = { viewModel.analysisSubTab.value = 0 },
+                                            text = { Text("Strings", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                        )
+                                        Tab(
+                                            selected = analysisTab == 1,
+                                            onClick = { viewModel.analysisSubTab.value = 1 },
+                                            text = { Text("Security Scanner", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                        )
+                                    }
+                                    when (analysisTab) {
+                                        0 -> StringsScreen(viewModel)
+                                        1 -> SecurityScreen(viewModel)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
