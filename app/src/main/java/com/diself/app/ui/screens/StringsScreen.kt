@@ -1,6 +1,7 @@
 package com.diself.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,15 +14,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.diself.app.core.models.StringItem
+import com.diself.app.core.models.XRefItem
 import com.diself.app.ui.theme.*
 import com.diself.app.viewmodel.DisElfViewModel
+import com.diself.app.viewmodel.Screen
 
 @Composable
 fun StringsScreen(viewModel: DisElfViewModel) {
     val stringsList by viewModel.stringsList.collectAsState()
     var search by remember { mutableStateOf("") }
+    var selectedString by remember { mutableStateOf<StringItem?>(null) }
+    var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
 
     val filtered = remember(search, stringsList) {
         if (search.isBlank()) stringsList
@@ -59,7 +66,12 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = CardDark),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedString = item
+                            xrefsList = viewModel.getXrefsFor(item.vaddr)
+                        }
                 ) {
                     Row(
                         modifier = Modifier
@@ -83,6 +95,48 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                     }
                 }
             }
+        }
+
+        // XREF Dialog when tapping a string
+        if (selectedString != null) {
+            val str = selectedString!!
+            AlertDialog(
+                onDismissRequest = { selectedString = null },
+                containerColor = SurfaceDark,
+                title = { Text("String XREFs (${xrefsList.size})", color = CyanAccent) },
+                text = {
+                    Column {
+                        Text("\"${str.string}\"", color = AmberAccent, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        if (xrefsList.isEmpty()) {
+                            Text("No direct instruction references found.", color = ColorHexBytes, fontSize = 12.sp)
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+                                items(xrefsList) { ref ->
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = CardDark),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                            viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
+                                            viewModel.navigateTo(Screen.Disassembly)
+                                            selectedString = null
+                                        }
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text("In: ${ref.caller_func ?: "unknown"}", color = CyanAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { selectedString = null }) {
+                        Text("Close", color = CyanAccent)
+                    }
+                }
+            )
         }
     }
 }

@@ -34,6 +34,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
 
         // Native Cross-References (XREF)
         @JvmStatic private external fun getXrefs(handle: Long, address: Long): String
+
+        // Quick Patcher & Security Scanner
+        @JvmStatic private external fun quickPatch(handle: Long, address: Long, patchType: Int, thumb: Boolean): String
+        @JvmStatic private external fun scanSecurity(handle: Long): String
     }
 
     fun getInfo(evaluateYara: Boolean = false): ElfInfo {
@@ -111,6 +115,24 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
             gson.fromJson(json, XRefResponse::class.java)?.refs ?: emptyList()
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    fun quickPatch(address: Long, patchType: Int, isThumb: Boolean = false): PatchResult {
+        val json = quickPatch(handle, address, patchType, isThumb)
+        return try {
+            gson.fromJson(json, PatchResult::class.java) ?: PatchResult(error = "Unknown error")
+        } catch (e: Exception) {
+            PatchResult(error = e.message)
+        }
+    }
+
+    fun scanSecurity(): ScanReport {
+        val json = scanSecurity(handle)
+        return try {
+            gson.fromJson(json, ScanReport::class.java) ?: ScanReport()
+        } catch (e: Exception) {
+            ScanReport()
         }
     }
 

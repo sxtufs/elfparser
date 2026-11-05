@@ -17,12 +17,42 @@ data class SymsDTO(
     val sym: String = "",
     val value: Long = 0,
     val size: Long = 0,
-    val thumb: Boolean = false
-)
+    val thumb: Boolean = false,
+    val demangled: String? = null,
+    val jni_class: String? = null,
+    val jni_method: String? = null
+) {
+    val displayName: String
+        get() = demangled ?: jni_method?.let { "$jni_class -> $it" } ?: sym
+}
 
 data class YaraDTO(
     val name: String = "",
     val info: String = ""
+)
+
+data class PatchResult(
+    val address: Long = 0,
+    val original_bytes: List<Int> = emptyList(),
+    val patched_bytes: List<Int> = emptyList(),
+    val patch_type: String = "",
+    val success: Boolean = false,
+    val error: String? = null
+)
+
+data class SecurityFinding(
+    val category: String = "",
+    val name: String = "",
+    val address: Long = 0,
+    val offset: Long = 0,
+    val matched_value: String = "",
+    val severity: String = "",
+    val description: String = ""
+)
+
+data class ScanReport(
+    val total_findings: Int = 0,
+    val findings: List<SecurityFinding> = emptyList()
 )
 
 data class CodeIns(

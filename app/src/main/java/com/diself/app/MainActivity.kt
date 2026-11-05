@@ -107,6 +107,18 @@ class MainActivity : ComponentActivity() {
                                     unselectedTextColor = Color.Gray
                                 )
                             )
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.Security,
+                                onClick = { viewModel.navigateTo(Screen.Security) },
+                                icon = { Icon(Icons.Default.Security, contentDescription = "Security") },
+                                label = { Text("Security") },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyanAccent,
+                                    selectedTextColor = CyanAccent,
+                                    unselectedIconColor = Color.Gray,
+                                    unselectedTextColor = Color.Gray
+                                )
+                            )
                         }
                     }
                 ) { innerPadding ->
@@ -123,6 +135,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Flowchart -> FlowchartScreen(viewModel)
                             Screen.Trace -> TraceScreen(viewModel)
                             Screen.Strings -> StringsScreen(viewModel)
+                            Screen.Security -> SecurityScreen(viewModel)
                         }
                     }
                 }

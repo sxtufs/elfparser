@@ -17,6 +17,7 @@ sealed class Screen {
     object Flowchart : Screen()
     object Trace : Screen()
     object Strings : Screen()
+    object Security : Screen()
 }
 
 class DisElfViewModel : ViewModel() {
@@ -42,6 +43,9 @@ class DisElfViewModel : ViewModel() {
     private val _stringsList = MutableStateFlow<List<StringItem>>(emptyList())
     val stringsList: StateFlow<List<StringItem>> = _stringsList.asStateFlow()
 
+    private val _scanReport = MutableStateFlow<ScanReport?>(null)
+    val scanReport: StateFlow<ScanReport?> = _scanReport.asStateFlow()
+
     private val _traceState = MutableStateFlow<TraceState?>(null)
     val traceState: StateFlow<TraceState?> = _traceState.asStateFlow()
 
@@ -63,9 +67,10 @@ class DisElfViewModel : ViewModel() {
             _elfInfo.value = info
 
             val firstAddr = info.syms.firstOrNull()?.value ?: info.entry
-            val firstName = info.syms.firstOrNull()?.sym ?: "entry"
+            val firstName = info.syms.firstOrNull()?.displayName ?: "entry"
             selectFunction(firstAddr, firstName)
             _stringsList.value = b.getStrings()
+            _scanReport.value = b.scanSecurity()
         }
     }
 
@@ -77,9 +82,36 @@ class DisElfViewModel : ViewModel() {
             _instructions.value = b.disassemble(address, 256)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
-            // Initialize trace at function start
             b.startTrace(address)
             _traceState.value = TraceState(pc = address)
+        }
+    }
+
+    fun applyQuickPatch(address: Long, patchType: Int, isThumb: Boolean = false, onComplete: (PatchResult) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            val res = b.quickPatch(address, patchType, isThumb)
+            if (res.success) {
+                // Refresh disassembly
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) {
+                onComplete(res)
+            }
+        }
+    }
+
+    fun getXrefsFor(address: Long): List<XRefItem> {
+        val b = _bridge.value ?: return emptyList()
+        return b.getXrefs(address)
+    }
+
+    fun runSecurityScan() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            _scanReport.value = b.scanSecurity()
         }
     }
 
