@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -61,7 +62,7 @@ fun DecompileScreen(viewModel: DisElfViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // Monospaced Code View with Horizontal & Vertical Scrolling
+        // Selectable Monospaced Code View with Horizontal & Vertical Scrolling
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -70,13 +71,15 @@ fun DecompileScreen(viewModel: DisElfViewModel) {
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {
-            Text(
-                text = decompileCode.ifEmpty { "// Select a function to decompile" },
-                color = colors.operands,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
+            SelectionContainer {
+                Text(
+                    text = decompileCode.ifEmpty { "// Select a function to decompile" },
+                    color = colors.operands,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+            }
         }
     }
 }

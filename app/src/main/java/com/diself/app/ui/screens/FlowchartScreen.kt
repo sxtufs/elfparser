@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -33,13 +34,15 @@ fun FlowchartScreen(viewModel: DisElfViewModel) {
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {
-            Text(
-                text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
-                color = colors.operands,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
+            SelectionContainer {
+                Text(
+                    text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
+                    color = colors.operands,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+            }
         }
     }
 }
