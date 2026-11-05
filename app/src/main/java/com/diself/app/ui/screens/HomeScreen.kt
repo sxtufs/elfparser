@@ -63,6 +63,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.card),
             shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -130,6 +131,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -167,7 +169,10 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                     focusedBorderColor = colors.primary,
                     unfocusedBorderColor = colors.border,
                     focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary
+                    unfocusedTextColor = colors.textPrimary,
+                    focusedLabelColor = colors.primary,
+                    unfocusedLabelColor = colors.textSecondary,
+                    cursorColor = colors.primary
                 )
             )
 
@@ -233,6 +238,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {

@@ -37,6 +37,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -93,6 +94,7 @@ fun SecurityScreen(viewModel: DisElfViewModel) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.card),
                             shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {

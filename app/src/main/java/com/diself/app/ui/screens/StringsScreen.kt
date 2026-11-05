@@ -59,7 +59,10 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                 focusedBorderColor = colors.primary,
                 unfocusedBorderColor = colors.border,
                 focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary
+                unfocusedTextColor = colors.textPrimary,
+                focusedLabelColor = colors.primary,
+                unfocusedLabelColor = colors.textSecondary,
+                cursorColor = colors.primary
             )
         )
 
@@ -73,6 +76,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = colors.card),
                     shape = RoundedCornerShape(6.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -116,6 +120,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
             AlertDialog(
                 onDismissRequest = { selectedString = null },
                 containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
                 title = { Text(titleText, color = colors.primary) },
                 text = {
                     Column {
@@ -128,6 +133,8 @@ fun StringsScreen(viewModel: DisElfViewModel) {
                                 items(xrefsList) { ref ->
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = colors.card),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                             viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
                                             viewModel.codeSubTab.value = 0

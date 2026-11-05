@@ -115,7 +115,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         xrefDialogTitle = "Callers of $symbolName"
                         showXrefDialog = true
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberAccent),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(13.dp))
@@ -215,7 +215,8 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (colors.isDark) Color(0xFF00ACC1) else Color(0xFF0284C7)
+                                containerColor = if (colors.isDark) Color(0xFF00ACC1) else Color(0xFF0284C7),
+                                contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
@@ -225,13 +226,13 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             Icon(
                                 Icons.Default.OpenInNew,
                                 contentDescription = null,
-                                tint = Color.Black,
+                                tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "Jump to Target",
-                                color = Color.Black,
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
@@ -364,6 +365,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
             AlertDialog(
                 onDismissRequest = { showGotoDialog = false },
                 containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
                 title = { Text("Go to Address (VMA)", color = colors.primary, fontSize = 16.sp) },
                 text = {
                     Column {
@@ -379,7 +381,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 focusedBorderColor = colors.primary,
                                 unfocusedBorderColor = colors.border,
                                 focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary
+                                unfocusedTextColor = colors.textPrimary,
+                                focusedLabelColor = colors.primary,
+                                unfocusedLabelColor = colors.textSecondary,
+                                cursorColor = colors.primary
                             )
                         )
                     }
@@ -396,9 +401,12 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                                 Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primary,
+                            contentColor = Color.White
+                        )
                     ) {
-                        Text("Jump", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Jump", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -420,6 +428,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
             AlertDialog(
                 onDismissRequest = { showXrefDialog = false },
                 containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
                 title = { Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp) },
                 text = {
                     if (xrefsList.isEmpty()) {
@@ -429,7 +438,8 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             items(xrefsList) { ref ->
                                 Card(
                                     colors = CardDefaults.cardColors(containerColor = colors.card),
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
                                         viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
                                         showXrefDialog = false
