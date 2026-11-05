@@ -295,7 +295,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         OutlinedTextField(
                             value = gotoAddressInput,
                             onValueChange = { gotoAddressInput = it },
-                            label = { Text("e.g. 0x2EB38 or 2EB38") },
+                            label = { Text("Enter Hex Address") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(

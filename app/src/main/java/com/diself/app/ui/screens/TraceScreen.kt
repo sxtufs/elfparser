@@ -96,7 +96,7 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = state.current_insn.ifEmpty { "(ready to step)" },
+                            text = state.current_insn.ifEmpty { "Ready" },
                             color = colors.textPrimary,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp

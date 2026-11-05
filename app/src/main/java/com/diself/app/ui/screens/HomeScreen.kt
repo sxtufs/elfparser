@@ -155,7 +155,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Search Symbol or Address (e.g. 0x2EB38)") },
+                label = { Text("Search Symbol or Address") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),

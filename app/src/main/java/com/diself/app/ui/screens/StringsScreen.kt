@@ -51,7 +51,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
-            label = { Text("Filter String or Address (e.g. 0x10ED)") },
+            label = { Text("Filter String or Address") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),

@@ -89,7 +89,9 @@ class DisElfViewModel : ViewModel() {
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             b.startTrace(address)
-            _traceState.value = TraceState(pc = address)
+            val firstInsn = _instructions.value.firstOrNull()
+            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
+            _traceState.value = TraceState(pc = address, current_insn = initialInsn)
         }
     }
 
@@ -141,7 +143,9 @@ class DisElfViewModel : ViewModel() {
             val b = _bridge.value ?: return@launch
             val addr = _currentAddress.value
             b.startTrace(addr)
-            _traceState.value = TraceState(pc = addr)
+            val firstInsn = _instructions.value.firstOrNull()
+            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
+            _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
         }
     }
 }
