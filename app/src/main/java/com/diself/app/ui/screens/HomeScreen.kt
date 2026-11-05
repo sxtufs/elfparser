@@ -1,6 +1,8 @@
 package com.diself.app.ui.screens
 
+import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -30,6 +32,9 @@ import com.diself.app.viewmodel.DisElfViewModel
 import com.diself.app.viewmodel.Screen
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipFile
+
+data class ApkSoEntry(val entryName: String, val size: Long)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,17 +44,49 @@ fun HomeScreen(viewModel: DisElfViewModel) {
     val elfInfo by viewModel.elfInfo.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
+    var apkSoList by remember { mutableStateOf<List<ApkSoEntry>>(emptyList()) }
+    var showApkPicker by remember { mutableStateOf(false) }
+    var apkCachedFile by remember { mutableStateOf<File?>(null) }
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
-            val tempFile = File(context.cacheDir, "target.so")
+            val fileName = queryFileName(context, it)
+            val tempFile = File(context.cacheDir, "input_target")
             context.contentResolver.openInputStream(it)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     input.copyTo(output)
                 }
             }
-            viewModel.loadElf(tempFile.absolutePath)
+
+            // Check if it's an APK or ZIP archive containing .so files
+            val isZip = try {
+                ZipFile(tempFile).use { zip ->
+                    val soList = mutableListOf<ApkSoEntry>()
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val e = entries.nextElement()
+                        if (!e.isDirectory && e.name.endsWith(".so", ignoreCase = true)) {
+                            soList.add(ApkSoEntry(e.name, e.size))
+                        }
+                    }
+                    if (soList.isNotEmpty()) {
+                        apkSoList = soList.sortedByDescending { it.size }
+                        apkCachedFile = tempFile
+                        showApkPicker = true
+                        true
+                    } else {
+                        false
+                    }
+                }
+            } catch (_: Exception) {
+                false
+            }
+
+            if (!isZip) {
+                viewModel.loadElf(tempFile.absolutePath, fileName)
+            }
         }
     }
 
@@ -75,13 +112,13 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
-                        text = "Binary Inspector",
+                        text = "Binary & APK Inspector",
                         style = MaterialTheme.typography.titleMedium,
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Open any ELF .so file to inspect and trace",
+                        text = "Open any .so, .apk, or split package directly",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textSecondary
                     )
@@ -276,5 +313,86 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 }
             }
         }
+
+        // APK Native Library Selection Dialog
+        if (showApkPicker && apkCachedFile != null) {
+            AlertDialog(
+                onDismissRequest = { showApkPicker = false },
+                containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
+                title = { Text("Select Native Library from APK", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(apkSoList) { entry ->
+                            val simpleName = entry.entryName.substringAfterLast('/')
+                            val sizeMb = "%.1f MB".format(entry.size / (1024.0 * 1024.0))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.card),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val extracted = File(context.cacheDir, "extracted_$simpleName")
+                                        if (extractSoFromApk(apkCachedFile!!, entry.entryName, extracted)) {
+                                            viewModel.loadElf(extracted.absolutePath, simpleName)
+                                            showApkPicker = false
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(simpleName, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text(entry.entryName, color = colors.textSecondary, fontSize = 10.sp, maxLines = 1)
+                                    }
+                                    Text(sizeMb, color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showApkPicker = false }) {
+                        Text("Cancel", color = colors.textSecondary)
+                    }
+                }
+            )
+        }
     }
+}
+
+private fun extractSoFromApk(apkFile: File, entryName: String, outFile: File): Boolean {
+    return try {
+        ZipFile(apkFile).use { zip ->
+            val entry = zip.getEntry(entryName) ?: return false
+            zip.getInputStream(entry).use { input ->
+                FileOutputStream(outFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun queryFileName(context: Context, uri: Uri): String {
+    var name = "libtarget.so"
+    try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                name = cursor.getString(nameIndex)
+            }
+        }
+    } catch (_: Exception) {}
+    return name
 }

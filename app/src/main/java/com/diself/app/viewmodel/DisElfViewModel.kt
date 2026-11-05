@@ -1,9 +1,13 @@
 package com.diself.app.viewmodel
 
+import android.content.Context
+import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.diself.app.core.JNIBridge
 import com.diself.app.core.models.*
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +33,38 @@ class DisElfViewModel : ViewModel() {
     val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security
 
     val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
+
+    val currentFileName = MutableStateFlow("")
+
+    fun savePatchedBinary(context: Context, onResult: (String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onResult(null) }
+                return@launch
+            }
+            val bytes = b.saveBinary()
+            if (bytes.isEmpty()) {
+                launch(Dispatchers.Main) { onResult(null) }
+                return@launch
+            }
+            val origName = currentFileName.value.ifEmpty { "libtarget.so" }.removeSuffix(".so")
+            val patchedFileName = "${origName}_patched.so"
+            try {
+                val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val outFile = File(outDir, patchedFileName)
+                FileOutputStream(outFile).use { it.write(bytes) }
+                launch(Dispatchers.Main) { onResult(outFile.absolutePath) }
+            } catch (_: Exception) {
+                try {
+                    val fallback = File(context.cacheDir, patchedFileName)
+                    FileOutputStream(fallback).use { it.write(bytes) }
+                    launch(Dispatchers.Main) { onResult(fallback.absolutePath) }
+                } catch (_: Exception) {
+                    launch(Dispatchers.Main) { onResult(null) }
+                }
+            }
+        }
+    }
 
     fun toggleTheme() {
         isDarkMode.value = !isDarkMode.value
@@ -65,8 +101,9 @@ class DisElfViewModel : ViewModel() {
         _currentScreen.value = screen
     }
 
-    fun loadElf(path: String) {
+    fun loadElf(path: String, fileName: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
+            currentFileName.value = if (fileName.isNotEmpty()) fileName else File(path).name
             val b = JNIBridge.open(path) ?: return@launch
             _bridge.value = b
             val info = b.getInfo()

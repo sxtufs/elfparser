@@ -13,11 +13,14 @@ import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +48,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
+
+    val clipboardManager = LocalClipboardManager.current
+    var showFridaDialog by remember { mutableStateOf(false) }
+    var fridaCode by remember { mutableStateOf("") }
 
     // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
     val shortTitle = remember(symbolName, currentAddr) {
@@ -355,6 +362,51 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         )
                     }
 
+                    Spacer(Modifier.height(10.dp))
+
+                    // 4. Frida Hook & Export .so Buttons Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                fridaCode = generateFridaHook(
+                                    moduleName = viewModel.currentFileName.value.ifEmpty { "libtarget.so" },
+                                    funcName = symbolName,
+                                    address = ins.address
+                                )
+                                showFridaDialog = true
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(46.dp)
+                        ) {
+                            Text("Frida Hook", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.savePatchedBinary(context) { savedPath ->
+                                    if (savedPath != null) {
+                                        Toast.makeText(context, "Saved to $savedPath", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Failed to export binary", Toast.LENGTH_SHORT).show()
+                                    }
+                                    selectedInsn = null
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(46.dp)
+                        ) {
+                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -461,7 +513,81 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 }
             )
         }
+
+        // Frida Hook Script Dialog
+        if (showFridaDialog) {
+            AlertDialog(
+                onDismissRequest = { showFridaDialog = false },
+                containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
+                title = { Text("Frida Hook Script", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.card, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = fridaCode,
+                                color = colors.operands,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(fridaCode))
+                            Toast.makeText(context, "Copied Frida script to clipboard", Toast.LENGTH_SHORT).show()
+                            showFridaDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
+                    ) {
+                        Text("Copy Script", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showFridaDialog = false }) {
+                        Text("Close", color = colors.textSecondary)
+                    }
+                }
+            )
+        }
     }
+}
+
+private fun generateFridaHook(moduleName: String, funcName: String, address: Long): String {
+    val cleanMod = if (moduleName.endsWith(".so")) moduleName else "$moduleName.so"
+    val cleanName = funcName.ifEmpty { "sub_${"%08X".format(address)}" }
+    return """
+// DisElf Frida Hook: $cleanName
+var module = "$cleanMod";
+var base = Module.findBaseAddress(module);
+
+if (base) {
+    var target = base.add(0x${"%X".format(address)});
+    Interceptor.attach(target, {
+        onEnter: function(args) {
+            console.log("\n[+] Called $cleanName at " + target);
+            console.log("    Caller: " + this.returnAddress);
+            console.log("    Arg 0:  " + args[0]);
+            console.log("    Arg 1:  " + args[1]);
+        },
+        onLeave: function(retval) {
+            console.log("    Return: " + retval);
+            // retval.replace(1);
+        }
+    });
+    console.log("[*] Attached hook to $cleanName at " + target);
+} else {
+    console.log("[-] Module " + module + " is not loaded yet.");
+}
+""".trimIndent()
 }
 
 private fun parseBranchTarget(mnemonic: String, opStr: String): Long? {
