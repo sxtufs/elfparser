@@ -4,11 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -24,7 +26,6 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: DisElfViewModel by viewModels()
 
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -39,34 +40,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = colors.bg,
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    "DisElf",
-                                    color = colors.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp
-                                )
-                            },
-                            actions = {
-                                IconButton(onClick = { viewModel.toggleTheme() }) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (isDark) R.drawable.ic_light_mode
-                                            else R.drawable.ic_dark_mode
-                                        ),
-                                        contentDescription = "Toggle Theme",
-                                        tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF00838F),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = colors.surface
-                            )
-                        )
-                    },
+                    // TopAppBar REMOVED to maximize vertical space for instructions!
                     bottomBar = {
                         NavigationBar(containerColor = colors.surface) {
                             NavigationBarItem(
@@ -131,27 +105,52 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Code -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    TabRow(
-                                        selectedTabIndex = codeTab,
-                                        containerColor = colors.surface,
-                                        contentColor = colors.primary
+                                    // Clean Header Row with Tabs + Embedded Sun/Moon toggle (0 extra vertical space)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(colors.surface),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Tab(
-                                            selected = codeTab == 0,
-                                            onClick = { viewModel.codeSubTab.value = 0 },
-                                            text = { Text("Disassembly", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = codeTab == 1,
-                                            onClick = { viewModel.codeSubTab.value = 1 },
-                                            text = { Text("Decompile", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = codeTab == 2,
-                                            onClick = { viewModel.codeSubTab.value = 2 },
-                                            text = { Text("Flowchart", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
+                                        TabRow(
+                                            selectedTabIndex = codeTab,
+                                            containerColor = colors.surface,
+                                            contentColor = colors.primary,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Tab(
+                                                selected = codeTab == 0,
+                                                onClick = { viewModel.codeSubTab.value = 0 },
+                                                text = { Text("Disassembly", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                            )
+                                            Tab(
+                                                selected = codeTab == 1,
+                                                onClick = { viewModel.codeSubTab.value = 1 },
+                                                text = { Text("Decompile", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                            )
+                                            Tab(
+                                                selected = codeTab == 2,
+                                                onClick = { viewModel.codeSubTab.value = 2 },
+                                                text = { Text("Flowchart", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { viewModel.toggleTheme() },
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(
+                                                    if (isDark) R.drawable.ic_light_mode
+                                                    else R.drawable.ic_dark_mode
+                                                ),
+                                                contentDescription = "Toggle Theme",
+                                                tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
+
                                     when (codeTab) {
                                         0 -> DisasmScreen(viewModel)
                                         1 -> DecompileScreen(viewModel)
@@ -164,22 +163,47 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Analysis -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    TabRow(
-                                        selectedTabIndex = analysisTab,
-                                        containerColor = colors.surface,
-                                        contentColor = colors.primary
+                                    // Clean Header Row with Tabs + Embedded Sun/Moon toggle
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(colors.surface),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Tab(
-                                            selected = analysisTab == 0,
-                                            onClick = { viewModel.analysisSubTab.value = 0 },
-                                            text = { Text("Strings", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
-                                        Tab(
-                                            selected = analysisTab == 1,
-                                            onClick = { viewModel.analysisSubTab.value = 1 },
-                                            text = { Text("Security Scanner", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                                        )
+                                        TabRow(
+                                            selectedTabIndex = analysisTab,
+                                            containerColor = colors.surface,
+                                            contentColor = colors.primary,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Tab(
+                                                selected = analysisTab == 0,
+                                                onClick = { viewModel.analysisSubTab.value = 0 },
+                                                text = { Text("Strings", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                            )
+                                            Tab(
+                                                selected = analysisTab == 1,
+                                                onClick = { viewModel.analysisSubTab.value = 1 },
+                                                text = { Text("Security Scanner", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { viewModel.toggleTheme() },
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(
+                                                    if (isDark) R.drawable.ic_light_mode
+                                                    else R.drawable.ic_dark_mode
+                                                ),
+                                                contentDescription = "Toggle Theme",
+                                                tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
+
                                     when (analysisTab) {
                                         0 -> StringsScreen(viewModel)
                                         1 -> SecurityScreen(viewModel)

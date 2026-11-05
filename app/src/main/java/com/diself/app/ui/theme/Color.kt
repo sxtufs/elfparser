@@ -21,7 +21,7 @@ data class DisElfColors(
     val isDark: Boolean
 )
 
-// Softer, eye-friendly dark mode (One Dark / GitHub style, not harsh pitch black)
+// Softer, eye-friendly dark mode (Atom / GitHub Dark charcoal, not harsh pitch black)
 val DarkThemeColors = DisElfColors(
     bg = Color(0xFF181A1F),
     surface = Color(0xFF21252B),
@@ -40,22 +40,22 @@ val DarkThemeColors = DisElfColors(
     isDark = true
 )
 
-// Soft paper / IDE Light mode (comfortable for long reading, zero eye strain)
+// Calibrated Eye-Comfort Light Mode (GitHub / VS Code Light - high contrast, zero glare, zero eye strain)
 val LightThemeColors = DisElfColors(
-    bg = Color(0xFFF3F4F6),
-    surface = Color(0xFFFFFFFF),
+    bg = Color(0xFFF6F8FA),          // Soft canvas grey (eliminates white glare)
+    surface = Color(0xFFFFFFFF),     // Pure surface
     card = Color(0xFFFFFFFF),
-    border = Color(0xFFE5E7EB),
-    primary = Color(0xFF00838F),
-    textPrimary = Color(0xFF1E293B),
-    textSecondary = Color(0xFF64748B),
-    address = Color(0xFF2E7D32),
-    hexBytes = Color(0xFF94A3B8),
-    mnemonic = Color(0xFF0284C7),
-    operands = Color(0xFF334155),
-    register = Color(0xFFB45309),
-    changedReg = Color(0xFFDC2626),
-    changedRegBg = Color(0xFFFEE2E2),
+    border = Color(0xFFD0D7DE),      // Clean subtle divider
+    primary = Color(0xFF0969DA),     // Professional IDE blue
+    textPrimary = Color(0xFF1F2328), // Deep readable charcoal
+    textSecondary = Color(0xFF656D76),
+    address = Color(0xFF1A7F37),     // Rich forest green (high contrast)
+    hexBytes = Color(0xFF57606A),    // Dark slate grey (NOT washed out)
+    mnemonic = Color(0xFF0550AE),    // Deep keyword blue
+    operands = Color(0xFF24292F),    // High-contrast charcoal
+    register = Color(0xFF953800),    // Warm deep amber/brown
+    changedReg = Color(0xFFCF222E),  // Crimson red
+    changedRegBg = Color(0xFFFFEBE9),// Soft pink-red highlight
     isDark = false
 )
 
@@ -70,7 +70,7 @@ val GreenAccent get() = Color(0xFF4CAF50)
 val AmberAccent get() = Color(0xFFFFA000)
 val RedAccent get() = Color(0xFFE53935)
 val ColorAddress get() = Color(0xFF81C784)
-val ColorHexBytes get() = Color(0xFF90A4AE)
+val ColorHexBytes get() = Color(0xFF78909C)
 val ColorMnemonic get() = Color(0xFF80D8FF)
 val ColorOperands get() = Color(0xFFCFD8DC)
 val ColorRegister get() = Color(0xFFFFD54F)

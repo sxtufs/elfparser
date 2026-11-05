@@ -70,7 +70,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
                         text = "Binary Inspector",
                         style = MaterialTheme.typography.titleMedium,
@@ -83,20 +83,34 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                         color = colors.textSecondary
                     )
                 }
-                Button(
-                    onClick = { filePicker.launch(arrayOf("*/*")) },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.Black)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "Open",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.toggleTheme() }) {
+                        Icon(
+                            painter = painterResource(
+                                if (colors.isDark) R.drawable.ic_light_mode
+                                else R.drawable.ic_dark_mode
+                            ),
+                            contentDescription = "Toggle Theme",
+                            tint = if (colors.isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Button(
+                        onClick = { filePicker.launch(arrayOf("*/*")) },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.Black)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Open",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }
