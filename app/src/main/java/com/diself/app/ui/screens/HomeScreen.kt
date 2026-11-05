@@ -93,21 +93,25 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                                 else R.drawable.ic_dark_mode
                             ),
                             contentDescription = "Toggle Theme",
-                            tint = if (colors.isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
+                            tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
                     Spacer(Modifier.width(4.dp))
                     Button(
                         onClick = { filePicker.launch(arrayOf("*/*")) },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primary,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.Black)
+                        Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "Open",
-                            color = Color.Black,
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false

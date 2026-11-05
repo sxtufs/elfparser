@@ -48,26 +48,32 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
+                OutlinedButton(
                     onClick = { viewModel.stepBackTrace() },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.card)
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    shape = RoundedCornerShape(50)
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Step Back", tint = colors.textPrimary)
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Step Back", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Back", color = colors.textPrimary, fontSize = 12.sp)
+                    Text("Back", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 Button(
                     onClick = { viewModel.stepTrace() },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(50)
                 ) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = "Step Next", tint = Color.Black)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Step Next", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Icon(Icons.Default.ArrowForward, contentDescription = "Step Next", tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Step Next", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
 
                 IconButton(onClick = { viewModel.resetTrace() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reset Trace", tint = AmberAccent)
+                    Icon(Icons.Default.Refresh, contentDescription = "Reset Trace", tint = colors.textSecondary)
                 }
             }
         }
