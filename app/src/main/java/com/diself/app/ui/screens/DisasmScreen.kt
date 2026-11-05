@@ -17,10 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.diself.app.R
 import com.diself.app.core.models.Instruction
 import com.diself.app.core.models.XRefItem
 import com.diself.app.ui.theme.*
@@ -43,28 +46,45 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
 
+    // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
+    val shortTitle = remember(symbolName, currentAddr) {
+        if (symbolName.contains(" -> ")) {
+            val parts = symbolName.split(" -> ")
+            val shortClass = parts[0].substringAfterLast('.')
+            "$shortClass -> ${parts[1]}"
+        } else if (symbolName.contains("::")) {
+            symbolName.substringAfterLast("::")
+        } else if (symbolName.isNotEmpty()) {
+            symbolName
+        } else {
+            "0x${"%08X".format(currentAddr)}"
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
             .padding(8.dp)
     ) {
-        // Function Bar Header with Go to & Caller XREF Buttons
+        // Function Bar Header with Quick Theme Toggle, Go to & Callers
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface, RoundedCornerShape(8.dp))
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
-                    text = symbolName.ifEmpty { "0x${"%08X".format(currentAddr)}" },
+                    text = shortTitle,
                     color = colors.primary,
                     fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "VMA: 0x${"%08X".format(currentAddr)}",
@@ -74,8 +94,23 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 )
             }
 
-            // Header Action Buttons: Go to & Callers
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Action Buttons: Theme Switcher, Go to, Callers
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { viewModel.toggleTheme() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (colors.isDark) R.drawable.ic_light_mode
+                            else R.drawable.ic_dark_mode
+                        ),
+                        contentDescription = "Toggle Theme",
+                        tint = if (colors.isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
                 OutlinedButton(
                     onClick = {
                         gotoAddressInput = ""
@@ -84,8 +119,8 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(3.dp))
                     Text("Go to", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -98,8 +133,8 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberAccent),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(3.dp))
                     Text("Callers", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -169,7 +204,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
                     Text(
                         text = "Instruction Analysis",
@@ -186,7 +221,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // 1. Jump to Target Card (if branch or call)
+                    // 1. Jump to Target Card
                     if (branchTarget != null) {
                         Spacer(Modifier.height(14.dp))
                         Card(
@@ -217,85 +252,86 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         }
                     }
 
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(16.dp))
                     Text("QUICK PATCH", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
-                    // 2. Unified Quick Patch Card (4 cohesive actions)
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.card),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth()
+                    // 2. Tactile Quick Patch Action Tiles (2x2 Grid)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = {
-                                        viewModel.applyQuickPatch(ins.address, 1) { res ->
-                                            Toast.makeText(context, "Patched NOP: ${res.success}", Toast.LENGTH_SHORT).show()
-                                            selectedInsn = null
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.surface),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        viewModel.applyQuickPatch(ins.address, 2) { res ->
-                                            Toast.makeText(context, "Patched Return True: ${res.success}", Toast.LENGTH_SHORT).show()
-                                            selectedInsn = null
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.surface),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Ret True", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        QuickPatchTile(
+                            title = "⊘  NOP",
+                            subLabel = "Skip instruction",
+                            accentColor = colors.textPrimary,
+                            bgColor = if (colors.isDark) Color(0xFF282C34) else Color(0xFFF1F5F9),
+                            borderColor = colors.border,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.applyQuickPatch(ins.address, 1) { res ->
+                                    Toast.makeText(context, "Patched NOP: ${res.success}", Toast.LENGTH_SHORT).show()
+                                    selectedInsn = null
                                 }
                             }
+                        )
 
-                            Spacer(Modifier.height(8.dp))
-
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = {
-                                        viewModel.applyQuickPatch(ins.address, 3) { res ->
-                                            Toast.makeText(context, "Patched Return False: ${res.success}", Toast.LENGTH_SHORT).show()
-                                            selectedInsn = null
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.surface),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Ret False", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        viewModel.applyQuickPatch(ins.address, 4) { res ->
-                                            Toast.makeText(context, "Patched Return Void: ${res.success}", Toast.LENGTH_SHORT).show()
-                                            selectedInsn = null
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.surface),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Ret Void", color = AmberAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        QuickPatchTile(
+                            title = "✓  Ret True",
+                            subLabel = "Force return 1",
+                            accentColor = Color(0xFF2E7D32),
+                            bgColor = if (colors.isDark) Color(0x224CAF50) else Color(0xFFF0FDF4),
+                            borderColor = Color(0xFF4CAF50).copy(alpha = 0.4f),
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.applyQuickPatch(ins.address, 2) { res ->
+                                    Toast.makeText(context, "Patched Return True: ${res.success}", Toast.LENGTH_SHORT).show()
+                                    selectedInsn = null
                                 }
                             }
-                        }
+                        )
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        QuickPatchTile(
+                            title = "✕  Ret False",
+                            subLabel = "Force return 0",
+                            accentColor = Color(0xFFC62828),
+                            bgColor = if (colors.isDark) Color(0x22E53935) else Color(0xFFFEF2F2),
+                            borderColor = Color(0xFFE53935).copy(alpha = 0.4f),
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.applyQuickPatch(ins.address, 3) { res ->
+                                    Toast.makeText(context, "Patched Return False: ${res.success}", Toast.LENGTH_SHORT).show()
+                                    selectedInsn = null
+                                }
+                            }
+                        )
+
+                        QuickPatchTile(
+                            title = "↩  Ret Void",
+                            subLabel = "Early return",
+                            accentColor = Color(0xFFE65100),
+                            bgColor = if (colors.isDark) Color(0x22FFA000) else Color(0xFFFFFBEB),
+                            borderColor = Color(0xFFFFA000).copy(alpha = 0.4f),
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.applyQuickPatch(ins.address, 4) { res ->
+                                    Toast.makeText(context, "Patched Return Void: ${res.success}", Toast.LENGTH_SHORT).show()
+                                    selectedInsn = null
+                                }
+                            }
+                        )
                     }
 
                     Spacer(Modifier.height(14.dp))
 
-                    // 3. Find Cross-References Action Card
+                    // 3. Find Cross-References Card
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(10.dp),
@@ -421,6 +457,45 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         Text("Close", color = colors.primary)
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+fun QuickPatchTile(
+    title: String,
+    subLabel: String,
+    accentColor: Color,
+    bgColor: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                color = accentColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subLabel,
+                color = accentColor.copy(alpha = 0.8f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Default
             )
         }
     }
