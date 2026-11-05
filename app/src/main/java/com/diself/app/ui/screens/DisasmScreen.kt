@@ -188,77 +188,81 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.OpenInNew, contentDescription = null, tint = if (colors.isDark) Color.Black else Color.White, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Jump to Target (0x${"%08X".format(branchTarget)})", color = Color.Black, fontWeight = FontWeight.Bold)
+                            Text("Jump to Target", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Spacer(Modifier.height(16.dp))
-                    Text("ONE-TAP QUICK PATCH", color = AmberAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("ONE-TAP QUICK PATCH", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 1) { res ->
                                     Toast.makeText(context, "Patched NOP: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF37474F)),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("NOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 2) { res ->
                                     Toast.makeText(context, "Patched Return True: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = GreenAccent),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Ret True", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Ret True", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Spacer(Modifier.height(8.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 3) { res ->
                                     Toast.makeText(context, "Patched Return False: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Ret False", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Ret False", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 4) { res ->
                                     Toast.makeText(context, "Patched Return Void: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Ret Void", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Ret Void", color = AmberAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
 
                     Spacer(Modifier.height(16.dp))
 
-                    Button(
+                    OutlinedButton(
                         onClick = {
                             val target = branchTarget ?: ins.address
                             xrefsList = viewModel.getXrefsFor(target)
@@ -266,10 +270,11 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             showXrefDialog = true
                             selectedInsn = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.card),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Find Cross-References (XREFs)", color = colors.primary, fontWeight = FontWeight.Bold)
+                        Text("Find Cross-References", color = colors.primary, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(Modifier.height(16.dp))
