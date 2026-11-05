@@ -206,141 +206,152 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // 1. Jump to Target Card
+                    // 1. Jump to Target (Pill Button with comfortable, toned-down cyan)
                     if (branchTarget != null) {
                         Spacer(Modifier.height(14.dp))
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = colors.card),
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.4f)),
+                        Button(
+                            onClick = {
+                                viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (colors.isDark) Color(0xFF00ACC1) else Color(0xFF0284C7)
+                            ),
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
-                                    selectedInsn = null
-                                }
+                                .height(48.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.OpenInNew, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Text("Jump to Target", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                }
-                                Text("›", color = colors.primary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Icon(
+                                Icons.Default.OpenInNew,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Jump to Target",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
-                    Text("QUICK PATCH", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "ONE-TAP QUICK PATCH",
+                        color = colors.textSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(10.dp))
 
-                    // 2. Simple & Polished Quick Patch Tiles (2x2 Grid)
+                    // 2. Quick Patch Buttons (Pill shape, same unified text color across all 4)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        QuickPatchTile(
-                            title = "NOP",
-                            accentColor = colors.textPrimary,
-                            bgColor = if (colors.isDark) Color(0xFF282C34) else Color(0xFFF1F5F9),
-                            borderColor = colors.border,
-                            modifier = Modifier.weight(1f),
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 1) { res ->
                                     Toast.makeText(context, "Patched NOP: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
-                            }
-                        )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
 
-                        QuickPatchTile(
-                            title = "Ret True",
-                            accentColor = Color(0xFF2E7D32),
-                            bgColor = if (colors.isDark) Color(0x224CAF50) else Color(0xFFF0FDF4),
-                            borderColor = Color(0xFF4CAF50).copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f),
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 2) { res ->
                                     Toast.makeText(context, "Patched Return True: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
-                            }
-                        )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("Ret True", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        QuickPatchTile(
-                            title = "Ret False",
-                            accentColor = Color(0xFFC62828),
-                            bgColor = if (colors.isDark) Color(0x22E53935) else Color(0xFFFEF2F2),
-                            borderColor = Color(0xFFE53935).copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f),
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 3) { res ->
                                     Toast.makeText(context, "Patched Return False: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
-                            }
-                        )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("Ret False", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
 
-                        QuickPatchTile(
-                            title = "Ret Void",
-                            accentColor = Color(0xFFE65100),
-                            bgColor = if (colors.isDark) Color(0x22FFA000) else Color(0xFFFFFBEB),
-                            borderColor = Color(0xFFFFA000).copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f),
+                        OutlinedButton(
                             onClick = {
                                 viewModel.applyQuickPatch(ins.address, 4) { res ->
                                     Toast.makeText(context, "Patched Return Void: ${res.success}", Toast.LENGTH_SHORT).show()
                                     selectedInsn = null
                                 }
-                            }
-                        )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text("Ret Void", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(18.dp))
 
-                    // 3. Find Cross-References Card
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.card),
-                        shape = RoundedCornerShape(10.dp),
+                    // 3. Find Cross-References Pill Button
+                    OutlinedButton(
+                        onClick = {
+                            val target = branchTarget ?: ins.address
+                            xrefsList = viewModel.getXrefsFor(target)
+                            xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
+                            showXrefDialog = true
+                            selectedInsn = null
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                val target = branchTarget ?: ins.address
-                                xrefsList = viewModel.getXrefsFor(target)
-                                xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
-                                showXrefDialog = true
-                                selectedInsn = null
-                            }
+                            .height(48.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CallMade, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(10.dp))
-                                Text("Find Cross-References", color = colors.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                            }
-                            Text("›", color = colors.textSecondary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text(
+                            "Find Cross-References",
+                            color = colors.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -438,37 +449,6 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                         Text("Close", color = colors.primary)
                     }
                 }
-            )
-        }
-    }
-}
-
-@Composable
-fun QuickPatchTile(
-    title: String,
-    accentColor: Color,
-    bgColor: Color,
-    borderColor: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-        modifier = modifier.clickable(onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = title,
-                color = accentColor,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
             )
         }
     }
