@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,7 +56,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
             .background(BgDark)
             .padding(16.dp)
     ) {
-        // Open File Card with non-wrapping Open button
+        // Open File Card
         Card(
             colors = CardDefaults.cardColors(containerColor = CardDark),
             shape = RoundedCornerShape(12.dp),
@@ -133,11 +134,11 @@ fun HomeScreen(viewModel: DisElfViewModel) {
 
             Spacer(Modifier.height(16.dp))
 
-            // Search Symbols Bar
+            // Search Symbols or Address Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Search Symbols (${info.syms.size})") },
+                label = { Text("Search Symbol or Address (e.g. 0x2EB38)") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyanAccent) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -151,16 +152,64 @@ fun HomeScreen(viewModel: DisElfViewModel) {
 
             Spacer(Modifier.height(8.dp))
 
-            // Symbols List
+            // Parsing address & filtering symbols
+            val cleanHex = searchQuery.trim().removePrefix("0x").removePrefix("0X")
+            val parsedAddr = cleanHex.toLongOrNull(16)
+
             val filteredSyms = remember(searchQuery, info.syms) {
                 if (searchQuery.isBlank()) info.syms
-                else info.syms.filter { it.displayName.contains(searchQuery, ignoreCase = true) }
+                else {
+                    info.syms.filter { sym ->
+                        sym.displayName.contains(searchQuery, ignoreCase = true) ||
+                        (cleanHex.isNotEmpty() && "%08X".format(sym.value).contains(cleanHex, ignoreCase = true))
+                    }
+                }
             }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // If user typed a valid hex address, allow direct jump even if unexported
+                if (parsedAddr != null && cleanHex.length >= 2) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CyanAccent.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectFunction(parsedAddr, "sub_${"%08X".format(parsedAddr)}")
+                                    viewModel.codeSubTab.value = 0
+                                    viewModel.navigateTo(Screen.Code)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.NearMe, contentDescription = null, tint = CyanAccent)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Jump directly to VMA 0x${"%08X".format(parsedAddr)}",
+                                        color = CyanAccent,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "Disassemble arbitrary address (unexported / stripped code)",
+                                        color = ColorHexBytes,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 items(filteredSyms) { sym ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = CardDark),
@@ -169,6 +218,7 @@ fun HomeScreen(viewModel: DisElfViewModel) {
                             .fillMaxWidth()
                             .clickable {
                                 viewModel.selectFunction(sym.value, sym.displayName)
+                                viewModel.codeSubTab.value = 0
                                 viewModel.navigateTo(Screen.Code)
                             }
                     ) {

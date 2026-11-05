@@ -30,9 +30,15 @@ fun StringsScreen(viewModel: DisElfViewModel) {
     var selectedString by remember { mutableStateOf<StringItem?>(null) }
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
 
+    val cleanHex = search.trim().removePrefix("0x").removePrefix("0X")
     val filtered = remember(search, stringsList) {
         if (search.isBlank()) stringsList
-        else stringsList.filter { it.string.contains(search, ignoreCase = true) }
+        else {
+            stringsList.filter { item ->
+                item.string.contains(search, ignoreCase = true) ||
+                (cleanHex.isNotEmpty() && "%08X".format(item.vaddr).contains(cleanHex, ignoreCase = true))
+            }
+        }
     }
 
     Column(
@@ -44,7 +50,7 @@ fun StringsScreen(viewModel: DisElfViewModel) {
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
-            label = { Text("Filter Strings (${stringsList.size})") },
+            label = { Text("Filter String or Address (e.g. 0x10ED)") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyanAccent) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),

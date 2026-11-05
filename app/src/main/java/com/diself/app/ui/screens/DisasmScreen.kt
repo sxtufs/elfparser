@@ -38,6 +38,9 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
     var showXrefDialog by remember { mutableStateOf(false) }
     var xrefDialogTitle by remember { mutableStateOf("Cross-References") }
 
+    var showGotoDialog by remember { mutableStateOf(false) }
+    var gotoAddressInput by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -69,19 +72,34 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 )
             }
 
-            // Function Callers XREF Button
-            OutlinedButton(
-                onClick = {
-                    xrefsList = viewModel.getXrefsFor(currentAddr)
-                    xrefDialogTitle = "Callers of $symbolName"
-                    showXrefDialog = true
-                },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberAccent),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Callers", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            // Header Action Buttons: Go to & Callers
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        gotoAddressInput = ""
+                        showGotoDialog = true
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanAccent),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.NearMe, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Go to", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        xrefsList = viewModel.getXrefsFor(currentAddr)
+                        xrefDialogTitle = "Callers of $symbolName"
+                        showXrefDialog = true
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberAccent),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Callers", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -257,6 +275,56 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                     Spacer(Modifier.height(16.dp))
                 }
             }
+        }
+
+        // Go to Address Dialog
+        if (showGotoDialog) {
+            AlertDialog(
+                onDismissRequest = { showGotoDialog = false },
+                containerColor = SurfaceDark,
+                title = { Text("Go to Address (VMA)", color = CyanAccent, fontSize = 16.sp) },
+                text = {
+                    Column {
+                        Text("Enter virtual address to disassemble:", color = ColorHexBytes, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = gotoAddressInput,
+                            onValueChange = { gotoAddressInput = it },
+                            label = { Text("e.g. 0x2EB38 or 2EB38") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = CyanAccent,
+                                unfocusedBorderColor = ColorHexBytes,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            )
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val clean = gotoAddressInput.trim().removePrefix("0x").removePrefix("0X")
+                            val addr = clean.toLongOrNull(16)
+                            if (addr != null) {
+                                viewModel.selectFunction(addr, "sub_${"%08X".format(addr)}")
+                                showGotoDialog = false
+                            } else {
+                                Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                    ) {
+                        Text("Jump", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showGotoDialog = false }) {
+                        Text("Cancel", color = ColorHexBytes)
+                    }
+                }
+            )
         }
 
         // XREFs Dialog
