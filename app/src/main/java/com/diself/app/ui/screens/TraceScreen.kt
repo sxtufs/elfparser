@@ -69,18 +69,6 @@ fun TraceScreen(viewModel: DisElfViewModel) {
                 IconButton(onClick = { viewModel.resetTrace() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Reset Trace", tint = AmberAccent)
                 }
-
-                IconButton(onClick = { viewModel.toggleTheme() }) {
-                    Icon(
-                        painter = painterResource(
-                            if (colors.isDark) R.drawable.ic_light_mode
-                            else R.drawable.ic_dark_mode
-                        ),
-                        contentDescription = "Toggle Theme",
-                        tint = if (colors.isDark) Color(0xFFFFD54F) else Color(0xFF0969DA),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
             }
         }
 
