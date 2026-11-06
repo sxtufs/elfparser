@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import io.elftrace.app.R
 import io.elftrace.app.ui.screens.*
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
