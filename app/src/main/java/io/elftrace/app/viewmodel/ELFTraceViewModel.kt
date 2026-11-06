@@ -160,8 +160,6 @@ class ELFTraceViewModel : ViewModel() {
             _stringsList.value = b.getStrings()
             _scanReport.value = b.scanSecurity()
             _entropyReport.value = b.getEntropyReport()
-            // Pre-warm XREF & Call Hierarchy index silently in background IO thread
-            b.getHierarchy(firstAddr)
         }
     }
 
