@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -210,19 +209,13 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 onDismissRequest = { selectedInsn = null },
                 containerColor = colors.surface,
                 tonalElevation = 0.dp,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 10.dp, bottom = 4.dp)
-                            .size(width = 36.dp, height = 4.dp)
-                            .background(colors.border, RoundedCornerShape(2.dp))
-                    )
-                }
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                dragHandle = null
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 10.dp)
+                        .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp)
                 ) {
                     Text(
                         text = "Instruction Analysis",
@@ -239,35 +232,26 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // 1. Jump to Target (Pill Button with comfortable, toned-down cyan)
+                    // 1. Jump to Target (Restyled to match Find Cross-References)
                     if (branchTarget != null) {
                         Spacer(Modifier.height(8.dp))
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
                                 selectedInsn = null
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (colors.isDark) Color(0xFF00ACC1) else Color(0xFF0284C7),
-                                contentColor = Color.White
-                            ),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(44.dp)
                         ) {
-                            Icon(
-                                Icons.Default.OpenInNew,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
                             Text(
                                 "Jump to Target",
-                                color = Color.White,
+                                color = colors.primary,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                fontSize = 12.sp
                             )
                         }
                     }
