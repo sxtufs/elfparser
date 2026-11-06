@@ -24,13 +24,13 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(8.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.card)
-                .padding(12.dp)
+                .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .padding(8.dp)
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {

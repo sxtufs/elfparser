@@ -31,7 +31,7 @@ fun SecurityScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         // Toolbar
         Card(
@@ -43,7 +43,7 @@ fun SecurityScreen(viewModel: ELFTraceViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -59,19 +59,19 @@ fun SecurityScreen(viewModel: ELFTraceViewModel) {
                             else -> "$count detections found"
                         }
                         Text(
-                            statusText,
+                            text = statusText,
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textSecondary
                         )
                     }
                 }
-                IconButton(onClick = { viewModel.runSecurityScan() }) {
+                IconButton(onClick = { viewModel.refreshSecurityScan() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Rescan", tint = colors.primary)
                 }
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (scanReport != null) {
             val findings = scanReport!!.findings

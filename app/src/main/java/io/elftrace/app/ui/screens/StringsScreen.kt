@@ -46,7 +46,7 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         OutlinedTextField(
             value = search,
@@ -66,7 +66,7 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
             )
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -87,7 +87,8 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(10.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -101,7 +102,8 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                             text = item.string,
                             color = colors.textPrimary,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -117,32 +119,35 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                 1 -> "1 Cross-Reference"
                 else -> "$count Cross-References"
             }
-            AlertDialog(
-                onDismissRequest = { selectedString = null },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text(titleText, color = colors.primary) },
-                text = {
-                    Column {
-                        Text("\"${str.string}\"", color = AmberAccent, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            AlertDialog(onDismissRequest = { selectedString = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(titleText, color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("\"${str.string}\"", color = AmberAccent, fontFamily = FontFamily.Monospace, fontSize = 11.sp, maxLines = 2)
                         Spacer(Modifier.height(8.dp))
                         if (xrefsList.isEmpty()) {
                             Text("No direct instruction references found.", color = colors.textSecondary, fontSize = 12.sp)
                         } else {
-                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 items(xrefsList) { ref ->
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = colors.card),
                                         shape = RoundedCornerShape(8.dp),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                        modifier = Modifier.fillMaxWidth().clickable {
                                             viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
                                             viewModel.codeSubTab.value = 0
                                             viewModel.navigateTo(Screen.Code)
                                             selectedString = null
                                         }
                                     ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                                             Text("In: ${ref.caller_func ?: "unknown"}", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                                         }
@@ -150,14 +155,13 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                                 }
                             }
                         }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { selectedString = null }) {
-                        Text("Close", color = colors.primary)
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { selectedString = null }) {
+                                Text("Close", color = colors.primary)
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
-    }
-}

@@ -32,7 +32,7 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         // Control Toolbar
         Card(
@@ -43,7 +43,7 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -77,7 +77,7 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (traceState != null) {
             val state = traceState!!
@@ -88,9 +88,9 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     Text("EXECUTING INSTRUCTION", color = AmberAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "PC: 0x${"%08X".format(state.pc)}",
@@ -110,7 +110,7 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
 
             // Flags Bar
             Row(
@@ -126,11 +126,11 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 FlagBadge("V (Ovf)", state.v, colors)
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
 
             // Registers Grid
             Text("REGISTER STATE", color = colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
 
             val regList = remember(state) {
                 val list = mutableListOf<Pair<String, Long>>()

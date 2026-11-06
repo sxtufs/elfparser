@@ -208,12 +208,19 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 onDismissRequest = { selectedInsn = null },
                 containerColor = colors.surface,
                 tonalElevation = 0.dp,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+                dragHandle = {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 10.dp, bottom = 4.dp)
+                            .size(width = 36.dp, height = 4.dp)
+                            .background(colors.border, RoundedCornerShape(2.dp))
+                    )
+                }
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 10.dp)
                 ) {
                     Text(
                         text = "Instruction Analysis",
@@ -221,7 +228,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = "0x${"%08X".format(ins.address)}: ${ins.mnemonic} ${ins.op_str}",
                         fontFamily = FontFamily.Monospace,
@@ -232,7 +239,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                     // 1. Jump to Target (Pill Button with comfortable, toned-down cyan)
                     if (branchTarget != null) {
-                        Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = {
                                 viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
@@ -245,13 +252,13 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
+                                .height(44.dp)
                         ) {
                             Icon(
                                 Icons.Default.OpenInNew,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
@@ -263,19 +270,19 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         }
                     }
 
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(
                         "ONE-TAP QUICK PATCH",
                         color = colors.textSecondary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
 
                     // 2. Quick Patch Buttons (Pill shape, same unified text color across all 4)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -289,9 +296,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(48.dp)
+                                .height(42.dp)
                         ) {
-                            Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         OutlinedButton(
@@ -306,17 +313,17 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(48.dp)
+                                .height(42.dp)
                         ) {
-                            Text("Ret True", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Ret True", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
 
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -330,9 +337,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(48.dp)
+                                .height(42.dp)
                         ) {
-                            Text("Ret False", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Ret False", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         OutlinedButton(
@@ -347,13 +354,13 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(48.dp)
+                                .height(42.dp)
                         ) {
-                            Text("Ret Void", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Ret Void", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
 
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(10.dp))
 
                     // 3. Find Cross-References Pill Button
                     OutlinedButton(
@@ -369,22 +376,22 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         shape = RoundedCornerShape(50),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(44.dp)
                     ) {
                         Text(
                             "Find Cross-References",
                             color = colors.primary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         )
                     }
 
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
 
                     // 4. Utility Action Grid (2x2 - eliminates text truncation)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -396,9 +403,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(44.dp)
+                            modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -410,17 +417,17 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(44.dp)
+                            modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -435,9 +442,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(44.dp)
+                            modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -454,27 +461,30 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(44.dp)
+                            modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
 
-        // Go to Address Dialog
+        // 1. Go to Address Dialog
         if (showGotoDialog) {
-            AlertDialog(
-                onDismissRequest = { showGotoDialog = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("Go to Address (VMA)", color = colors.primary, fontSize = 16.sp) },
-                text = {
-                    Column {
-                        Text("Enter virtual address to disassemble:", color = colors.textSecondary, fontSize = 12.sp)
+            AlertDialog(onDismissRequest = { showGotoDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Go to Address (VMA)", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Enter virtual address to disassemble:", color = colors.textSecondary, fontSize = 11.sp)
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = gotoAddressInput,
@@ -492,37 +502,35 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 cursorColor = colors.primary
                             )
                         )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val clean = gotoAddressInput.trim().removePrefix("0x").removePrefix("0X")
-                            val addr = clean.toLongOrNull(16)
-                            if (addr != null) {
-                                viewModel.selectFunction(addr, "sub_${"%08X".format(addr)}")
-                                showGotoDialog = false
-                            } else {
-                                Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
+                        Spacer(Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { showGotoDialog = false }) {
+                                Text("Cancel", color = colors.textSecondary)
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.primary,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("Jump", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showGotoDialog = false }) {
-                        Text("Cancel", color = colors.textSecondary)
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val clean = gotoAddressInput.trim().removePrefix("0x").removePrefix("0X")
+                                    val addr = clean.toLongOrNull(16)
+                                    if (addr != null) {
+                                        viewModel.selectFunction(addr, "sub_${"%08X".format(addr)}")
+                                        showGotoDialog = false
+                                    } else {
+                                        Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text("Jump", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
 
-        // XREFs Dialog
+        // 2. XREFs Dialog
         if (showXrefDialog) {
             val count = xrefsList.size
             val countText = when (count) {
@@ -530,98 +538,119 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 1 -> "1 caller found"
                 else -> "$count callers found"
             }
-            AlertDialog(
-                onDismissRequest = { showXrefDialog = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp) },
-                text = {
-                    if (xrefsList.isEmpty()) {
-                        Text("No callers or references found for this address in the binary.", color = colors.textSecondary, fontSize = 13.sp)
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                            items(xrefsList) { ref ->
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = colors.card),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                        viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
-                                        showXrefDialog = false
-                                    }
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        Text("[${ref.kind}] in ${ref.caller_func ?: "unknown"}", color = AmberAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            AlertDialog(onDismissRequest = { showXrefDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        if (xrefsList.isEmpty()) {
+                            Text("No callers or references found for this address in the binary.", color = colors.textSecondary, fontSize = 12.sp)
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                items(xrefsList) { ref ->
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = colors.card),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                        modifier = Modifier.fillMaxWidth().clickable {
+                                            viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
+                                            showXrefDialog = false
+                                        }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                            Text("[${ref.kind}] in ${ref.caller_func ?: "unknown"}", color = AmberAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showXrefDialog = false }) {
-                        Text("Close", color = colors.primary)
-                    }
-                }
-            )
-        }
-
-        // Frida Hook Script Dialog
-        if (showFridaDialog) {
-            AlertDialog(
-                onDismissRequest = { showFridaDialog = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("Frida Hook Script", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                text = {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(colors.card, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    ) {
-                        SelectionContainer {
-                            Text(
-                                text = fridaCode,
-                                color = colors.operands,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
-                            )
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showXrefDialog = false }) {
+                                Text("Close", color = colors.primary)
+                            }
                         }
                     }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(fridaCode))
-                            Toast.makeText(context, "Copied Frida script to clipboard", Toast.LENGTH_SHORT).show()
-                            showFridaDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
-                    ) {
-                        Text("Copy Script", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showFridaDialog = false }) {
-                        Text("Close", color = colors.textSecondary)
-                    }
                 }
-            )
+            }
         }
 
-        // Rename Function Dialog
+        // 3. Frida Hook Script Dialog (Eliminates excessive top & bottom gaps)
+        if (showFridaDialog) {
+            AlertDialog(onDismissRequest = { showFridaDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Frida Hook Script", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp)
+                                .background(colors.card, RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = fridaCode,
+                                    color = colors.operands,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showFridaDialog = false }) {
+                                Text("Close", color = colors.textSecondary)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(fridaCode))
+                                    Toast.makeText(context, "Copied Frida script to clipboard", Toast.LENGTH_SHORT).show()
+                                    showFridaDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text("Copy Script", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Rename Function Dialog
         if (showRenameDialog) {
-            AlertDialog(
-                onDismissRequest = { showRenameDialog = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("Rename Function", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                text = {
-                    Column {
-                        Text("Enter new name for 0x${"%08X".format(currentAddr)}:", color = colors.textSecondary, fontSize = 12.sp)
+            AlertDialog(onDismissRequest = { showRenameDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Rename Function", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Enter new name for 0x${"%08X".format(currentAddr)}:", color = colors.textSecondary, fontSize = 11.sp)
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = renameInput,
@@ -636,46 +665,54 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 unfocusedTextColor = colors.textPrimary
                             )
                         )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val newName = renameInput.trim()
-                            if (newName.isNotEmpty()) {
-                                viewModel.renameFunction(currentAddr, newName) { ok ->
-                                    Toast.makeText(context, if (ok) "Function renamed" else "Rename failed", Toast.LENGTH_SHORT).show()
-                                }
-                                showRenameDialog = false
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showRenameDialog = false }) {
+                                Text("Cancel", color = colors.textSecondary)
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
-                    ) {
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRenameDialog = false }) {
-                        Text("Cancel", color = colors.textSecondary)
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val newName = renameInput.trim()
+                                    if (newName.isNotEmpty()) {
+                                        viewModel.renameFunction(currentAddr, newName) { ok ->
+                                            Toast.makeText(context, if (ok) "Function renamed" else "Rename failed", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showRenameDialog = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
 
-        // Assemble / Edit Instruction Dialog
+        // 5. Assemble / Edit Instruction Dialog
         if (showAssembleDialog) {
-            AlertDialog(
-                onDismissRequest = { showAssembleDialog = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("Assemble / Edit Instruction", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                text = {
-                    Column {
+            AlertDialog(onDismissRequest = { showAssembleDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Assemble / Edit Instruction", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = "Address: 0x${"%08X".format(currentEditInsnAddr)}",
                             color = colors.address,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp
+                            fontSize = 11.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
@@ -691,41 +728,45 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 unfocusedTextColor = colors.textPrimary
                             )
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = "Examples: b #0x37d58, bl #0x1234, nop, ret, or hex C4 26 00 14",
                             color = colors.textSecondary,
-                            fontSize = 11.sp
+                            fontSize = 10.sp
                         )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.assemblePatch(currentEditInsnAddr, assembleInput) { res ->
-                                if (res.success) {
-                                    Toast.makeText(context, "Patched: ${res.patch_type}", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Error: ${res.error}", Toast.LENGTH_LONG).show()
-                                }
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showAssembleDialog = false }) {
+                                Text("Cancel", color = colors.textSecondary)
                             }
-                            showAssembleDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
-                    ) {
-                        Text("Patch", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showAssembleDialog = false }) {
-                        Text("Cancel", color = colors.textSecondary)
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.assemblePatch(currentEditInsnAddr, assembleInput) { res ->
+                                        if (res.success) {
+                                            Toast.makeText(context, "Patched: ${res.patch_type}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Error: ${res.error}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                    showAssembleDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text("Patch", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
     }
 }
-
 private fun generateFridaHook(moduleName: String, funcName: String, address: Long): String {
     val cleanMod = if (moduleName.endsWith(".so")) moduleName else "$moduleName.so"
     val cleanName = funcName.ifEmpty { "sub_${"%08X".format(address)}" }

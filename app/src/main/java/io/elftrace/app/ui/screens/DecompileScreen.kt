@@ -35,14 +35,14 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(12.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         // Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.surface)
-                .padding(12.dp),
+                .background(colors.surface, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -60,14 +60,14 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         // Selectable Monospaced Code View with Horizontal & Vertical Scrolling
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.card)
-                .padding(12.dp)
+                .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .padding(8.dp)
                 .verticalScroll(rememberScrollState())
                 .horizontalScroll(rememberScrollState())
         ) {

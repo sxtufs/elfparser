@@ -94,7 +94,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(16.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         // Open File Card
         Card(
@@ -106,7 +106,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -151,7 +151,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (elfInfo != null) {
             val info = elfInfo!!
@@ -163,7 +163,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = colors.primary, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
@@ -184,7 +184,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
 
             // Search Symbols or Address Bar
             OutlinedTextField(
@@ -222,7 +222,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (parsedAddr != null && cleanHex.length >= 2) {
                     item {
@@ -279,7 +279,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -308,54 +308,60 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
         // APK Native Library Selection Dialog
         if (showApkPicker && apkCachedFile != null) {
-            AlertDialog(
-                onDismissRequest = { showApkPicker = false },
-                containerColor = colors.surface,
-                shape = RoundedCornerShape(16.dp),
-                title = { Text("Select Native Library from APK", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                text = {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(apkSoList) { entry ->
-                            val simpleName = entry.entryName.substringAfterLast('/')
-                            val sizeMb = "%.1f MB".format(entry.size / (1024.0 * 1024.0))
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = colors.card),
-                                shape = RoundedCornerShape(8.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val extracted = File(context.cacheDir, "extracted_$simpleName")
-                                        if (extractSoFromApk(apkCachedFile!!, entry.entryName, extracted)) {
-                                            viewModel.loadElf(extracted.absolutePath, simpleName)
-                                            showApkPicker = false
+            AlertDialog(onDismissRequest = { showApkPicker = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Select Native Library from APK", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(apkSoList) { entry ->
+                                val simpleName = entry.entryName.substringAfterLast('/')
+                                val sizeMb = "%.1f MB".format(entry.size / (1024.0 * 1024.0))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.card),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val extracted = File(context.cacheDir, "extracted_$simpleName")
+                                            if (extractSoFromApk(apkCachedFile!!, entry.entryName, extracted)) {
+                                                viewModel.loadElf(extracted.absolutePath, simpleName)
+                                                showApkPicker = false
+                                            }
                                         }
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(simpleName, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Text(entry.entryName, color = colors.textSecondary, fontSize = 10.sp, maxLines = 1)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(simpleName, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text(entry.entryName, color = colors.textSecondary, fontSize = 10.sp, maxLines = 1)
+                                        }
+                                        Text(sizeMb, color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                     }
-                                    Text(sizeMb, color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showApkPicker = false }) {
-                        Text("Cancel", color = colors.textSecondary)
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showApkPicker = false }) {
+                                Text("Cancel", color = colors.textSecondary)
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
     }
 }
