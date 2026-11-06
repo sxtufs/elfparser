@@ -82,9 +82,14 @@ fun SecurityScreen(viewModel: ELFTraceViewModel) {
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    flingBehavior = rememberMomentumFlingBehavior(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(findings) { item ->
+                    items(
+                        items = findings,
+                        key = { "${it.address}_${it.offset}_${it.name}" },
+                        contentType = { "finding" }
+                    ) { item ->
                         val sevColor = when (item.severity.lowercase()) {
                             "high" -> RedAccent
                             "medium" -> AmberAccent

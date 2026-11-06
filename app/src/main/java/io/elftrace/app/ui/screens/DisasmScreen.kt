@@ -141,12 +141,17 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // Virtualized Disassembly LazyColumn
+        // Virtualized Disassembly LazyColumn with Momentum Fling & Stable Node Keys
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
+            flingBehavior = rememberMomentumFlingBehavior(),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(instructions) { ins ->
+            items(
+                items = instructions,
+                key = { it.address },
+                contentType = { "instruction" }
+            ) { ins ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

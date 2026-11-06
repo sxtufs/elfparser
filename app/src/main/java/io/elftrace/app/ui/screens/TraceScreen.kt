@@ -147,7 +147,10 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(regList) { (regName, regVal) ->
+                items(
+                    items = regList,
+                    key = { it.first }
+                ) { (regName, regVal) ->
                     val isChanged = state.changed_regs.contains(regName.lowercase())
                     Card(
                         colors = CardDefaults.cardColors(

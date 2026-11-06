@@ -222,10 +222,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                flingBehavior = rememberMomentumFlingBehavior(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (parsedAddr != null && cleanHex.length >= 2) {
-                    item {
+                    item(key = "jump_vma_direct") {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = colors.primary.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(8.dp),
@@ -263,7 +264,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     }
                 }
 
-                items(filteredSyms) { sym ->
+                items(
+                    items = filteredSyms,
+                    key = { "${it.value}_${it.sym}" },
+                    contentType = { "symbol" }
+                ) { sym ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(8.dp),

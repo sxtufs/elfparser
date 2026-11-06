@@ -1,0 +1,66 @@
+package io.elftrace.app.ui.theme
+
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import kotlin.math.abs
+
+/**
+ * Custom momentum fling behavior for ELFTrace.
+ * Provides a natural, satisfying glide on fast swipes with smooth deceleration,
+ * while maintaining pixel-perfect precision on slow drags.
+ */
+class MomentumFlingBehavior(
+    private val decay: DecayAnimationSpec<Float>
+) : FlingBehavior {
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        // Ignore tiny accidental micro-flings
+        if (abs(initialVelocity) < 1f) return 0f
+
+        var lastValue = 0f
+        var velocityLeft = initialVelocity
+
+        AnimationState(
+            initialValue = 0f,
+            initialVelocity = initialVelocity
+        ).animateDecay(decay) {
+            val delta = value - lastValue
+            val consumed = scrollBy(delta)
+            lastValue = value
+            velocityLeft = this.velocity
+
+            // Stop cleanly when hitting list boundary (top or bottom overscroll)
+            if (abs(delta - consumed) > 0.5f) {
+                cancelAnimation()
+            }
+        }
+        return velocityLeft
+    }
+}
+
+/**
+ * Creates and remembers a calibrated MomentumFlingBehavior.
+ *
+ * @param frictionMultiplier Calibrated friction for natural momentum gliding.
+ *        A friction of 0.72f provides a smooth glide through extensive instruction
+ *        lists without excessive or endless sliding.
+ */
+@Composable
+fun rememberMomentumFlingBehavior(
+    frictionMultiplier: Float = 0.72f
+): FlingBehavior {
+    val decay = remember(frictionMultiplier) {
+        exponentialDecay<Float>(
+            frictionMultiplier = frictionMultiplier,
+            absVelocityThreshold = 0.1f
+        )
+    }
+    return remember(decay) {
+        MomentumFlingBehavior(decay)
+    }
+}

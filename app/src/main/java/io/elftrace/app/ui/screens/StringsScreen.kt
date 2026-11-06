@@ -71,9 +71,14 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
+            flingBehavior = rememberMomentumFlingBehavior(),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(filtered) { item ->
+            items(
+                items = filtered,
+                key = { "${it.vaddr}_${it.paddr}" },
+                contentType = { "string" }
+            ) { item ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = colors.card),
                     shape = RoundedCornerShape(6.dp),
