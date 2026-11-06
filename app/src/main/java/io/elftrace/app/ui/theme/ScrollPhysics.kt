@@ -12,7 +12,7 @@ import kotlin.math.abs
 
 /**
  * Custom momentum fling behavior for ELFTrace.
- * Provides a natural, satisfying glide on fast swipes with smooth deceleration,
+ * Provides a natural, extended glide on fast swipes with smooth deceleration,
  * while maintaining pixel-perfect precision on slow drags.
  */
 class MomentumFlingBehavior(
@@ -47,17 +47,18 @@ class MomentumFlingBehavior(
  * Creates and remembers a calibrated MomentumFlingBehavior.
  *
  * @param frictionMultiplier Calibrated friction for natural momentum gliding.
- *        A friction of 0.72f provides a smooth glide through extensive instruction
- *        lists without excessive or endless sliding.
+ *        A friction of 0.38f provides an extended, satisfying glide through extensive
+ *        disassembly and symbol lists (approx 2x travel distance compared to standard
+ *        friction) without artificial acceleration or endless drifting.
  */
 @Composable
 fun rememberMomentumFlingBehavior(
-    frictionMultiplier: Float = 0.72f
+    frictionMultiplier: Float = 0.38f
 ): FlingBehavior {
     val decay = remember(frictionMultiplier) {
         exponentialDecay<Float>(
             frictionMultiplier = frictionMultiplier,
-            absVelocityThreshold = 0.1f
+            absVelocityThreshold = 0.5f
         )
     }
     return remember(decay) {
