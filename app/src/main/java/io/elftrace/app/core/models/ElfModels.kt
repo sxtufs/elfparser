@@ -111,6 +111,20 @@ data class XRefResponse(
     val refs: List<XRefItem> = emptyList()
 )
 
+data class CalleeItem(
+    val target_address: Long = 0,
+    val target_name: String = "",
+    val instruction: String = "",
+    val call_count: Int = 0
+)
+
+data class CallHierarchy(
+    val function_address: Long = 0,
+    val function_name: String = "",
+    val callers: List<XRefItem> = emptyList(),
+    val callees: List<CalleeItem> = emptyList()
+)
+
 data class TraceState(
     val pc: Long = 0,
     val sp: Long = 0,

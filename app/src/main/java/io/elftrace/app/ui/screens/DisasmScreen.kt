@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material3.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.elftrace.app.core.models.CallHierarchy
 import io.elftrace.app.core.models.Instruction
 import io.elftrace.app.core.models.XRefItem
 import io.elftrace.app.ui.theme.*
@@ -45,6 +47,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
     var showXrefDialog by remember { mutableStateOf(false) }
     var xrefDialogTitle by remember { mutableStateOf("Cross-References") }
+
+    var showHierarchyDialog by remember { mutableStateOf(false) }
+    var callHierarchy by remember { mutableStateOf(CallHierarchy()) }
 
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
@@ -125,16 +130,15 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                 OutlinedButton(
                     onClick = {
-                        xrefsList = viewModel.getXrefsFor(currentAddr)
-                        xrefDialogTitle = "Callers of $symbolName"
-                        showXrefDialog = true
+                        callHierarchy = viewModel.getHierarchy(currentAddr)
+                        showHierarchyDialog = true
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(3.dp))
-                    Text("Callers", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -584,6 +588,169 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         Spacer(Modifier.height(10.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { showXrefDialog = false }) {
+                                Text("Close", color = colors.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Call Hierarchy Dialog (Callers & Callees Tree)
+        if (showHierarchyDialog) {
+            var selectedTab by remember { mutableStateOf(if (callHierarchy.callers.isNotEmpty()) 0 else 1) }
+
+            AlertDialog(onDismissRequest = { showHierarchyDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(
+                            text = "Call Hierarchy: $shortTitle",
+                            color = colors.primary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        // Sub-tabs: Callers vs Callees
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(colors.card, RoundedCornerShape(50))
+                                .padding(2.dp)
+                        ) {
+                            val callersCount = callHierarchy.callers.size
+                            val calleesCount = callHierarchy.callees.size
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (selectedTab == 0) colors.primary else Color.Transparent,
+                                        RoundedCornerShape(50)
+                                    )
+                                    .clickable { selectedTab = 0 }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "▲ Callers ($callersCount)",
+                                    color = if (selectedTab == 0) Color.White else colors.textSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (selectedTab == 1) colors.primary else Color.Transparent,
+                                        RoundedCornerShape(50)
+                                    )
+                                    .clickable { selectedTab = 1 }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "▼ Callees ($calleesCount)",
+                                    color = if (selectedTab == 1) Color.White else colors.textSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        val momentumFling = rememberMomentumFlingBehavior()
+
+                        if (selectedTab == 0) {
+                            // Callers List
+                            if (callHierarchy.callers.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                                    Text("No incoming callers found in binary.", color = colors.textSecondary, fontSize = 12.sp)
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                                    flingBehavior = momentumFling,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    items(callHierarchy.callers) { ref ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = colors.card),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                            modifier = Modifier.fillMaxWidth().clickable {
+                                                viewModel.selectFunction(ref.from_address, ref.caller_func ?: "caller")
+                                                showHierarchyDialog = false
+                                            }
+                                        ) {
+                                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                                Text(ref.caller_func ?: "unknown", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Callees List
+                            if (callHierarchy.callees.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                                    Text("No outgoing function calls from this routine.", color = colors.textSecondary, fontSize = 12.sp)
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                                    flingBehavior = momentumFling,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    items(callHierarchy.callees) { callee ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = colors.card),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                            modifier = Modifier.fillMaxWidth().clickable {
+                                                if (callee.target_address != 0L) {
+                                                    viewModel.selectFunction(callee.target_address, callee.target_name)
+                                                    showHierarchyDialog = false
+                                                }
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(callee.target_name, color = if (callee.target_name.startsWith("JNI:")) AmberAccent else colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    if (callee.target_address != 0L) {
+                                                        Text("0x${"%08X".format(callee.target_address)}  (${callee.instruction})", color = colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                                                    } else {
+                                                        Text(callee.instruction, color = colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                                                    }
+                                                }
+                                                if (callee.call_count > 1) {
+                                                    Text("${callee.call_count}x", color = colors.address, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showHierarchyDialog = false }) {
                                 Text("Close", color = colors.primary)
                             }
                         }

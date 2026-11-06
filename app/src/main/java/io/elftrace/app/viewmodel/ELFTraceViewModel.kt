@@ -199,6 +199,11 @@ class ELFTraceViewModel : ViewModel() {
         return b.getXrefs(address)
     }
 
+    fun getHierarchy(address: Long): CallHierarchy {
+        val b = _bridge.value ?: return CallHierarchy()
+        return b.getHierarchy(address)
+    }
+
     fun runSecurityScan() {
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: return@launch

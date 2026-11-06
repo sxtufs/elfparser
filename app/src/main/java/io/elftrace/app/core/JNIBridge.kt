@@ -33,8 +33,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun traceStep(handle: Long): String
         @JvmStatic private external fun traceBack(handle: Long): String
 
-        // Native Cross-References (XREF)
+        // Native Cross-References (XREF) & Call Hierarchy
         @JvmStatic private external fun getXrefs(handle: Long, address: Long): String
+        @JvmStatic private external fun getHierarchy(handle: Long, address: Long): String
 
         // Quick Patcher & Security Scanner
         @JvmStatic private external fun quickPatch(handle: Long, address: Long, patchType: Int, thumb: Boolean): String
@@ -140,6 +141,15 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             gson.fromJson(json, XRefResponse::class.java)?.refs ?: emptyList()
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    fun getHierarchy(address: Long): CallHierarchy {
+        val json = getHierarchy(handle, address)
+        return try {
+            gson.fromJson(json, CallHierarchy::class.java) ?: CallHierarchy()
+        } catch (e: Exception) {
+            CallHierarchy()
         }
     }
 
