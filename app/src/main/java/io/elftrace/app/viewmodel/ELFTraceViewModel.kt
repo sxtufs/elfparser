@@ -160,6 +160,8 @@ class ELFTraceViewModel : ViewModel() {
             _stringsList.value = b.getStrings()
             _scanReport.value = b.scanSecurity()
             _entropyReport.value = b.getEntropyReport()
+            // Pre-warm XREF & Call Hierarchy index silently in background IO thread
+            b.getHierarchy(firstAddr)
         }
     }
 
@@ -199,9 +201,31 @@ class ELFTraceViewModel : ViewModel() {
         return b.getXrefs(address)
     }
 
+    fun loadXrefsFor(address: Long, onResult: (List<XRefItem>) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onResult(emptyList()) }
+                return@launch
+            }
+            val xrefs = b.getXrefs(address)
+            launch(Dispatchers.Main) { onResult(xrefs) }
+        }
+    }
+
     fun getHierarchy(address: Long): CallHierarchy {
         val b = _bridge.value ?: return CallHierarchy()
         return b.getHierarchy(address)
+    }
+
+    fun loadHierarchy(address: Long, onResult: (CallHierarchy) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onResult(CallHierarchy()) }
+                return@launch
+            }
+            val hierarchy = b.getHierarchy(address)
+            launch(Dispatchers.Main) { onResult(hierarchy) }
+        }
     }
 
     fun runSecurityScan() {

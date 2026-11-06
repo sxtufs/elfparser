@@ -130,8 +130,10 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                 OutlinedButton(
                     onClick = {
-                        callHierarchy = viewModel.getHierarchy(currentAddr)
-                        showHierarchyDialog = true
+                        viewModel.loadHierarchy(currentAddr) { hierarchy ->
+                            callHierarchy = hierarchy
+                            showHierarchyDialog = true
+                        }
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -377,9 +379,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     OutlinedButton(
                         onClick = {
                             val target = branchTarget ?: ins.address
-                            xrefsList = viewModel.getXrefsFor(target)
-                            xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
-                            showXrefDialog = true
+                            viewModel.loadXrefsFor(target) { list ->
+                                xrefsList = list
+                                xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
+                                showXrefDialog = true
+                            }
                             selectedInsn = null
                         },
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),

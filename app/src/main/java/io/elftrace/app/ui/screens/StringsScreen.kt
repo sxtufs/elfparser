@@ -87,7 +87,9 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                         .fillMaxWidth()
                         .clickable {
                             selectedString = item
-                            xrefsList = viewModel.getXrefsFor(item.vaddr)
+                            viewModel.loadXrefsFor(item.vaddr) { list ->
+                                xrefsList = list
+                            }
                         }
                 ) {
                     Row(
