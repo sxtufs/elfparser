@@ -59,16 +59,16 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        // Toolbar Header (Matches DisasmScreen style)
+        // Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface, RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "VMA: 0x${"%08X".format(startAddress)}",
                     color = colors.primary,
@@ -76,144 +76,139 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "${hexBytes.size} Bytes Loaded",
+                    text = "${hexBytes.size} B",
                     color = colors.textSecondary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
+                    fontSize = 11.sp
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = {
-                        gotoAddressInput = "0x${"%08X".format(startAddress)}"
-                        showGotoDialog = true
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.NearMe, contentDescription = null, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text("Go to", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = {
+                    gotoAddressInput = "0x${"%08X".format(startAddress)}"
+                    showGotoDialog = true
+                }) {
+                    Icon(Icons.Default.NearMe, contentDescription = "Go to Address", tint = colors.primary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(
-                    onClick = {
-                        val fullDump = rows.joinToString("\n") { row ->
-                            val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
-                            val asciiStr = row.bytes.map { b ->
-                                val c = (b.toInt() and 0xFF).toChar()
-                                if (c in ' '..'~') c else '.'
-                            }.joinToString("")
-                            "%08X  %-24s  |%s|".format(row.address, hexStr, asciiStr)
-                        }
-                        clipboardManager.setText(AnnotatedString(fullDump))
-                        Toast.makeText(context, "Copied Hex Dump to clipboard", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Hex", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
+                IconButton(onClick = {
+                    val fullDump = rows.joinToString("\n") { row ->
+                        val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
+                        val asciiStr = row.bytes.map { b ->
+                            val c = (b.toInt() and 0xFF).toChar()
+                            if (c in ' '..'~') c else '.'
+                        }.joinToString("")
+                        "%08X  %-24s  |%s|".format(row.address, hexStr, asciiStr)
+                    }
+                    clipboardManager.setText(AnnotatedString(fullDump))
+                    Toast.makeText(context, "Copied Hex Dump to clipboard", Toast.LENGTH_SHORT).show()
+                }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Hex", tint = colors.textPrimary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(
-                    onClick = { viewModel.loadHexDump(startAddress, 2048) },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                IconButton(onClick = { viewModel.loadHexDump(startAddress, 2048) }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
                 }
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
 
-        // Full-Height Virtualized 8-Byte Hex Dump (Edge-to-edge vertical coverage)
-        SelectionContainer(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                flingBehavior = momentumFling,
-                verticalArrangement = Arrangement.spacedBy(1.dp)
-            ) {
-                // Header Row (Fixed Columns)
-                item(key = "hex_header") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "OFFSET   ",
-                            color = colors.textSecondary,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(86.dp)
-                        )
-                        Text(
-                            text = "00 01 02 03 04 05 06 07",
-                            color = colors.textSecondary,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(170.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "ASCII",
-                            color = colors.textSecondary,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+        // Mobile-Optimized 8-Byte Hex View Card (Full horizontal width distribution)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.card, RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            SelectionContainer {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    flingBehavior = momentumFling,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Header Row (Distributed across the full card width)
+                    item(key = "hex_header") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "OFFSET",
+                                color = colors.textSecondary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "00 01 02 03  04 05 06 07",
+                                color = colors.textSecondary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "ASCII",
+                                color = colors.textSecondary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                }
 
-                itemsIndexed(
-                    items = rows,
-                    key = { _, row -> row.address },
-                    contentType = { _, _ -> "hex_row" }
-                ) { _, row ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Address column (aligned under OFFSET)
-                        Text(
-                            text = "%08X".format(row.address),
-                            color = colors.address,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.width(86.dp)
-                        )
+                    itemsIndexed(
+                        items = rows,
+                        key = { _, row -> row.address },
+                        contentType = { _, _ -> "hex_row" }
+                    ) { _, row ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 1.5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Address column (aligned to left)
+                            Text(
+                                text = "%08X".format(row.address),
+                                color = colors.address,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
 
-                        // 8 Hex bytes column (aligned under 00..07)
-                        val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
-                        Text(
-                            text = "%-23s".format(hexStr),
-                            color = colors.hexBytes,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp,
-                            modifier = Modifier.width(170.dp)
-                        )
+                            // 8 Hex bytes column (centered, split into two 4-byte groups)
+                            val part1 = row.bytes.take(4).joinToString(" ") { "%02X".format(it) }
+                            val part2 = if (row.bytes.size > 4) {
+                                row.bytes.drop(4).joinToString(" ") { "%02X".format(it) }
+                            } else ""
+                            val hexFormatted = "$part1  $part2"
 
-                        Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = hexFormatted,
+                                color = colors.hexBytes,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp
+                            )
 
-                        // ASCII representation (aligned under ASCII)
-                        val ascii = row.bytes.map { b ->
-                            val c = (b.toInt() and 0xFF).toChar()
-                            if (c in ' '..'~') c else '.'
-                        }.joinToString("")
+                            // ASCII representation (anchored cleanly to the right edge)
+                            val ascii = row.bytes.map { b ->
+                                val c = (b.toInt() and 0xFF).toChar()
+                                if (c in ' '..'~') c else '.'
+                            }.joinToString("")
 
-                        Text(
-                            text = "|$ascii|",
-                            color = colors.operands,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.5.sp
-                        )
+                            Text(
+                                text = "|$ascii|",
+                                color = colors.operands,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp
+                            )
+                        }
                     }
                 }
             }
