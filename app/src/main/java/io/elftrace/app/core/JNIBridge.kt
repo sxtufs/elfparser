@@ -26,6 +26,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun strings0(handle: Long): String
         @JvmStatic private external fun write0(handle: Long, address: Long, bytes: ByteArray)
         @JvmStatic private external fun save0(handle: Long): ByteArray
+        @JvmStatic private external fun readBytes0(handle: Long, address: Long, length: Int): ByteArray
 
         // In-process Execution Tracer
         @JvmStatic private external fun traceInit(handle: Long, address: Long)
@@ -104,6 +105,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
 
     fun saveBinary(): ByteArray {
         return save0(handle)
+    }
+
+    fun readBytes(address: Long, length: Int = 1024): ByteArray {
+        return readBytes0(handle, address, length)
     }
 
     fun startTrace(address: Long) {

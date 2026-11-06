@@ -29,12 +29,28 @@ class ELFTraceViewModel : ViewModel() {
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Files)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
-    val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart
+    val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
     val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security
 
     val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
 
     val currentFileName = MutableStateFlow("")
+
+    private val _hexBytes = MutableStateFlow<ByteArray>(ByteArray(0))
+    val hexBytes: StateFlow<ByteArray> = _hexBytes.asStateFlow()
+
+    private val _hexStartAddress = MutableStateFlow(0L)
+    val hexStartAddress: StateFlow<Long> = _hexStartAddress.asStateFlow()
+
+    fun loadHexDump(address: Long, length: Int = 2048) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            val alignedAddr = address - (address % 16)
+            val bytes = b.readBytes(alignedAddr, length)
+            _hexStartAddress.value = alignedAddr
+            _hexBytes.value = bytes
+        }
+    }
 
     fun savePatchedBinary(context: Context, onResult: (String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -144,6 +160,7 @@ class ELFTraceViewModel : ViewModel() {
             _instructions.value = b.disassemble(address, 256)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
+            loadHexDump(address, 2048)
             b.startTrace(address)
             val firstInsn = _instructions.value.firstOrNull()
             val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"

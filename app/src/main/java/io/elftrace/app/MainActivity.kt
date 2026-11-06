@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                     // Standardized Floating Rounded-Card Top Navigation Bar
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = codeTab,
-                                        tabs = listOf("Disassembly", "Decompile", "Flowchart"),
+                                        tabs = listOf("Disassembly", "Decompile", "Flowchart", "Hex View"),
                                         onTabSelected = { viewModel.codeSubTab.value = it }
                                     )
 
@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
                                         0 -> DisasmScreen(viewModel)
                                         1 -> DecompileScreen(viewModel)
                                         2 -> FlowchartScreen(viewModel)
+                                        3 -> HexScreen(viewModel)
                                     }
                                 }
                             }
