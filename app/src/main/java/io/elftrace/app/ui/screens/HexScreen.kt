@@ -2,11 +2,9 @@ package io.elftrace.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -40,15 +38,14 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
 
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
-    var bytesPerRow by remember { mutableStateOf(16) }
 
     val momentumFling = rememberMomentumFlingBehavior()
 
-    // Break raw bytes into rows (8 or 16 bytes per row)
-    val rows = remember(hexBytes, startAddress, bytesPerRow) {
+    // Break raw bytes into 8-byte rows (perfect fit for mobile screens & ARM64 4-byte alignment)
+    val rows = remember(hexBytes, startAddress) {
         val list = mutableListOf<HexRow>()
-        for (i in hexBytes.indices step bytesPerRow) {
-            val chunkLen = minOf(bytesPerRow, hexBytes.size - i)
+        for (i in hexBytes.indices step 8) {
+            val chunkLen = minOf(8, hexBytes.size - i)
             val chunk = hexBytes.sliceArray(i until i + chunkLen)
             val rowAddr = startAddress + i
             list.add(HexRow(address = rowAddr, bytes = chunk))
@@ -88,22 +85,6 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 8-Byte / 16-Byte Layout Toggle
-                OutlinedButton(
-                    onClick = { bytesPerRow = if (bytesPerRow == 16) 8 else 16 },
-                    shape = RoundedCornerShape(50),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)
-                ) {
-                    Text(
-                        text = if (bytesPerRow == 16) "16-Byte" else "8-Byte",
-                        color = colors.primary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
                 IconButton(onClick = {
                     gotoAddressInput = "0x${"%08X".format(startAddress)}"
                     showGotoDialog = true
@@ -118,8 +99,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                             val c = (b.toInt() and 0xFF).toChar()
                             if (c in ' '..'~') c else '.'
                         }.joinToString("")
-                        val hexCols = if (bytesPerRow == 16) "%-48s".format(hexStr) else "%-24s".format(hexStr)
-                        "%08X  %s  |%s|".format(row.address, hexCols, asciiStr)
+                        "%08X  %-24s  |%s|".format(row.address, hexStr, asciiStr)
                     }
                     clipboardManager.setText(AnnotatedString(fullDump))
                     Toast.makeText(context, "Copied Hex Dump to clipboard", Toast.LENGTH_SHORT).show()
@@ -135,28 +115,21 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(4.dp))
 
-        // Virtualized Hex View with Horizontal & Vertical Scrolling
+        // Mobile-Optimized 8-Byte Hex View (Zero horizontal scroll needed!)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.card, RoundedCornerShape(8.dp))
                 .padding(8.dp)
-                .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
             SelectionContainer {
                 LazyColumn(
-                    modifier = Modifier.fillMaxHeight(),
+                    modifier = Modifier.fillMaxSize(),
                     flingBehavior = momentumFling,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     // Header Row
                     item(key = "hex_header") {
-                        val headerCols = if (bytesPerRow == 16) {
-                            "00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F"
-                        } else {
-                            "00 01 02 03 04 05 06 07"
-                        }
-
                         Row(modifier = Modifier.padding(bottom = 4.dp)) {
                             Text(
                                 text = "OFFSET   ",
@@ -166,7 +139,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = headerCols,
+                                text = "00 01 02 03 04 05 06 07",
                                 color = colors.textSecondary,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
@@ -185,7 +158,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
 
                     itemsIndexed(
                         items = rows,
-                        key = { _, row -> "${bytesPerRow}_${row.address}" },
+                        key = { _, row -> row.address },
                         contentType = { _, _ -> "hex_row" }
                     ) { _, row ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -198,19 +171,10 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                 fontWeight = FontWeight.SemiBold
                             )
 
-                            // Hex bytes column
-                            val hexFormatted = if (bytesPerRow == 16) {
-                                val part1 = row.bytes.take(8).joinToString(" ") { "%02X".format(it) }
-                                val part2 = if (row.bytes.size > 8) {
-                                    row.bytes.drop(8).joinToString(" ") { "%02X".format(it) }
-                                } else ""
-                                "%-23s  %-23s".format(part1, part2)
-                            } else {
-                                "%-23s".format(row.bytes.joinToString(" ") { "%02X".format(it) })
-                            }
-
+                            // 8 Hex bytes column
+                            val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
                             Text(
-                                text = hexFormatted,
+                                text = "%-23s".format(hexStr),
                                 color = colors.hexBytes,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp
