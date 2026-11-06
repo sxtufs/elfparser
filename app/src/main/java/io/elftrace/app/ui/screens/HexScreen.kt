@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HexScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
