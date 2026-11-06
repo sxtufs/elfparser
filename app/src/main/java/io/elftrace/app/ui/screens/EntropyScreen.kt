@@ -58,7 +58,12 @@ fun EntropyScreen(viewModel: ELFTraceViewModel) {
                         )
                         val report = entropyReport
                         val scoreText = if (report != null) "${report.overall_entropy} / 8.0" else "Calculating..."
-                        val verdictText = report?.overall_verdict ?: "Scan pending"
+                        val rawVerdict = report?.overall_verdict ?: "Scan pending"
+                        val verdictText = rawVerdict
+                            .replace("(", "")
+                            .replace(")", "")
+                            .trim()
+
                         val verdictColor = when {
                             report?.is_likely_packed == true -> RedAccent
                             (report?.overall_entropy ?: 0.0) > 6.4 -> AmberAccent
