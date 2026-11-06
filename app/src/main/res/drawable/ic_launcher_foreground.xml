@@ -4,7 +4,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Left Spine of E -->
     <path
         android:fillColor="#00E5FF"
-        android:pathData="M30,30 L78,30 L78,38 L30,38 Z M30,50 L64,50 L64,58 L30,58 Z M30,70 L78,70 L78,78 L30,78 Z"/>
+        android:pathData="M30,28 L39,28 A3,3 0 0,1 42,31 L42,77 A3,3 0 0,1 39,80 L30,80 A3,3 0 0,1 27,77 L27,31 A3,3 0 0,1 30,28 Z"/>
+
+    <!-- Top Horizontal Bar -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M39,28 L72,28 A3,3 0 0,1 75,31 L75,37 A3,3 0 0,1 72,40 L39,40 Z"/>
+
+    <!-- Middle Execution Trace Arrow (Trace Vector) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M39,48 L62,48 L62,44 L77,54 L62,64 L62,60 L39,60 Z"/>
+
+    <!-- Bottom Horizontal Bar -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M39,68 L72,68 A3,3 0 0,1 75,71 L75,77 A3,3 0 0,1 72,80 L39,80 Z"/>
+
+    <!-- Trace Pulse Dot at Arrow Tip -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M79,54 m -2,0 a 2,2 0 1,0 4,0 a 2,2 0 1,0 -4,0"/>
 </vector>

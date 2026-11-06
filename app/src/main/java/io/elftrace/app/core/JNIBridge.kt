@@ -3,9 +3,10 @@ package io.elftrace.app.core
 import io.elftrace.app.core.models.*
 import com.google.gson.Gson
 
-class JNIBridge private constructor(val handle: Long, val path: String) {
+class JNIBridge private constructor(val handle: Long, val path: String) : java.io.Closeable {
 
     private val gson = Gson()
+    private var isClosed = false
 
     companion object {
         init {
@@ -23,7 +24,6 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         @JvmStatic private external fun disasm0(handle: Long, address: Long, size: Long, thumb: Boolean): String
         @JvmStatic private external fun dec0(mode: Int, handle: Long, address: Long): String
         @JvmStatic private external fun strings0(handle: Long): String
-        @JvmStatic private external fun str0(handle: Long, address: Long, len: Long): String
         @JvmStatic private external fun write0(handle: Long, address: Long, bytes: ByteArray)
         @JvmStatic private external fun save0(handle: Long): ByteArray
 
@@ -167,7 +167,14 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
         return renameFunction(handle, address, newName)
     }
 
+    override fun close() {
+        if (!isClosed && handle != 0L) {
+            finalize0(handle)
+            isClosed = true
+        }
+    }
+
     protected fun finalize() {
-        finalize0(handle)
+        close()
     }
 }
