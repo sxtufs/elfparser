@@ -39,6 +39,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         // Quick Patcher & Security Scanner
         @JvmStatic private external fun quickPatch(handle: Long, address: Long, patchType: Int, thumb: Boolean): String
         @JvmStatic private external fun scanSecurity(handle: Long): String
+        @JvmStatic private external fun getEntropyReport(handle: Long): String
 
         // Unity Il2Cpp Metadata Resolvers
         @JvmStatic private external fun loadScriptJson(handle: Long, path: String): Int
@@ -157,6 +158,15 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             gson.fromJson(json, ScanReport::class.java) ?: ScanReport()
         } catch (e: Exception) {
             ScanReport()
+        }
+    }
+
+    fun getEntropyReport(): EntropyReport {
+        val json = getEntropyReport(handle)
+        return try {
+            gson.fromJson(json, EntropyReport::class.java) ?: EntropyReport()
+        } catch (e: Exception) {
+            EntropyReport()
         }
     }
 

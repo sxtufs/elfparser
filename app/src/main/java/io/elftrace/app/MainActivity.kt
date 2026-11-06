@@ -167,13 +167,14 @@ class MainActivity : ComponentActivity() {
                                     // Standardized Floating Rounded-Card Top Navigation Bar
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = analysisTab,
-                                        tabs = listOf("Strings", "Security Scanner"),
+                                        tabs = listOf("Strings", "Security", "Entropy"),
                                         onTabSelected = { viewModel.analysisSubTab.value = it }
                                     )
 
                                     when (analysisTab) {
                                         0 -> StringsScreen(viewModel)
                                         1 -> SecurityScreen(viewModel)
+                                        2 -> EntropyScreen(viewModel)
                                     }
                                 }
                             }

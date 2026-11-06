@@ -30,11 +30,21 @@ class ELFTraceViewModel : ViewModel() {
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
-    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security
+    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security, 2: Entropy Radar
 
     val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
 
     val currentFileName = MutableStateFlow("")
+
+    private val _entropyReport = MutableStateFlow<EntropyReport?>(null)
+    val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
+
+    fun refreshEntropyReport() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            _entropyReport.value = b.getEntropyReport()
+        }
+    }
 
     private val _hexBytes = MutableStateFlow<ByteArray>(ByteArray(0))
     val hexBytes: StateFlow<ByteArray> = _hexBytes.asStateFlow()
@@ -149,6 +159,7 @@ class ELFTraceViewModel : ViewModel() {
             selectFunction(firstAddr, firstName)
             _stringsList.value = b.getStrings()
             _scanReport.value = b.scanSecurity()
+            _entropyReport.value = b.getEntropyReport()
         }
     }
 

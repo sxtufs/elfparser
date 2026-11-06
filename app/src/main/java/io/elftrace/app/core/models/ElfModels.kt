@@ -55,6 +55,23 @@ data class ScanReport(
     val findings: List<SecurityFinding> = emptyList()
 )
 
+data class SectionEntropy(
+    val name: String = "",
+    val address: Long = 0,
+    val size: Long = 0,
+    val entropy: Double = 0.0,
+    val is_executable: Boolean = false,
+    val is_high_entropy: Boolean = false,
+    val status: String = ""
+)
+
+data class EntropyReport(
+    val overall_entropy: Double = 0.0,
+    val overall_verdict: String = "",
+    val is_likely_packed: Boolean = false,
+    val sections: List<SectionEntropy> = emptyList()
+)
+
 data class CodeIns(
     val data: List<Instruction> = emptyList()
 )
