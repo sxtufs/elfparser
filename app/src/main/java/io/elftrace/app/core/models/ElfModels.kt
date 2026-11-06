@@ -106,5 +106,6 @@ data class TraceState(
     val mnemonic: String = "",
     val op_str: String = "",
     val changed_regs: List<String> = emptyList(),
+    val changed_flags: List<String> = emptyList(),
     val error: String? = null
 )
