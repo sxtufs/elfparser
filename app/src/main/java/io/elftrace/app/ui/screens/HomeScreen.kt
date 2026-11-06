@@ -60,15 +60,32 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 }
             }
 
-            // Check if it's an APK or ZIP archive containing .so files
+            // Check if it's an APK, XAPK, or ZIP archive containing .so files (including split APKs!)
             val isZip = try {
                 ZipFile(tempFile).use { zip ->
                     val soList = mutableListOf<ApkSoEntry>()
                     val entries = zip.entries()
                     while (entries.hasMoreElements()) {
                         val e = entries.nextElement()
-                        if (!e.isDirectory && e.name.endsWith(".so", ignoreCase = true)) {
-                            soList.add(ApkSoEntry(e.name, e.size))
+                        if (!e.isDirectory) {
+                            if (e.name.endsWith(".so", ignoreCase = true)) {
+                                soList.add(ApkSoEntry(e.name, e.size))
+                            } else if (e.name.endsWith(".apk", ignoreCase = true)) {
+                                // Inspect nested split APKs inside .xapk / .apks bundles!
+                                try {
+                                    zip.getInputStream(e).use { apkInput ->
+                                        val nestedZip = java.util.zip.ZipInputStream(apkInput)
+                                        var nestedEntry = nestedZip.nextEntry
+                                        while (nestedEntry != null) {
+                                            if (!nestedEntry.isDirectory && nestedEntry.name.endsWith(".so", ignoreCase = true)) {
+                                                val compositeName = "${e.name}!/${nestedEntry.name}"
+                                                soList.add(ApkSoEntry(compositeName, nestedEntry.size))
+                                            }
+                                            nestedEntry = nestedZip.nextEntry
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
                     if (soList.isNotEmpty()) {
@@ -375,14 +392,33 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 private fun extractSoFromApk(apkFile: File, entryName: String, outFile: File): Boolean {
     return try {
         ZipFile(apkFile).use { zip ->
-            val entry = zip.getEntry(entryName) ?: return false
-            zip.getInputStream(entry).use { input ->
-                FileOutputStream(outFile).use { output ->
-                    input.copyTo(output)
+            if (entryName.contains("!/")) {
+                val parts = entryName.split("!/", limit = 2)
+                val outerEntry = zip.getEntry(parts[0]) ?: return false
+                zip.getInputStream(outerEntry).use { outerInput ->
+                    val nestedZip = java.util.zip.ZipInputStream(outerInput)
+                    var nestedEntry = nestedZip.nextEntry
+                    while (nestedEntry != null) {
+                        if (nestedEntry.name == parts[1]) {
+                            FileOutputStream(outFile).use { output ->
+                                nestedZip.copyTo(output)
+                            }
+                            return true
+                        }
+                        nestedEntry = nestedZip.nextEntry
+                    }
                 }
+                false
+            } else {
+                val entry = zip.getEntry(entryName) ?: return false
+                zip.getInputStream(entry).use { input ->
+                    FileOutputStream(outFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                true
             }
         }
-        true
     } catch (_: Exception) {
         false
     }
