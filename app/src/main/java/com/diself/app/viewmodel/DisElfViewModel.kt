@@ -223,4 +223,20 @@ class DisElfViewModel : ViewModel() {
             launch(Dispatchers.Main) { onComplete(ok) }
         }
     }
+
+    fun assemblePatch(address: Long, text: String, onComplete: (PatchResult) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(PatchResult(error = "No binary loaded")) }
+                return@launch
+            }
+            val res = b.assemblePatch(address, text)
+            if (res.success) {
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(res) }
+        }
+    }
 }

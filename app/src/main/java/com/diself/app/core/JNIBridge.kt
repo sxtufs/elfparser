@@ -45,6 +45,18 @@ class JNIBridge private constructor(val handle: Long, val path: String) {
 
         // Function Renaming
         @JvmStatic private external fun renameFunction(handle: Long, address: Long, newName: String): Boolean
+
+        // In-Place Instruction Assembler
+        @JvmStatic private external fun assemblePatch(handle: Long, address: Long, text: String): String
+    }
+
+    fun assemblePatch(address: Long, text: String): PatchResult {
+        val json = assemblePatch(handle, address, text)
+        return try {
+            gson.fromJson(json, PatchResult::class.java) ?: PatchResult(error = "Unknown error")
+        } catch (e: Exception) {
+            PatchResult(error = e.message)
+        }
     }
 
     fun getInfo(evaluateYara: Boolean = false): ElfInfo {

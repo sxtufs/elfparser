@@ -56,6 +56,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInput by remember { mutableStateOf("") }
 
+    var showAssembleDialog by remember { mutableStateOf(false) }
+    var assembleInput by remember { mutableStateOf("") }
+    var currentEditInsnAddr by remember { mutableStateOf(0L) }
+
     // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
     val shortTitle = remember(symbolName, currentAddr) {
         if (symbolName.contains(" -> ")) {
@@ -378,11 +382,26 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // 4. Action Row: Rename, Frida Hook, Export .so
+                    // 4. Action Row: Assemble, Rename, Frida Hook, Export .so
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        OutlinedButton(
+                            onClick = {
+                                assembleInput = "${ins.mnemonic} ${ins.op_str}".trim()
+                                currentEditInsnAddr = ins.address
+                                showAssembleDialog = true
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(44.dp)
+                        ) {
+                            Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                        }
+
                         OutlinedButton(
                             onClick = {
                                 renameInput = symbolName
@@ -392,9 +411,9 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(46.dp)
+                            modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
                         }
 
                         OutlinedButton(
@@ -410,9 +429,9 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(46.dp)
+                            modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Frida", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Frida", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
                         }
 
                         OutlinedButton(
@@ -429,9 +448,9 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(46.dp)
+                            modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Export", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Export", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
                         }
                     }
 
@@ -631,6 +650,68 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                 },
                 dismissButton = {
                     TextButton(onClick = { showRenameDialog = false }) {
+                        Text("Cancel", color = colors.textSecondary)
+                    }
+                }
+            )
+        }
+
+        // Assemble / Edit Instruction Dialog
+        if (showAssembleDialog) {
+            AlertDialog(
+                onDismissRequest = { showAssembleDialog = false },
+                containerColor = colors.surface,
+                shape = RoundedCornerShape(16.dp),
+                title = { Text("Assemble / Edit Instruction", color = colors.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            text = "Address: 0x${"%08X".format(currentEditInsnAddr)}",
+                            color = colors.address,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = assembleInput,
+                            onValueChange = { assembleInput = it },
+                            label = { Text("Assembly or 4-byte Hex") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = colors.border,
+                                focusedTextColor = colors.textPrimary,
+                                unfocusedTextColor = colors.textPrimary
+                            )
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Examples: b #0x37d58, bl #0x1234, nop, ret, or hex C4 26 00 14",
+                            color = colors.textSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.assemblePatch(currentEditInsnAddr, assembleInput) { res ->
+                                if (res.success) {
+                                    Toast.makeText(context, "Patched: ${res.patch_type}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Error: ${res.error}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            showAssembleDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White)
+                    ) {
+                        Text("Patch", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAssembleDialog = false }) {
                         Text("Cancel", color = colors.textSecondary)
                     }
                 }
