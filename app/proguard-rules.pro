@@ -1,18 +1,18 @@
 # ==============================================================================
-# DisElf ProGuard & R8 Optimization Rules
+# ELFTrace ProGuard & R8 Optimization Rules
 # ==============================================================================
 
 # 1. Native JNI Bridge Protection
-# JNI method names in libdiself.so map to exact Java class and method names
--keep class com.diself.app.core.JNIBridge { *; }
+# JNI method names in libelftrace.so map to exact Java class and method names
+-keep class io.elftrace.app.core.JNIBridge { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
 # 2. JSON Data Models Protection (Gson Deserialization)
 # Field names must match JSON keys from native Rust engine exactly
--keep class com.diself.app.core.models.** { *; }
--keepclassmembers class com.diself.app.core.models.** {
+-keep class io.elftrace.app.core.models.** { *; }
+-keepclassmembers class io.elftrace.app.core.models.** {
     <fields>;
     <methods>;
 }
@@ -25,7 +25,7 @@
 -dontwarn com.google.gson.**
 
 # 4. ViewModels
--keep class com.diself.app.viewmodel.** { *; }
+-keep class io.elftrace.app.viewmodel.** { *; }
 
 # 5. Jetpack Compose & Kotlin Coroutines
 -dontwarn kotlinx.coroutines.**
@@ -34,6 +34,6 @@
 }
 
 # 6. Optimization and Obfuscation
--repackageclasses 'com.diself.app.internal'
+-repackageclasses 'io.elftrace.app.internal'
 -allowaccessmodification
 -dontusemixedcaseclassnames

@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "DisElf"
+rootProject.name = "ELFTrace"
 include(":app")

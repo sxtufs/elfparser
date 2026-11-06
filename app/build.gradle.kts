@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.diself.app"
+    namespace = "io.elftrace.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.diself.app"
+        applicationId = "io.elftrace.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.0.0"
+        versionCode = 1
+        versionName = "1.0.0"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
