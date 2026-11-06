@@ -117,13 +117,13 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(colors.surface, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceAround
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                FlagBadge("Z (Zero)", state.z, colors)
-                FlagBadge("N (Neg)", state.n, colors)
-                FlagBadge("C (Carry)", state.c, colors)
-                FlagBadge("V (Ovf)", state.v, colors)
+                FlagBadge("Z", state.z, isChanged = state.changed_flags.contains("z"), colors)
+                FlagBadge("N", state.n, isChanged = state.changed_flags.contains("n"), colors)
+                FlagBadge("C", state.c, isChanged = state.changed_flags.contains("c"), colors)
+                FlagBadge("V", state.v, isChanged = state.changed_flags.contains("v"), colors)
             }
 
             Spacer(Modifier.height(6.dp))
@@ -182,13 +182,21 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
 }
 
 @Composable
-fun FlagBadge(name: String, active: Boolean, colors: ELFTraceColors) {
+fun FlagBadge(name: String, active: Boolean, isChanged: Boolean, colors: ELFTraceColors) {
     Surface(
         shape = RoundedCornerShape(6.dp),
-        color = if (active) Color(0x334CAF50) else colors.card,
+        color = when {
+            isChanged -> Color(0x444CAF50)
+            active -> Color(0x224CAF50)
+            else -> colors.card
+        },
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (active) Color(0xFF4CAF50) else colors.border
+            when {
+                isChanged -> Color(0xFF4CAF50)
+                active -> Color(0xFF4CAF50).copy(alpha = 0.5f)
+                else -> colors.border
+            }
         )
     ) {
         Row(
@@ -196,11 +204,16 @@ fun FlagBadge(name: String, active: Boolean, colors: ELFTraceColors) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$name: ${if (active) "1" else "0"}",
-                color = if (active) Color(0xFF4CAF50) else colors.textSecondary,
+                text = "${if (isChanged) "● " else ""}$name: ${if (active) "1" else "0"}",
+                color = when {
+                    active -> Color(0xFF4CAF50)
+                    else -> colors.textSecondary
+                },
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
-                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
