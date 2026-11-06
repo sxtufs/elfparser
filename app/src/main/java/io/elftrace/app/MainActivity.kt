@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                     // Standardized Floating Rounded-Card Top Navigation Bar
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = codeTab,
-                                        tabs = listOf("Disassembly", "Decompile", "Flowchart", "Hex View"),
+                                        tabs = listOf("Disasm", "Decompile", "Flowchart", "Hex"),
                                         onTabSelected = { viewModel.codeSubTab.value = it }
                                     )
 
@@ -228,7 +228,7 @@ fun ELFTraceTopTabBar(
                         Text(
                             text = title,
                             fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             maxLines = 1,
                             softWrap = false
                         )
