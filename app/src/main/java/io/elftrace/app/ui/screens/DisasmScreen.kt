@@ -50,6 +50,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
     var showHierarchyDialog by remember { mutableStateOf(false) }
     var callHierarchy by remember { mutableStateOf(CallHierarchy()) }
+    var isHierarchyLoading by remember { mutableStateOf(false) }
 
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
@@ -130,7 +131,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                 OutlinedButton(
                     onClick = {
+                        isHierarchyLoading = true
                         viewModel.loadHierarchy(currentAddr) { hierarchy ->
+                            isHierarchyLoading = false
                             callHierarchy = hierarchy
                             showHierarchyDialog = true
                         }
@@ -138,9 +141,19 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (isHierarchyLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            color = colors.primary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Scanning...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
