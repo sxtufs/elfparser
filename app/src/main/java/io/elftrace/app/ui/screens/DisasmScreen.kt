@@ -542,7 +542,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         if (xrefsList.isEmpty()) {
                             Text("No callers or references found for this address in the binary.", color = colors.textSecondary, fontSize = 12.sp)
                         } else {
-                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                                flingBehavior = rememberMomentumFlingBehavior(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 items(xrefsList) { ref ->
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = colors.card),
@@ -590,7 +594,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 .heightIn(max = 280.dp)
                                 .background(colors.card, RoundedCornerShape(8.dp))
                                 .padding(10.dp)
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(rememberScrollState(), flingBehavior = rememberMomentumFlingBehavior())
                         ) {
                             SelectionContainer {
                                 Text(

@@ -62,14 +62,16 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(4.dp))
 
+        val momentumFling = rememberMomentumFlingBehavior()
+
         // Selectable Monospaced Code View with Horizontal & Vertical Scrolling
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                 .padding(8.dp)
-                .verticalScroll(rememberScrollState())
-                .horizontalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
+                .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
             SelectionContainer {
                 Text(

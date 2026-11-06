@@ -144,6 +144,7 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
+                flingBehavior = rememberMomentumFlingBehavior(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {

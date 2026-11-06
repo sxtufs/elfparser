@@ -140,7 +140,11 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                         if (xrefsList.isEmpty()) {
                             Text("No direct instruction references found.", color = colors.textSecondary, fontSize = 12.sp)
                         } else {
-                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
+                                flingBehavior = rememberMomentumFlingBehavior(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 items(xrefsList) { ref ->
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = colors.card),

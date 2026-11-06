@@ -325,6 +325,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         Spacer(Modifier.height(8.dp))
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                            flingBehavior = rememberMomentumFlingBehavior(),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(apkSoList) { entry ->

@@ -26,13 +26,15 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
+        val momentumFling = rememberMomentumFlingBehavior()
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                 .padding(8.dp)
-                .verticalScroll(rememberScrollState())
-                .horizontalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
+                .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
             SelectionContainer {
                 Text(
