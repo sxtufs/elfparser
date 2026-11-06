@@ -612,14 +612,32 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text(
-                            text = "Call Hierarchy: $shortTitle",
-                            color = colors.primary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.AccountTree,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "CALL HIERARCHY",
+                                    color = colors.primary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = shortTitle,
+                                color = colors.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 18.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
 
                         // Sub-tabs: Callers vs Callees
