@@ -382,10 +382,10 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // 4. Action Row: Assemble, Rename, Frida Hook, Export .so
+                    // 4. Utility Action Grid (2x2 - eliminates text truncation)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -399,7 +399,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                            Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -413,9 +413,16 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                            Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
                         }
+                    }
 
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         OutlinedButton(
                             onClick = {
                                 fridaCode = generateFridaHook(
@@ -431,7 +438,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Frida", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                            Text("Frida Hook", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -450,7 +457,7 @@ fun DisasmScreen(viewModel: DisElfViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(44.dp)
                         ) {
-                            Text("Export", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
