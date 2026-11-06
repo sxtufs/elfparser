@@ -22,12 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.elftrace.app.R
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
@@ -127,15 +125,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.toggleTheme() }) {
-                        Icon(
-                            painter = painterResource(
-                                if (colors.isDark) R.drawable.ic_light_mode
-                                else R.drawable.ic_dark_mode
-                            ),
-                            contentDescription = "Toggle Theme",
-                            tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        ThemeToggleIcon(isDark = colors.isDark, tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary)
                     }
                     Spacer(Modifier.width(4.dp))
                     Button(
@@ -397,4 +387,33 @@ private fun queryFileName(context: Context, uri: Uri): String {
         }
     } catch (_: Exception) {}
     return name
+}
+
+@Composable
+fun ThemeToggleIcon(isDark: Boolean, tint: Color) {
+    if (isDark) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
+            val r = size.minDimension / 2f
+            val center = androidx.compose.ui.geometry.Offset(r, r)
+            drawCircle(color = tint, radius = r * 0.42f, center = center)
+            for (i in 0 until 8) {
+                val angle = i * Math.PI / 4.0
+                val start = androidx.compose.ui.geometry.Offset(
+                    (center.x + Math.cos(angle) * r * 0.62).toFloat(),
+                    (center.y + Math.sin(angle) * r * 0.62).toFloat()
+                )
+                val end = androidx.compose.ui.geometry.Offset(
+                    (center.x + Math.cos(angle) * r * 0.95).toFloat(),
+                    (center.y + Math.sin(angle) * r * 0.95).toFloat()
+                )
+                drawLine(color = tint, start = start, end = end, strokeWidth = 2.2f)
+            }
+        }
+    } else {
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
+            val r = size.minDimension / 2f
+            drawCircle(color = tint, radius = r * 0.75f, center = androidx.compose.ui.geometry.Offset(r * 0.9f, r * 1.1f))
+            drawCircle(color = Color.White, radius = r * 0.62f, center = androidx.compose.ui.geometry.Offset(r * 0.65f, r * 0.85f))
+        }
+    }
 }

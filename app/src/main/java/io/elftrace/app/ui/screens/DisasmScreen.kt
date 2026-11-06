@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.elftrace.app.R
 import io.elftrace.app.core.models.Instruction
 import io.elftrace.app.core.models.XRefItem
 import io.elftrace.app.ui.theme.*
