@@ -183,11 +183,25 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
 
 @Composable
 fun FlagBadge(name: String, active: Boolean, colors: ELFTraceColors) {
-    Text(
-        text = "$name: ${if (active) "1" else "0"}",
-        color = if (active) colors.address else colors.textSecondary,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 11.sp,
-        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
-    )
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = if (active) Color(0x334CAF50) else colors.card,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (active) Color(0xFF4CAF50) else colors.border
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$name: ${if (active) "1" else "0"}",
+                color = if (active) Color(0xFF4CAF50) else colors.textSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
+            )
+        }
+    }
 }
