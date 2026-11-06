@@ -205,6 +205,13 @@ class ELFTraceViewModel : ViewModel() {
         }
     }
 
+    fun refreshSecurityScan() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val b = _bridge.value ?: return@launch
+            _scanReport.value = b.scanSecurity()
+        }
+    }
+
     fun renameFunction(address: Long, newName: String, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: run {

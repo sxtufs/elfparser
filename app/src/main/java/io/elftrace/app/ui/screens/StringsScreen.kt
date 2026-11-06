@@ -23,6 +23,7 @@ import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StringsScreen(viewModel: ELFTraceViewModel) {
     val colors = LocalELFTraceColors.current
@@ -165,3 +166,5 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                 }
             }
         }
+    }
+}
