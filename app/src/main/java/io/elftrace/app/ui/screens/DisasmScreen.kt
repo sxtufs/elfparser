@@ -152,54 +152,60 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 key = { it.address },
                 contentType = { "instruction" }
             ) { ins ->
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { selectedInsn = ins }
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 4.dp, vertical = 3.dp)
                 ) {
-                    Text(
-                        text = "0x${"%08X".format(ins.address)}",
-                        color = colors.address,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        modifier = Modifier.width(90.dp)
-                    )
-
-                    Text(
-                        text = ins.bytesHex,
-                        color = colors.hexBytes,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        modifier = Modifier.width(100.dp)
-                    )
-
-                    Text(
-                        text = ins.mnemonic,
-                        color = colors.mnemonic,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.width(60.dp)
-                    )
-
-                    Text(
-                        text = ins.op_str,
-                        color = colors.operands,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp
-                    )
-
-                    if (!ins.comment.isNullOrEmpty()) {
-                        Spacer(Modifier.width(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = ins.comment,
-                            color = Color(0xFFD97706),
+                            text = "0x${"%08X".format(ins.address)}",
+                            color = colors.address,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            modifier = Modifier.width(86.dp)
+                        )
+
+                        Text(
+                            text = ins.bytesHex,
+                            color = colors.hexBytes,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            maxLines = 1
+                            modifier = Modifier.width(92.dp)
                         )
+
+                        Text(
+                            text = ins.mnemonic,
+                            color = colors.mnemonic,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(52.dp)
+                        )
+
+                        Text(
+                            text = ins.op_str,
+                            color = colors.operands,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    // In-Line Annotation (Strings, JNI API calls, Syscalls) - cleanly visible on mobile screens!
+                    if (!ins.comment.isNullOrEmpty()) {
+                        Row(modifier = Modifier.padding(start = 86.dp, top = 1.dp)) {
+                            Text(
+                                text = ins.comment,
+                                color = Color(0xFFF59E0B), // Vibrant Amber Glow
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -236,6 +242,16 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         color = colors.primary,
                         fontWeight = FontWeight.SemiBold
                     )
+                    if (!ins.comment.isNullOrEmpty()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = ins.comment,
+                            color = Color(0xFFF59E0B),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     // 1. Jump to Target (Restyled to match Find Cross-References)
                     if (branchTarget != null) {
