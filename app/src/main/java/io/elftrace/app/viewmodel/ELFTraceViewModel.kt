@@ -36,6 +36,36 @@ class ELFTraceViewModel : ViewModel() {
 
     val currentFileName = MutableStateFlow("")
 
+    // Embedded MCP Server (Port 8080)
+    private var mcpServer: io.elftrace.app.mcp.MCPServer? = null
+    val isMcpServerRunning = MutableStateFlow(false)
+    val mcpServerUrl = MutableStateFlow("")
+
+    fun toggleMcpServer(context: Context) {
+        if (isMcpServerRunning.value) {
+            mcpServer?.stop()
+            mcpServer = null
+            isMcpServerRunning.value = false
+            mcpServerUrl.value = ""
+        } else {
+            val server = io.elftrace.app.mcp.MCPServer(this, context, port = 8080)
+            if (server.start()) {
+                mcpServer = server
+                isMcpServerRunning.value = true
+                mcpServerUrl.value = server.getSseUrl()
+            }
+        }
+    }
+
+    fun getMcpClaudeConfig(): String {
+        return mcpServer?.getClaudeConfigJson() ?: ""
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        mcpServer?.stop()
+    }
+
     private val _entropyReport = MutableStateFlow<EntropyReport?>(null)
     val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
 

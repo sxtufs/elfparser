@@ -40,6 +40,7 @@ data class ApkSoEntry(val entryName: String, val size: Long)
 fun HomeScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
     val colors = LocalELFTraceColors.current
+    val clipboardManager = LocalClipboardManager.current
     val elfInfo by viewModel.elfInfo.collectAsState()
     val currentFileName by viewModel.currentFileName.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -163,6 +164,105 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             maxLines = 1,
                             softWrap = false
                         )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // ELFTrace MCP Server Card
+        val isMcpRunning by viewModel.isMcpServerRunning.collectAsState()
+        val mcpUrl by viewModel.mcpServerUrl.collectAsState()
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (isMcpRunning) Color(0xFF4CAF50).copy(alpha = 0.6f) else colors.border
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Lan,
+                            contentDescription = null,
+                            tint = if (isMcpRunning) Color(0xFF4CAF50) else colors.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "ELFTrace MCP Server",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = if (isMcpRunning) "● Listening on Port 8080" else "AI Agent Bridge (Claude / Cursor)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isMcpRunning) Color(0xFF4CAF50) else colors.textSecondary,
+                                fontWeight = if (isMcpRunning) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isMcpRunning,
+                        onCheckedChange = { viewModel.toggleMcpServer(context) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = colors.primary,
+                            uncheckedThumbColor = colors.textSecondary,
+                            uncheckedTrackColor = colors.card
+                        )
+                    )
+                }
+
+                if (isMcpRunning && mcpUrl.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "SSE: $mcpUrl",
+                        color = colors.address,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(viewModel.getMcpClaudeConfig()))
+                                Toast.makeText(context, "Copied Claude Desktop config to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(50),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("Copy Config", color = colors.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(mcpUrl))
+                                Toast.makeText(context, "Copied URL to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(50),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("Copy URL", color = colors.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
