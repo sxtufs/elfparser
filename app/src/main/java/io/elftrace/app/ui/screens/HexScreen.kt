@@ -128,37 +128,38 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                     flingBehavior = momentumFling,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // Header Row (Distributed across the full card width)
+                    // Header Row (Shared Column Alignment)
                     item(key = "hex_header") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "OFFSET",
-                                color = colors.textSecondary,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "00 01 02 03  04 05 06 07",
-                                color = colors.textSecondary,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "ASCII",
-                                color = colors.textSecondary,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        HexRowLayout(
+                            modifier = Modifier.padding(bottom = 4.dp),
+                            addressContent = {
+                                Text(
+                                    text = "OFFSET",
+                                    color = colors.textSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            hexContent = {
+                                Text(
+                                    text = "00 01 02 03  04 05 06 07",
+                                    color = colors.textSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            asciiContent = {
+                                Text(
+                                    text = "ASCII",
+                                    color = colors.textSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        )
                     }
 
                     itemsIndexed(
@@ -166,49 +167,45 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                         key = { _, row -> row.address },
                         contentType = { _, _ -> "hex_row" }
                     ) { _, row ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 1.5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Address column (aligned to left)
-                            Text(
-                                text = "%08X".format(row.address),
-                                color = colors.address,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        val part1 = row.bytes.take(4).joinToString(" ") { "%02X".format(it) }
+                        val part2 = if (row.bytes.size > 4) {
+                            row.bytes.drop(4).joinToString(" ") { "%02X".format(it) }
+                        } else ""
+                        val hexFormatted = "$part1  $part2"
 
-                            // 8 Hex bytes column (centered, split into two 4-byte groups)
-                            val part1 = row.bytes.take(4).joinToString(" ") { "%02X".format(it) }
-                            val part2 = if (row.bytes.size > 4) {
-                                row.bytes.drop(4).joinToString(" ") { "%02X".format(it) }
-                            } else ""
-                            val hexFormatted = "$part1  $part2"
+                        val ascii = row.bytes.map { b ->
+                            val c = (b.toInt() and 0xFF).toChar()
+                            if (c in ' '..'~') c else '.'
+                        }.joinToString("")
 
-                            Text(
-                                text = hexFormatted,
-                                color = colors.hexBytes,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.5.sp
-                            )
-
-                            // ASCII representation (anchored cleanly to the right edge)
-                            val ascii = row.bytes.map { b ->
-                                val c = (b.toInt() and 0xFF).toChar()
-                                if (c in ' '..'~') c else '.'
-                            }.joinToString("")
-
-                            Text(
-                                text = "|$ascii|",
-                                color = colors.operands,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.5.sp
-                            )
-                        }
+                        HexRowLayout(
+                            modifier = Modifier.padding(vertical = 1.5.dp),
+                            addressContent = {
+                                Text(
+                                    text = "%08X".format(row.address),
+                                    color = colors.address,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            hexContent = {
+                                Text(
+                                    text = hexFormatted,
+                                    color = colors.hexBytes,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp
+                                )
+                            },
+                            asciiContent = {
+                                Text(
+                                    text = "|$ascii|",
+                                    color = colors.operands,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -274,6 +271,47 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HexRowLayout(
+    modifier: Modifier = Modifier,
+    addressContent: @Composable () -> Unit,
+    hexContent: @Composable () -> Unit,
+    asciiContent: @Composable () -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 1. Address / OFFSET Column (Fixed 76dp width, Left-aligned)
+        Box(
+            modifier = Modifier.width(76.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            addressContent()
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        // 2. HEX Column (Fixed 172dp width, Left-aligned, exact 24-character monospace grid)
+        Box(
+            modifier = Modifier.width(172.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            hexContent()
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        // 3. ASCII Column (Centered directly over data representation)
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center
+        ) {
+            asciiContent()
         }
     }
 }
