@@ -29,9 +29,12 @@ import androidx.compose.ui.unit.sp
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 
 data class ApkSoEntry(val entryName: String, val size: Long)
 
@@ -40,69 +43,118 @@ data class ApkSoEntry(val entryName: String, val size: Long)
 fun HomeScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
     val colors = LocalELFTraceColors.current
+    val coroutineScope = rememberCoroutineScope()
+
     val elfInfo by viewModel.elfInfo.collectAsState()
     val currentFileName by viewModel.currentFileName.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
     var apkSoList by remember { mutableStateOf<List<ApkSoEntry>>(emptyList()) }
     var showApkPicker by remember { mutableStateOf(false) }
-    var apkCachedFile by remember { mutableStateOf<File?>(null) }
+    var selectedApkUri by remember { mutableStateOf<Uri?>(null) }
+    var isScanningApk by remember { mutableStateOf(false) }
+    var isExtractingSo by remember { mutableStateOf(false) }
 
+    // Stream-based, zero-copy file picker:
+    // Safely handles 1GB+ APKs by streaming ZIP headers without copying the giant archive to disk.
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        uri?.let {
-            val fileName = queryFileName(context, it)
-            val tempFile = File(context.cacheDir, "input_target")
-            context.contentResolver.openInputStream(it)?.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
+        uri?.let { selectedUri ->
+            coroutineScope.launch(Dispatchers.IO) {
+                withContext(Dispatchers.Main) { isScanningApk = true }
 
-            // Check if it's an APK, XAPK, or ZIP archive containing .so files (including split APKs!)
-            val isZip = try {
-                ZipFile(tempFile).use { zip ->
-                    val soList = mutableListOf<ApkSoEntry>()
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val e = entries.nextElement()
-                        if (!e.isDirectory) {
-                            if (e.name.endsWith(".so", ignoreCase = true)) {
-                                soList.add(ApkSoEntry(e.name, e.size))
-                            } else if (e.name.endsWith(".apk", ignoreCase = true)) {
-                                // Inspect nested split APKs inside .xapk / .apks bundles!
-                                try {
-                                    zip.getInputStream(e).use { apkInput ->
-                                        val nestedZip = java.util.zip.ZipInputStream(apkInput)
-                                        var nestedEntry = nestedZip.nextEntry
-                                        while (nestedEntry != null) {
-                                            if (!nestedEntry.isDirectory && nestedEntry.name.endsWith(".so", ignoreCase = true)) {
-                                                val compositeName = "${e.name}!/${nestedEntry.name}"
-                                                soList.add(ApkSoEntry(compositeName, nestedEntry.size))
-                                            }
-                                            nestedEntry = nestedZip.nextEntry
-                                        }
-                                    }
-                                } catch (_: Exception) {}
-                            }
+                val fileName = queryFileName(context, selectedUri)
+
+                // Read first 4 magic bytes to determine file type in 1 millisecond
+                val header = ByteArray(4)
+                var bytesRead = 0
+                try {
+                    context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                        bytesRead = input.read(header, 0, 4)
+                    }
+                } catch (_: Exception) {}
+
+                val isElf = bytesRead == 4 && header[0] == 0x7F.toByte() && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()
+                val isZip = bytesRead == 4 && header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
+
+                if (isElf) {
+                    // Direct ELF shared library (.so) - small file, copy directly to cache
+                    val tempFile = File(context.cacheDir, "input_target.so")
+                    try {
+                        context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                        }
+                        withContext(Dispatchers.Main) {
+                            isScanningApk = false
+                            viewModel.loadElf(tempFile.absolutePath, fileName)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            isScanningApk = false
+                            Toast.makeText(context, "Failed to load ELF: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    if (soList.isNotEmpty()) {
-                        apkSoList = soList.sortedByDescending { it.size }
-                        apkCachedFile = tempFile
-                        showApkPicker = true
-                        true
-                    } else {
-                        false
+                } else if (isZip) {
+                    // APK / XAPK / ZIP bundle - stream-scan .so libraries WITHOUT copying 1GB+ archive to storage!
+                    val soList = mutableListOf<ApkSoEntry>()
+                    try {
+                        context.contentResolver.openInputStream(selectedUri)?.use { stream ->
+                            val zip = ZipInputStream(stream)
+                            var entry = zip.nextEntry
+                            while (entry != null) {
+                                if (!entry.isDirectory) {
+                                    val name = entry.name
+                                    if (name.endsWith(".so", ignoreCase = true)) {
+                                        soList.add(ApkSoEntry(name, entry.size.coerceAtLeast(0)))
+                                    } else if (name.endsWith(".apk", ignoreCase = true)) {
+                                        // Scan nested split APK inside .xapk bundle
+                                        try {
+                                            val nestedZip = ZipInputStream(zip)
+                                            var nestedEntry = nestedZip.nextEntry
+                                            while (nestedEntry != null) {
+                                                if (!nestedEntry.isDirectory && nestedEntry.name.endsWith(".so", ignoreCase = true)) {
+                                                    val compositeName = "$name!/${nestedEntry.name}"
+                                                    soList.add(ApkSoEntry(compositeName, nestedEntry.size.coerceAtLeast(0)))
+                                                }
+                                                nestedEntry = nestedZip.nextEntry
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                                entry = zip.nextEntry
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    withContext(Dispatchers.Main) {
+                        isScanningApk = false
+                        if (soList.isNotEmpty()) {
+                            apkSoList = soList.sortedByDescending { it.size }
+                            selectedApkUri = selectedUri
+                            showApkPicker = true
+                        } else {
+                            Toast.makeText(context, "No native .so libraries found in this package", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    // Generic binary - try loading directly
+                    val tempFile = File(context.cacheDir, "input_target")
+                    try {
+                        context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                        }
+                        withContext(Dispatchers.Main) {
+                            isScanningApk = false
+                            viewModel.loadElf(tempFile.absolutePath, fileName)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            isScanningApk = false
+                            Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
-            } catch (_: Exception) {
-                false
-            }
-
-            if (!isZip) {
-                viewModel.loadElf(tempFile.absolutePath, fileName)
             }
         }
     }
@@ -237,54 +289,16 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 }
             }
 
+            // Virtualized Symbol List with Momentum Fling
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 flingBehavior = rememberMomentumFlingBehavior(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (parsedAddr != null && cleanHex.length >= 2) {
-                    item(key = "jump_vma_direct") {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = colors.primary.copy(alpha = 0.15f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectFunction(parsedAddr, "sub_${"%08X".format(parsedAddr)}")
-                                    viewModel.codeSubTab.value = 0
-                                    viewModel.navigateTo(Screen.Code)
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = colors.primary)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Jump directly to VMA 0x${"%08X".format(parsedAddr)}",
-                                        color = colors.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = "Disassemble arbitrary address (unexported / stripped code)",
-                                        color = colors.textSecondary,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
                 items(
                     items = filteredSyms,
                     key = { "${it.value}_${it.sym}" },
-                    contentType = { "symbol" }
+                    contentType = { "symbol_item" }
                 ) { sym ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
@@ -301,19 +315,19 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = sym.displayName,
-                                    color = colors.textPrimary,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 13.sp
+                                    color = if (sym.isJni) colors.primary else colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "0x${"%08X".format(sym.value)}  |  size: ${sym.size} B",
+                                    text = "0x${"%08X".format(sym.value)} (${sym.size} B)",
                                     color = colors.address,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp
@@ -328,8 +342,38 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // APK Native Library Selection Dialog
-        if (showApkPicker && apkCachedFile != null) {
+        // Loading Dialog during background APK stream scan / SO extraction
+        if (isScanningApk || isExtractingSo) {
+            AlertDialog(onDismissRequest = {}) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = colors.primary,
+                            strokeWidth = 2.5.dp
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            text = if (isScanningApk) "Inspecting APK libraries..." else "Extracting native library...",
+                            color = colors.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        // APK Native Library Selection Dialog (Zero-Copy Stream Extraction)
+        if (showApkPicker && selectedApkUri != null) {
             AlertDialog(onDismissRequest = { showApkPicker = false }) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -355,10 +399,19 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            val extracted = File(context.cacheDir, "extracted_$simpleName")
-                                            if (extractSoFromApk(apkCachedFile!!, entry.entryName, extracted)) {
-                                                viewModel.loadElf(extracted.absolutePath, simpleName)
-                                                showApkPicker = false
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                withContext(Dispatchers.Main) { isExtractingSo = true }
+                                                val extracted = File(context.cacheDir, "extracted_$simpleName")
+                                                val ok = extractSoFromUri(context, selectedApkUri!!, entry.entryName, extracted)
+                                                withContext(Dispatchers.Main) {
+                                                    isExtractingSo = false
+                                                    if (ok) {
+                                                        showApkPicker = false
+                                                        viewModel.loadElf(extracted.absolutePath, simpleName)
+                                                    } else {
+                                                        Toast.makeText(context, "Failed to extract $simpleName", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
                                             }
                                         }
                                 ) {
@@ -389,79 +442,55 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     }
 }
 
-private fun extractSoFromApk(apkFile: File, entryName: String, outFile: File): Boolean {
+/**
+ * Stream-extracts ONLY the requested .so file from the APK/ZIP Uri directly.
+ * Never writes or copies the giant 1GB+ APK archive to storage!
+ */
+private fun extractSoFromUri(context: Context, uri: Uri, entryName: String, outFile: File): Boolean {
     return try {
-        ZipFile(apkFile).use { zip ->
-            if (entryName.contains("!/")) {
-                val parts = entryName.split("!/", limit = 2)
-                val outerEntry = zip.getEntry(parts[0]) ?: return false
-                zip.getInputStream(outerEntry).use { outerInput ->
-                    val nestedZip = java.util.zip.ZipInputStream(outerInput)
-                    var nestedEntry = nestedZip.nextEntry
-                    while (nestedEntry != null) {
-                        if (nestedEntry.name == parts[1]) {
-                            FileOutputStream(outFile).use { output ->
-                                nestedZip.copyTo(output)
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val zip = ZipInputStream(stream)
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entryName.contains("!/")) {
+                    val parts = entryName.split("!/", limit = 2)
+                    if (entry.name == parts[0]) {
+                        val nestedZip = ZipInputStream(zip)
+                        var nestedEntry = nestedZip.nextEntry
+                        while (nestedEntry != null) {
+                            if (nestedEntry.name == parts[1]) {
+                                FileOutputStream(outFile).use { output ->
+                                    nestedZip.copyTo(output)
+                                }
+                                return true
                             }
-                            return true
+                            nestedEntry = nestedZip.nextEntry
                         }
-                        nestedEntry = nestedZip.nextEntry
+                    }
+                } else {
+                    if (entry.name == entryName) {
+                        FileOutputStream(outFile).use { output ->
+                            zip.copyTo(output)
+                        }
+                        return true
                     }
                 }
-                false
-            } else {
-                val entry = zip.getEntry(entryName) ?: return false
-                zip.getInputStream(entry).use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                true
+                entry = zip.nextEntry
             }
         }
+        false
     } catch (_: Exception) {
         false
     }
 }
 
 private fun queryFileName(context: Context, uri: Uri): String {
-    var name = "libtarget.so"
-    try {
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex != -1 && cursor.moveToFirst()) {
-                name = cursor.getString(nameIndex)
-            }
-        }
-    } catch (_: Exception) {}
-    return name
-}
-
-@Composable
-fun ThemeToggleIcon(isDark: Boolean, tint: Color) {
-    if (isDark) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
-            val r = size.minDimension / 2f
-            val center = androidx.compose.ui.geometry.Offset(r, r)
-            drawCircle(color = tint, radius = r * 0.42f, center = center)
-            for (i in 0 until 8) {
-                val angle = i * Math.PI / 4.0
-                val start = androidx.compose.ui.geometry.Offset(
-                    (center.x + Math.cos(angle) * r * 0.62).toFloat(),
-                    (center.y + Math.sin(angle) * r * 0.62).toFloat()
-                )
-                val end = androidx.compose.ui.geometry.Offset(
-                    (center.x + Math.cos(angle) * r * 0.95).toFloat(),
-                    (center.y + Math.sin(angle) * r * 0.95).toFloat()
-                )
-                drawLine(color = tint, start = start, end = end, strokeWidth = 2.2f)
-            }
-        }
-    } else {
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
-            val r = size.minDimension / 2f
-            drawCircle(color = tint, radius = r * 0.75f, center = androidx.compose.ui.geometry.Offset(r * 0.9f, r * 1.1f))
-            drawCircle(color = Color.White, radius = r * 0.62f, center = androidx.compose.ui.geometry.Offset(r * 0.65f, r * 0.85f))
+    var name = "target.so"
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (nameIndex != -1 && cursor.moveToFirst()) {
+            name = cursor.getString(nameIndex) ?: name
         }
     }
+    return name
 }
