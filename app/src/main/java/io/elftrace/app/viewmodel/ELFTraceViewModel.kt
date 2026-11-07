@@ -36,6 +36,62 @@ class ELFTraceViewModel : ViewModel() {
 
     val currentFileName = MutableStateFlow("")
 
+    companion object {
+        const val MAX_BOOKMARKS = 50
+    }
+
+    private val _bookmarks = MutableStateFlow<List<FunctionBookmark>>(emptyList())
+    val bookmarks: StateFlow<List<FunctionBookmark>> = _bookmarks.asStateFlow()
+
+    fun loadBookmarksForCurrentFile(context: Context) {
+        val fileName = currentFileName.value.ifEmpty { "default_target" }
+        val prefs = context.getSharedPreferences("elftrace_bookmarks", Context.MODE_PRIVATE)
+        val json = prefs.getString("bookmarks_$fileName", null)
+        if (!json.isNullOrEmpty()) {
+            try {
+                val listType = object : com.google.gson.reflect.TypeToken<List<FunctionBookmark>>() {}.type
+                val list: List<FunctionBookmark> = com.google.gson.Gson().fromJson(json, listType) ?: emptyList()
+                _bookmarks.value = list.take(MAX_BOOKMARKS)
+            } catch (_: Exception) {
+                _bookmarks.value = emptyList()
+            }
+        } else {
+            _bookmarks.value = emptyList()
+        }
+    }
+
+    fun addBookmark(context: Context, address: Long, name: String, note: String): Boolean {
+        val fileName = currentFileName.value.ifEmpty { "default_target" }
+        val current = _bookmarks.value.toMutableList()
+        if (current.size >= MAX_BOOKMARKS && current.none { it.address == address }) {
+            return false // Limit reached!
+        }
+        current.removeAll { it.address == address }
+        current.add(0, FunctionBookmark(address, name, note))
+        val updated = current.take(MAX_BOOKMARKS)
+        _bookmarks.value = updated
+
+        val prefs = context.getSharedPreferences("elftrace_bookmarks", Context.MODE_PRIVATE)
+        prefs.edit().putString("bookmarks_$fileName", com.google.gson.Gson().toJson(updated)).apply()
+        return true
+    }
+
+    fun removeBookmark(context: Context, address: Long) {
+        val fileName = currentFileName.value.ifEmpty { "default_target" }
+        val updated = _bookmarks.value.filter { it.address != address }
+        _bookmarks.value = updated
+        val prefs = context.getSharedPreferences("elftrace_bookmarks", Context.MODE_PRIVATE)
+        prefs.edit().putString("bookmarks_$fileName", com.google.gson.Gson().toJson(updated)).apply()
+    }
+
+    fun isBookmarked(address: Long): Boolean {
+        return _bookmarks.value.any { it.address == address }
+    }
+
+    fun getBookmarkNote(address: Long): String {
+        return _bookmarks.value.firstOrNull { it.address == address }?.note ?: ""
+    }
+
     private val _entropyReport = MutableStateFlow<EntropyReport?>(null)
     val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
 
