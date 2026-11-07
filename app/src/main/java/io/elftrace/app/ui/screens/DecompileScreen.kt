@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.elftrace.app.ui.theme.*
@@ -29,6 +31,22 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
     val clipboardManager = LocalClipboardManager.current
     val decompileCode by viewModel.decompileText.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
+    val currentAddr by viewModel.currentAddress.collectAsState()
+
+    val shortTitle = remember(symbolName, currentAddr) {
+        if (symbolName.contains(" -> ")) {
+            symbolName
+        } else if (symbolName.contains("::")) {
+            symbolName.substringAfterLast("::")
+        } else if (symbolName.contains(".")) {
+            val pkg = symbolName.substringBeforeLast(".")
+            val meth = symbolName.substringAfterLast(".")
+            val shortPkg = if (pkg.length > 20) pkg.take(18) + "…" else pkg
+            "$shortPkg -> $meth"
+        } else {
+            symbolName
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -36,26 +54,41 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        // Toolbar
+        // Toolbar (Fixed weight ensures copy button is NEVER pushed off-screen)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "Decompiled: $symbolName",
-                color = colors.primary,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp
-            )
-            IconButton(onClick = {
-                clipboardManager.setText(AnnotatedString(decompileCode))
-                Toast.makeText(context, "Copied C code to clipboard", Toast.LENGTH_SHORT).show()
-            }) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = colors.textPrimary)
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(
+                    text = shortTitle,
+                    color = colors.primary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Decompiled C (0x${"%08X".format(currentAddr)})",
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(decompileCode))
+                    Toast.makeText(context, "Copied C code to clipboard", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = colors.textPrimary, modifier = Modifier.size(18.dp))
             }
         }
 
