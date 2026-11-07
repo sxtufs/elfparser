@@ -14,10 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -204,84 +202,6 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
 
             Spacer(Modifier.height(8.dp))
-
-            // Saved Bookmarks Section (Capped at 50 max)
-            val bookmarks by viewModel.bookmarks.collectAsState()
-            if (bookmarks.isNotEmpty()) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD54F), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Saved Bookmarks (${bookmarks.size}/${ELFTraceViewModel.MAX_BOOKMARKS})",
-                                    color = Color(0xFFFFD54F),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(6.dp))
-
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(bookmarks) { b ->
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = colors.card),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.selectFunction(b.address, b.name)
-                                            viewModel.codeSubTab.value = 0
-                                            viewModel.navigateTo(Screen.Code)
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(b.name, color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text("0x${"%08X".format(b.address)}", color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 10.5.sp)
-                                                if (b.note.isNotEmpty()) {
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text("• ${b.note}", color = colors.textSecondary, fontSize = 10.5.sp, maxLines = 1)
-                                                }
-                                            }
-                                        }
-
-                                        IconButton(
-                                            onClick = { viewModel.removeBookmark(context, b.address) },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(Icons.Default.Close, contentDescription = "Delete", tint = colors.textSecondary, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-            }
 
             // Search Symbols or Address Bar
             OutlinedTextField(

@@ -140,10 +140,3 @@ data class TraceState(
     val changed_flags: List<String> = emptyList(),
     val error: String? = null
 )
-
-data class FunctionBookmark(
-    val address: Long = 0,
-    val name: String = "",
-    val note: String = "",
-    val timestamp: Long = System.currentTimeMillis()
-)

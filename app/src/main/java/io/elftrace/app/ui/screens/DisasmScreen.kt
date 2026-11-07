@@ -13,8 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -66,10 +64,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
     var showAssembleDialog by remember { mutableStateOf(false) }
     var assembleInput by remember { mutableStateOf("") }
     var currentEditInsnAddr by remember { mutableStateOf(0L) }
-
-    var showAddBookmarkDialog by remember { mutableStateOf(false) }
-    var showEditBookmarkDialog by remember { mutableStateOf(false) }
-    var bookmarkNoteInput by remember { mutableStateOf("") }
 
     // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
     val shortTitle = remember(symbolName, currentAddr) {
@@ -147,32 +141,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(3.dp))
                     Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // Bookmark Star Button (50 bookmarks max limit)
-                val isBookmarked = viewModel.isBookmarked(currentAddr)
-                IconButton(
-                    onClick = {
-                        if (isBookmarked) {
-                            bookmarkNoteInput = viewModel.getBookmarkNote(currentAddr)
-                            showEditBookmarkDialog = true
-                        } else {
-                            if (viewModel.bookmarks.value.size >= ELFTraceViewModel.MAX_BOOKMARKS) {
-                                Toast.makeText(context, "Bookmark limit reached (${ELFTraceViewModel.MAX_BOOKMARKS} max)", Toast.LENGTH_SHORT).show()
-                            } else {
-                                bookmarkNoteInput = ""
-                                showAddBookmarkDialog = true
-                            }
-                        }
-                    },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = "Bookmark",
-                        tint = if (isBookmarked) Color(0xFFFFD54F) else colors.textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
             }
         }
@@ -787,128 +755,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { showHierarchyDialog = false }) {
                                 Text("Close", color = colors.primary)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Bookmark Dialogs (Add & Edit)
-        if (showAddBookmarkDialog) {
-            AlertDialog(onDismissRequest = { showAddBookmarkDialog = false }) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = colors.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD54F), modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Bookmark Function", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("0x${"%08X".format(currentAddr)} - $shortTitle", color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = bookmarkNoteInput,
-                            onValueChange = { bookmarkNoteInput = it },
-                            label = { Text("Note (e.g. License check bypass)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.primary,
-                                unfocusedBorderColor = colors.border,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary
-                            )
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { showAddBookmarkDialog = false }) {
-                                Text("Cancel", color = colors.textSecondary)
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    val ok = viewModel.addBookmark(context, currentAddr, symbolName, bookmarkNoteInput.trim())
-                                    if (ok) {
-                                        Toast.makeText(context, "Bookmarked!", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Limit reached (${ELFTraceViewModel.MAX_BOOKMARKS} max)", Toast.LENGTH_SHORT).show()
-                                    }
-                                    showAddBookmarkDialog = false
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (showEditBookmarkDialog) {
-            AlertDialog(onDismissRequest = { showEditBookmarkDialog = false }) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = colors.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD54F), modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Edit Bookmark", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("0x${"%08X".format(currentAddr)} - $shortTitle", color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = bookmarkNoteInput,
-                            onValueChange = { bookmarkNoteInput = it },
-                            label = { Text("Note") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.primary,
-                                unfocusedBorderColor = colors.border,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary
-                            )
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(
-                                onClick = {
-                                    viewModel.removeBookmark(context, currentAddr)
-                                    Toast.makeText(context, "Bookmark removed", Toast.LENGTH_SHORT).show()
-                                    showEditBookmarkDialog = false
-                                }
-                            ) {
-                                Text("Remove", color = RedAccent, fontWeight = FontWeight.Bold)
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { showEditBookmarkDialog = false }) {
-                                    Text("Cancel", color = colors.textSecondary)
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Button(
-                                    onClick = {
-                                        viewModel.addBookmark(context, currentAddr, symbolName, bookmarkNoteInput.trim())
-                                        showEditBookmarkDialog = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
-                                    shape = RoundedCornerShape(50)
-                                ) {
-                                    Text("Update", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
                             }
                         }
                     }
