@@ -494,3 +494,32 @@ private fun queryFileName(context: Context, uri: Uri): String {
     }
     return name
 }
+
+@Composable
+fun ThemeToggleIcon(isDark: Boolean, tint: Color) {
+    if (isDark) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
+            val r = size.minDimension / 2f
+            val center = androidx.compose.ui.geometry.Offset(r, r)
+            drawCircle(color = tint, radius = r * 0.42f, center = center)
+            for (i in 0 until 8) {
+                val angle = i * Math.PI / 4.0
+                val start = androidx.compose.ui.geometry.Offset(
+                    (center.x + Math.cos(angle) * r * 0.62).toFloat(),
+                    (center.y + Math.sin(angle) * r * 0.62).toFloat()
+                )
+                val end = androidx.compose.ui.geometry.Offset(
+                    (center.x + Math.cos(angle) * r * 0.95).toFloat(),
+                    (center.y + Math.sin(angle) * r * 0.95).toFloat()
+                )
+                drawLine(color = tint, start = start, end = end, strokeWidth = 2.2f)
+            }
+        }
+    } else {
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
+            val r = size.minDimension / 2f
+            drawCircle(color = tint, radius = r * 0.75f, center = androidx.compose.ui.geometry.Offset(r * 0.9f, r * 1.1f))
+            drawCircle(color = Color.White, radius = r * 0.62f, center = androidx.compose.ui.geometry.Offset(r * 0.65f, r * 0.85f))
+        }
+    }
+}

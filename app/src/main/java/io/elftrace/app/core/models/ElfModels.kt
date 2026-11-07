@@ -24,6 +24,9 @@ data class SymsDTO(
 ) {
     val displayName: String
         get() = demangled ?: jni_method?.let { "$jni_class -> $it" } ?: sym
+
+    val isJni: Boolean
+        get() = jni_method != null || sym.startsWith("Java_") || sym.contains("JNI_OnLoad")
 }
 
 data class YaraDTO(
