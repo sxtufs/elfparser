@@ -362,7 +362,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         )
                         Spacer(Modifier.width(16.dp))
                         Text(
-                            text = if (isScanningApk) "Inspecting APK libraries..." else "Extracting native library...",
+                            text = if (isScanningApk) "Inspecting APK libraries" else "Extracting native library",
                             color = colors.textPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
