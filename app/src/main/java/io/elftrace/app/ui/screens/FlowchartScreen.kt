@@ -34,16 +34,21 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                 .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                 .padding(8.dp)
                 .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
-                .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
-            SelectionContainer {
-                Text(
-                    text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
-                    color = colors.operands,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
+                        color = colors.operands,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
             }
         }
     }

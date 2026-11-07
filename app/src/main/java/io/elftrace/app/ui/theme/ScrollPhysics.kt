@@ -23,7 +23,7 @@ class MomentumFlingBehavior(
         if (abs(initialVelocity) < 1f) return 0f
 
         var lastValue = 0f
-        var velocityLeft = initialVelocity
+        var velocityLeft = 0f
 
         AnimationState(
             initialValue = 0f,
@@ -32,11 +32,18 @@ class MomentumFlingBehavior(
             val delta = value - lastValue
             val consumed = scrollBy(delta)
             lastValue = value
-            velocityLeft = this.velocity
 
-            // Stop cleanly when hitting list boundary (top or bottom overscroll)
-            if (abs(delta - consumed) > 0.5f) {
+            // A boundary is reached only when the scroll requested actual movement (abs(delta) > 0.5f)
+            // but the scrollable container could not consume movement in that direction.
+            // When actively scrolling through content, consumed moves in the same direction as delta.
+            val isBoundaryHit = abs(delta) > 0.5f && !(
+                (delta > 0f && consumed > 0.2f) || (delta < 0f && consumed < -0.2f)
+            )
+
+            if (isBoundaryHit) {
                 cancelAnimation()
+                // Consume remaining velocity so it doesn't slam into unwanted overscroll elastic bounce
+                velocityLeft = 0f
             }
         }
         return velocityLeft

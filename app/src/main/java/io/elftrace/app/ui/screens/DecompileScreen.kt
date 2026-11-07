@@ -64,23 +64,28 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
 
         val momentumFling = rememberMomentumFlingBehavior()
 
-        // Selectable Monospaced Code View with Horizontal & Vertical Scrolling
+        // Selectable Monospaced Code View with Isolated 2D Scrolling
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                 .padding(8.dp)
                 .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
-                .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
-            SelectionContainer {
-                Text(
-                    text = decompileCode.ifEmpty { "// Select a function to decompile" },
-                    color = colors.operands,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = decompileCode.ifEmpty { "// Select a function to decompile" },
+                        color = colors.operands,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
             }
         }
     }
