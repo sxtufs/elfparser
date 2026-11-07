@@ -2,7 +2,6 @@ package io.elftrace.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -64,7 +63,7 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
 
         val momentumFling = rememberMomentumFlingBehavior()
 
-        // Selectable Monospaced Code View with Isolated 2D Scrolling
+        // Selectable Monospaced Code View with Pure Vertical Scrolling & Word-Wrap (Fits to screen width)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -72,20 +71,16 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                 .padding(8.dp)
                 .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = decompileCode.ifEmpty { "// Select a function to decompile" },
-                        color = colors.operands,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                }
+            SelectionContainer {
+                Text(
+                    text = decompileCode.ifEmpty { "// Select a function to decompile" },
+                    color = colors.operands,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                    softWrap = true
+                )
             }
         }
     }

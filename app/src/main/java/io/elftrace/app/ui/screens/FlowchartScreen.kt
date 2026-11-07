@@ -1,7 +1,6 @@
 package io.elftrace.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -28,6 +27,7 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
     ) {
         val momentumFling = rememberMomentumFlingBehavior()
 
+        // Flowchart View with Pure Vertical Scrolling & Auto-Fit
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -35,20 +35,16 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                 .padding(8.dp)
                 .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(rememberScrollState(), flingBehavior = momentumFling)
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
-                        color = colors.operands,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                }
+            SelectionContainer {
+                Text(
+                    text = flowchartText.ifEmpty { "// Select a function to view its control flow graph" },
+                    color = colors.operands,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                    softWrap = true
+                )
             }
         }
     }
