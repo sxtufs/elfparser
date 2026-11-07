@@ -120,7 +120,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.card, RoundedCornerShape(8.dp))
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 6.dp, vertical = 8.dp)
         ) {
             SelectionContainer {
                 LazyColumn(
@@ -138,7 +138,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     color = colors.textSecondary,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             },
                             hexContent = {
@@ -147,7 +149,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     color = colors.textSecondary,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             },
                             asciiContent = {
@@ -156,7 +160,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     color = colors.textSecondary,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         )
@@ -185,8 +191,10 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     text = "%08X".format(row.address),
                                     color = colors.address,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             },
                             hexContent = {
@@ -194,7 +202,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     text = hexFormatted,
                                     color = colors.hexBytes,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             },
                             asciiContent = {
@@ -202,7 +212,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     text = "|$ascii|",
                                     color = colors.operands,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         )
@@ -286,29 +298,29 @@ private fun HexRowLayout(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Address / OFFSET Column (Fixed 76dp width, Left-aligned)
+        // 1. Address / OFFSET Column (Fixed 66dp width, Left-aligned)
         Box(
-            modifier = Modifier.width(76.dp),
+            modifier = Modifier.width(66.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             addressContent()
         }
 
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(6.dp))
 
-        // 2. HEX Column (Fixed 172dp width, Left-aligned, exact 24-character monospace grid)
+        // 2. HEX Column (Fixed 164dp width, Left-aligned, exact 24-character monospace grid)
         Box(
-            modifier = Modifier.width(172.dp),
+            modifier = Modifier.width(164.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             hexContent()
         }
 
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
 
-        // 3. ASCII Column (Centered directly over data representation)
+        // 3. ASCII Column (Fixed 74dp width, Centered, fits 10 chars with zero wrapping)
         Box(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.width(74.dp),
             contentAlignment = Alignment.Center
         ) {
             asciiContent()
