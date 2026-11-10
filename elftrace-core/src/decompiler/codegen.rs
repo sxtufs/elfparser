@@ -139,17 +139,26 @@ impl<'a> CodeGenerator<'a> {
                     if matches!(d_lower.as_str(), "rax" | "eax" | "x0" | "w0" | "r0") {
                         continue;
                     }
-                    // Only track register aliases when the destination register is
-                    // written EXACTLY ONCE in the whole function. If it gets
-                    // reassigned anywhere (including by a Store-through-register
-                    // pattern that we miss), aliasing to the parameter name
-                    // produces wrong output: for example, `x3 = x0` at one point
-                    // followed by `x3 = malloc(...)` would leave x3 aliased to
-                    // a0, so a later `bl pthread_create` renders x3 as a0.
-                    // We compute assignment frequency lazily on first sight.
+                    // Only track aliases for CALLEE-SAVED registers (AArch64 x19-x30,
+                    // x86-64 rbx/rbp/r12-r15, ARM32 r4-r11/lr). Caller-saved registers
+                    // (x0-x18 for AArch64, rax/rcx/rdx/rsi/rdi/r8-r11 for x86-64) are
+                    // reused across calls; aliasing them to a parameter name produces
+                    // WRONG output at call sites because the parameter's backing
+                    // register may be reassigned before the alias is consumed.
+                    //
+                    // Example that motivates this: `x3 = x0` (alias x3 -> a0) followed
+                    // by `x0 = malloc(...)` followed by `bl pthread_create(x0,...,x3)`.
+                    // Without the fix, arg 4 renders as `a0` (malloc's value), not
+                    // x3's actual value (the ORIGINAL a0 param).
+                    if !self.arch.is_callee_saved(&d_lower) {
+                        continue;
+                    }
+                    // Second check: drop the alias if the destination is reassigned
+                    // anywhere else in the function. Callee-saved registers CAN be
+                    // reassigned legitimately; when they are, they are no longer a
+                    // pure copy of the parameter.
                     let already_aliased = reg_aliases.contains_key(&d_lower);
                     if already_aliased {
-                        // A second assignment to this register - drop the alias
                         reg_aliases.remove(&d_lower);
                         continue;
                     }
