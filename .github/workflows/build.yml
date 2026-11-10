@@ -52,32 +52,11 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
-      - name: Install cmake (Unicorn C library)
-        run: sudo apt-get update && sudo apt-get install -y cmake
-
       - name: Build Rust core for arm64-v8a
-        env:
-          NDK: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-          SYSROOT="$TOOLCHAIN/sysroot"
-          API=24
-          TRIPLE=aarch64-linux-android
-          # Enable the Unicorn execution engine for the SHIPPED .so only. Host
-          # `cargo test` below stays on the built-in CPU (no cmake/libclang
-          # needed on the runner), while the APK gets the multi-arch engine.
-          export BINDGEN_EXTRA_CLANG_ARGS="--target=$TRIPLE --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/$TRIPLE"
-          export ANDROID_NDK="$NDK"
-          export ANDROID_NDK_HOME="$NDK"
-          export ANDROID_NDK_ROOT="$NDK"
-          export CMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/elftrace-core/cmake/android-arm64.toolchain.cmake"
-          export CC_aarch64_linux_android="$TOOLCHAIN/bin/${TRIPLE}${API}-clang"
-          export CXX_aarch64_linux_android="$TOOLCHAIN/bin/${TRIPLE}${API}-clang++"
-          export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
-          export RANLIB_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ranlib"
           cd elftrace-core
-          cargo ndk -t arm64-v8a -p $API -o ../app/src/main/jniLibs build --release --features engine-unicorn
+          cargo ndk -t arm64-v8a -p 24 -o ../app/src/main/jniLibs build --release
           cd ..
           test -f app/src/main/jniLibs/arm64-v8a/libelftrace.so || {
             echo "ERROR: cargo ndk did not produce libelftrace.so"
@@ -112,11 +91,9 @@ jobs:
           ls -la "$SO"
           SIZE=$(stat -c%s "$SO")
           echo "Bytes: $SIZE ($((SIZE/1024/1024)) MB)"
-          # Raised from 12 MB to 24 MB to accommodate the Unicorn (QEMU) execution
-          # core, which is larger than the hand-written tracer. Still catches a
-          # missing-strip regression (unstripped is ~40 MB+).
-          if [ "$SIZE" -gt 25165824 ]; then
-            echo "ERROR: .so > 24 MB — strip profile may not be active"
+          # Catches a missing-strip regression (unstripped is much larger).
+          if [ "$SIZE" -gt 12582912 ]; then
+            echo "ERROR: .so > 12 MB — strip profile may not be active"
             exit 1
           fi
 

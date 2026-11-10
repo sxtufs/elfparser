@@ -28,11 +28,6 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun save0(handle: Long): ByteArray
         @JvmStatic private external fun readBytes0(handle: Long, address: Long, length: Int): ByteArray
 
-        // In-process Execution Tracer
-        @JvmStatic private external fun traceInit(handle: Long, address: Long): String
-        @JvmStatic private external fun traceStep(handle: Long): String
-        @JvmStatic private external fun traceBack(handle: Long): String
-
         // Native Cross-References (XREF) & Call Hierarchy
         @JvmStatic private external fun getXrefs(handle: Long, address: Long): String
         @JvmStatic private external fun getHierarchy(handle: Long, address: Long): String
@@ -113,32 +108,17 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         return readBytes0(handle, address, length)
     }
 
-    fun startTrace(address: Long): TraceState {
-        val json = traceInit(handle, address)
-        return try {
-            gson.fromJson(json, TraceState::class.java) ?: TraceState()
-        } catch (e: Exception) {
-            TraceState(error = e.message)
-        }
-    }
+    // Execution tracing was removed from the product (the native tracer was
+    // unstable on real files). These are retained as no-ops so callers compile
+    // and never throw; the UI no longer surfaces them.
+    fun startTrace(@Suppress("UNUSED_PARAMETER") address: Long): TraceState =
+        TraceState(error = "Execution tracing is no longer available")
 
-    fun stepTrace(): TraceState {
-        val json = traceStep(handle)
-        return try {
-            gson.fromJson(json, TraceState::class.java) ?: TraceState()
-        } catch (e: Exception) {
-            TraceState(error = e.message)
-        }
-    }
+    fun stepTrace(): TraceState =
+        TraceState(error = "Execution tracing is no longer available")
 
-    fun stepBackTrace(): TraceState {
-        val json = traceBack(handle)
-        return try {
-            gson.fromJson(json, TraceState::class.java) ?: TraceState()
-        } catch (e: Exception) {
-            TraceState(error = e.message)
-        }
-    }
+    fun stepBackTrace(): TraceState =
+        TraceState(error = "Execution tracing is no longer available")
 
     fun getXrefs(address: Long): List<XRefItem> {
         val json = getXrefs(handle, address)

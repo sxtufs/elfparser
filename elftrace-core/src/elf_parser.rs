@@ -7,14 +7,7 @@ use std::path::Path;
 pub struct ElfContext {
     pub path: String,
     pub raw: Vec<u8>,
-    pub vcpu: Option<crate::tracer::Tracer>,
     pub syms_map: HashMap<u64, SymsDTO>,
-    /// Last tracer-initialization failure, surfaced to the UI instead of being
-    /// silently dropped when `Tracer::new` fails.
-    pub trace_init_error: Option<String>,
-    /// True once `traceInit` has been called, so the UI can distinguish
-    /// "init never ran" from "init ran and failed/succeeded".
-    pub trace_inited: bool,
 }
 
 impl ElfContext {
@@ -31,10 +24,7 @@ impl ElfContext {
         Self {
             path: String::from("<stub>"),
             raw: Vec::new(),
-            vcpu: None,
             syms_map: HashMap::new(),
-            trace_init_error: None,
-            trace_inited: false,
         }
     }
 
@@ -213,10 +203,7 @@ impl ElfContext {
         let mut ctx = Self {
             path: path.to_string(),
             raw,
-            vcpu: None,
             syms_map,
-            trace_init_error: None,
-            trace_inited: false,
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)

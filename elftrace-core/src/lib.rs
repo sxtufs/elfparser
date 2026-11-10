@@ -8,9 +8,6 @@ pub mod jni_resolver;
 pub mod model;
 pub mod patcher;
 pub mod scanner;
-pub mod tracer;
-#[cfg(feature = "engine-unicorn")]
-pub mod engine_unicorn;
 pub mod xref;
 
 pub use elf_parser::ElfContext;
@@ -22,5 +19,4 @@ pub use scanner::{
     calculate_entropy_report, scan_security, EntropyReport, ScanReport, SectionEntropy,
     SecurityFinding,
 };
-pub use tracer::{RegisterState, Tracer, VirtualCpu};
 pub use xref::{find_callers_to, get_hierarchy, CallHierarchy, CalleeItem, XRefItem, XRefResponse};
