@@ -7,7 +7,7 @@ use std::path::Path;
 pub struct ElfContext {
     pub path: String,
     pub raw: Vec<u8>,
-    pub vcpu: Option<crate::tracer::VirtualCpu>,
+    pub vcpu: Option<crate::tracer::Tracer>,
     pub syms_map: HashMap<u64, SymsDTO>,
 }
 

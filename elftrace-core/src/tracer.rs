@@ -1647,3 +1647,46 @@ fn parse_imm_num(s: &str) -> Result<u64, ()> {
         t.parse::<u64>().map_err(|_| ())
     }
 }
+
+/// Engine-agnostic execution tracer stored in `ElfContext::vcpu`.
+///
+/// Default builds wrap the hand-written [`VirtualCpu`]. Building with the
+/// `engine-unicorn` feature returns a Unicorn-backed engine instead, which has
+/// a complete ISA and real memory mapping. The public surface (`new`, `step`,
+/// `step_back`) is identical, so the JNI layer and UI are unchanged.
+pub enum Tracer {
+    Native(VirtualCpu),
+    #[cfg(feature = "engine-unicorn")]
+    Unicorn(crate::engine_unicorn::UnicornTracer),
+}
+
+impl Tracer {
+    pub fn new(entry_pc: u64, ctx: &ElfContext) -> Result<Self, String> {
+        #[cfg(feature = "engine-unicorn")]
+        {
+            let engine = crate::engine_unicorn::UnicornTracer::new(entry_pc, ctx)?;
+            Ok(Tracer::Unicorn(engine))
+        }
+        #[cfg(not(feature = "engine-unicorn"))]
+        {
+            let _ = ctx;
+            Ok(Tracer::Native(VirtualCpu::new(entry_pc)))
+        }
+    }
+
+    pub fn step(&mut self, ctx: &ElfContext) -> Result<RegisterState, String> {
+        match self {
+            Tracer::Native(v) => v.step(ctx),
+            #[cfg(feature = "engine-unicorn")]
+            Tracer::Unicorn(u) => u.step(ctx),
+        }
+    }
+
+    pub fn step_back(&mut self) -> Option<RegisterState> {
+        match self {
+            Tracer::Native(v) => v.step_back(),
+            #[cfg(feature = "engine-unicorn")]
+            Tracer::Unicorn(u) => u.step_back(),
+        }
+    }
+}

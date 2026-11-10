@@ -150,3 +150,45 @@ jobs:
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Experimental: compiles the Unicorn-backed execution engine to surface errors
+  # while it is being brought up. `continue-on-error` keeps this job from
+  # blocking the release APK. Remove that line once it compiles cleanly, then
+  # flip the default engine.
+  unicorn-experimental:
+    name: Compile Unicorn core (experimental)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: elftrace-core
+          shared-key: "elftrace-unicorn-arm64"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 3.5.4 --locked
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Build with Unicorn engine
+        run: |
+          set -euo pipefail
+          cd elftrace-core
+          cargo ndk -t arm64-v8a -p 24 build --release --features engine-unicorn

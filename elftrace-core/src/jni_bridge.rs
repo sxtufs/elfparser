@@ -166,7 +166,13 @@ unsafe fn handle_finalize(handle: jlong) {
 unsafe fn handle_trace_init(handle: jlong, address: jlong) {
     if handle != 0 {
         let ctx = &mut *(handle as *mut ElfContext);
-        ctx.vcpu = Some(crate::tracer::VirtualCpu::new(address as u64));
+        // Build the tracer without holding a mutable borrow of `ctx` across the
+        // call, then store it. Default build selects `Tracer::Native`.
+        let tracer = {
+            let c: &ElfContext = ctx;
+            crate::tracer::Tracer::new(address as u64, c)
+        };
+        ctx.vcpu = tracer.ok();
     }
 }
 
