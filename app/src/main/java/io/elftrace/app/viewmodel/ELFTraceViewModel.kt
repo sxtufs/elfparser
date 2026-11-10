@@ -138,6 +138,23 @@ class ELFTraceViewModel : ViewModel() {
     private val _traceState = MutableStateFlow<TraceState?>(null)
     val traceState: StateFlow<TraceState?> = _traceState.asStateFlow()
 
+    /// True once the native tracer has been initialized for the current address.
+    /// Guarded by `traceLock` so Step/Back can lazily (re)initialize it.
+    private var traceReady = false
+    private val traceLock = Any()
+
+    /// Ensure the tracer is initialized for `address` before stepping. Returns an
+    /// error TraceState when initialization fails, or null on success.
+    private fun ensureTraceInit(b: JNIBridge, address: Long): TraceState? {
+        synchronized(traceLock) {
+            if (traceReady) return null
+            val init = b.startTrace(address)
+            if (init.error != null) return init
+            traceReady = true
+            return null
+        }
+    }
+
     private val _currentAddress = MutableStateFlow<Long>(0)
     val currentAddress: StateFlow<Long> = _currentAddress.asStateFlow()
 
@@ -168,6 +185,8 @@ class ELFTraceViewModel : ViewModel() {
     fun selectFunction(address: Long, name: String) {
         _currentAddress.value = address
         _selectedSymbolName.value = name
+        // New target: Step/Back must (re)initialize the native tracer.
+        synchronized(traceLock) { traceReady = false }
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: return@launch
             _instructions.value = b.disassemble(address, 256)
@@ -179,6 +198,7 @@ class ELFTraceViewModel : ViewModel() {
             if (init.error != null) {
                 _traceState.value = init
             } else {
+                synchronized(traceLock) { traceReady = true }
                 val firstInsn = _instructions.value.firstOrNull()
                 val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
                 _traceState.value = TraceState(pc = address, current_insn = initialInsn)
@@ -243,6 +263,11 @@ class ELFTraceViewModel : ViewModel() {
     fun stepTrace() {
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: return@launch
+            // Lazily initialize if selectFunction()'s init has not landed yet.
+            ensureTraceInit(b, _currentAddress.value)?.let {
+                _traceState.value = it
+                return@launch
+            }
             val nextState = b.stepTrace()
             _traceState.value = nextState
         }
@@ -251,6 +276,10 @@ class ELFTraceViewModel : ViewModel() {
     fun stepBackTrace() {
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: return@launch
+            ensureTraceInit(b, _currentAddress.value)?.let {
+                _traceState.value = it
+                return@launch
+            }
             val prevState = b.stepBackTrace()
             _traceState.value = prevState
         }
@@ -262,8 +291,10 @@ class ELFTraceViewModel : ViewModel() {
             val addr = _currentAddress.value
             val init = b.startTrace(addr)
             if (init.error != null) {
+                synchronized(traceLock) { traceReady = false }
                 _traceState.value = init
             } else {
+                synchronized(traceLock) { traceReady = true }
                 val firstInsn = _instructions.value.firstOrNull()
                 val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
                 _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
