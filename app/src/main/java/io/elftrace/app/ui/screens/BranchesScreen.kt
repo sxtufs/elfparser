@@ -33,7 +33,7 @@ import io.elftrace.app.viewmodel.Screen
  * performs no native calls and cannot crash.
  */
 @Composable
-fun DecisionsScreen(viewModel: ELFTraceViewModel) {
+fun BranchesScreen(viewModel: ELFTraceViewModel) {
     val colors = LocalELFTraceColors.current
     val instructions by viewModel.instructions.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
@@ -54,7 +54,7 @@ fun DecisionsScreen(viewModel: ELFTraceViewModel) {
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
-                    "DECISION LOCATOR",
+                    "BRANCHES",
                     color = colors.primary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold

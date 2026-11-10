@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 sealed class Screen {
     object Files : Screen()
     object Code : Screen()
-    object Decisions : Screen()
+    object Branches : Screen()
     object Analysis : Screen()
 }
 
