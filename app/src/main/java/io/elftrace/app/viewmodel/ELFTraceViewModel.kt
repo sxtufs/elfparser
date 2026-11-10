@@ -222,17 +222,14 @@ class ELFTraceViewModel : ViewModel() {
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
-            // Already on the single native thread; no lock needed.
-            val init = b.startTrace(address)
-            traceReady = init.error == null
-            // If the engine failed to initialize, show the real reason now.
-            if (init.error != null) {
-                _traceState.value = init
-            } else {
-                val firstInsn = _instructions.value.firstOrNull()
-                val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
-                _traceState.value = TraceState(pc = address, current_insn = initialInsn)
-            }
+            // Do NOT initialize the tracer here. Unicorn init on a large/packed
+            // .so can be slow, and because this runs on the single native thread
+            // it would block Hierarchy / Cross-References / Step behind it. The
+            // tracer is initialized lazily on the first Step instead.
+            traceReady = false
+            val firstInsn = _instructions.value.firstOrNull()
+            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
+            _traceState.value = TraceState(pc = address, current_insn = initialInsn)
         }
     }
 
