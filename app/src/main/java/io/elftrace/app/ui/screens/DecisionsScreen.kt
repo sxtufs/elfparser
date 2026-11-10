@@ -40,7 +40,6 @@ fun DecisionsScreen(viewModel: ELFTraceViewModel) {
     val currentAddr by viewModel.currentAddress.collectAsState()
 
     val decisions = remember(instructions) { findDecisions(instructions) }
-    val guard = remember(instructions) { lastCompare(instructions) }
 
     Column(
         modifier = Modifier
@@ -93,7 +92,6 @@ fun DecisionsScreen(viewModel: ELFTraceViewModel) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(decisions) { d ->
-                    val isGuard = guard != null && guard.address == d.guardAddress
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(8.dp),
@@ -193,6 +191,16 @@ private fun branchTarget(opStr: String): Long? {
     return hex.toLongOrNull(16)
 }
 
+/// Branches that test the *condition flags* set by a preceding compare. These
+/// may legitimately show a `cmp`/`tst` guard.
+private fun isFlagBranch(m: String): Boolean = m.startsWith("b.")
+
+/// Branches that test a *register value* (`cbz/cbnz/tbz/tbnz`). They read a
+/// register directly and are NOT affected by NZCV, so they never have a
+/// compare guard.
+private fun isRegTestBranch(m: String): Boolean =
+    m.startsWith("cb") || m.startsWith("tb")
+
 private fun findDecisions(instructions: List<Instruction>): List<Decision> {
     val out = ArrayList<Decision>()
     var pendingCompare: Instruction? = null
@@ -200,8 +208,8 @@ private fun findDecisions(instructions: List<Instruction>): List<Decision> {
         val m = ins.mnemonic.lowercase()
         if (isCompare(m)) {
             pendingCompare = ins
-            // A compare that immediately precedes a conditional branch is the guard.
-        } else if (isCondBranch(m)) {
+        } else if (isFlagBranch(m)) {
+            // b.cond — depends on the flags, so attach the pending compare.
             out.add(
                 Decision(
                     address = ins.address,
@@ -210,6 +218,19 @@ private fun findDecisions(instructions: List<Instruction>): List<Decision> {
                     target = branchTarget(ins.op_str),
                     guardAddress = pendingCompare?.address,
                     guardText = pendingCompare?.let { "${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
+                )
+            )
+            pendingCompare = null
+        } else if (isRegTestBranch(m)) {
+            // cbz/cbnz/tbz/tbnz — register test, no flag guard.
+            out.add(
+                Decision(
+                    address = ins.address,
+                    kind = "COND",
+                    text = "${ins.mnemonic} ${ins.op_str}",
+                    target = branchTarget(ins.op_str),
+                    guardAddress = null,
+                    guardText = null
                 )
             )
             pendingCompare = null
