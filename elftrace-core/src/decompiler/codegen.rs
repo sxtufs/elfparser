@@ -1249,16 +1249,16 @@ fn sub_register_info(r: &str) -> Option<(String, &'static str)> {
     None
 }
 
-/// Returns true for POSIX thread functions. Their canonical prototypes take
-/// pointer types (pthread_t*, const pthread_attr_t*, function pointer, void*)
-/// that don't line up with the generic `(uint64_t)(uintptr_t)` arg wrapper the
-/// emitter applies to unresolved calls. For the pthread family we instead
-/// emit a function-pointer cast against a `uint64_t`-arg prototype:
-///
-///     ((int64_t(*)(uint64_t, ...))pthread_create)(a0, a1, a2, x3)
-///
-/// This preserves the exact argument values and compiles cleanly under
-/// -Werror without changing the observable call semantics.
+// Returns true for POSIX thread functions. Their canonical prototypes take
+// pointer types (pthread_t*, const pthread_attr_t*, function pointer, void*)
+// that don't line up with the generic `(uint64_t)(uintptr_t)` arg wrapper the
+// emitter applies to unresolved calls. For the pthread family we instead
+// emit a function-pointer cast against a `uint64_t`-arg prototype:
+//
+//     ((int64_t(*)(uint64_t, ...))pthread_create)(a0, a1, a2, x3)
+//
+// This preserves the exact argument values and compiles cleanly under
+// -Werror without changing the observable call semantics.
 fn is_pthread_fn(name: &str) -> bool {
     name.starts_with("pthread_")
 }
