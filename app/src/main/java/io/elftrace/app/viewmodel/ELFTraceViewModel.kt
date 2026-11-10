@@ -197,13 +197,25 @@ class ELFTraceViewModel : ViewModel() {
             }
             val b = _bridge.value ?: return@launch
             _instructions.value = b.disassemble(address, 256)
-            // Full-function window for the Branches analyzer. Use the symbol size
-            // when known (capped to keep it bounded), else a generous default.
-            val symSize = _elfInfo.value?.syms
-                ?.firstOrNull { it.value == address }?.size ?: 0L
+            // Full-function window for the Branches analyzer. Prefer the exact
+            // symbol size; if unknown, clamp to the next symbol so we never
+            // disassemble into the neighbouring function (that produced phantom
+            // branches and false loops).
+            val syms = _elfInfo.value?.syms ?: emptyList()
+            val symSize = syms.firstOrNull { it.value == address }?.size ?: 0L
             val analysisWindow = when {
-                symSize in 4L..(1024L * 1024L) -> symSize + 64   // symbol size + slack
-                else -> 4096L                                    // 4 KB default
+                symSize in 4L..(1024L * 1024L) -> symSize + 16
+                else -> {
+                    val nextStart = syms.asSequence()
+                        .map { it.value }
+                        .filter { it > address }
+                        .minOrNull()
+                    if (nextStart != null && nextStart - address in 4L..(1024L * 1024L)) {
+                        nextStart - address
+                    } else {
+                        512L   // conservative cap when the bound is unknown
+                    }
+                }
             }
             _analysisInstructions.value = b.disassemble(address, analysisWindow)
             _decompileText.value = b.decompile(address)

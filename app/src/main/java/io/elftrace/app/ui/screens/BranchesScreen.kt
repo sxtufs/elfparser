@@ -46,7 +46,7 @@ fun BranchesScreen(viewModel: ELFTraceViewModel) {
 
     var filter by remember { mutableStateOf(BranchFilter.All) }
 
-    val all = remember(instructions) { analyze(instructions) }
+    val all = remember(instructions, currentAddr) { analyze(instructions, currentAddr) }
     val shown = remember(all, filter) {
         when (filter) {
             BranchFilter.All -> all
@@ -259,7 +259,7 @@ private fun lastHex(opStr: String): Long? {
 }
 
 /// Analyze a full-function instruction list into a flat list of branches.
-private fun analyze(instructions: List<Instruction>): List<Branch> {
+private fun analyze(instructions: List<Instruction>, funcStart: Long): List<Branch> {
     val out = ArrayList<Branch>()
     var guard: Instruction? = null
     var i = 0
@@ -291,7 +291,9 @@ private fun analyze(instructions: List<Instruction>): List<Branch> {
         // --- Conditional branches ---
         if (isFlagBranch(m) || isRegTestBranch(m)) {
             val target = lastHex(ins.op_str)
-            val isLoop = target != null && target <= ins.address
+            // Back-edge = target strictly before this branch BUT still inside
+            // this function. Targets before funcStart are mis-attributed.
+            val isLoop = target != null && target >= funcStart && target < ins.address
             val guardText = if (isFlagBranch(m)) {
                 guard?.let { "guard: ${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
             } else null
