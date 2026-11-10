@@ -104,10 +104,10 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 NavigationBarItem(
-                                    selected = currentScreen == Screen.Tracer,
-                                    onClick = { viewModel.navigateTo(Screen.Tracer) },
-                                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Tracer") },
-                                    label = { Text("Tracer", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    selected = currentScreen == Screen.Decisions,
+                                    onClick = { viewModel.navigateTo(Screen.Decisions) },
+                                    icon = { Icon(Icons.Default.AccountTree, contentDescription = "Decisions") },
+                                    label = { Text("Decisions", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = colors.primary,
                                         selectedTextColor = colors.primary,
@@ -160,7 +160,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            Screen.Tracer -> TraceScreen(viewModel)
+                            Screen.Decisions -> DecisionsScreen(viewModel)
 
                             Screen.Analysis -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
