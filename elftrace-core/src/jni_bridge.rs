@@ -230,9 +230,13 @@ unsafe fn handle_trace_back(env: &JNIEnv, handle: jlong) -> jstring {
                 .into_inner()
         }
     } else {
-        env.new_string("{\"error\":\"Tracer not initialized\"}")
-            .unwrap()
-            .into_inner()
+        // Surface the real init failure on the Back path too.
+        let msg = ctx
+            .trace_init_error
+            .clone()
+            .unwrap_or_else(|| "Tracer not initialized".to_string());
+        let err_json = serde_json::json!({ "error": msg }).to_string();
+        env.new_string(err_json).unwrap().into_inner()
     }
 }
 
