@@ -223,9 +223,17 @@ impl UnicornTracer {
             match crate::disasm::disassemble(&code, pc, 4, e_machine, false) {
                 Ok(ins) => match ins.data.into_iter().next() {
                     Some(i) => (i.mnemonic, i.op_str),
-                    None => (String::from("?"), String::new()),
+                    // Capstone rendered nothing: show the raw word (IDA-style) so
+                    // the user still sees exactly what QEMU is about to execute.
+                    None => (
+                        String::from(".word"),
+                        format!("0x{:08x}", u32::from_le_bytes(code)),
+                    ),
                 },
-                Err(_) => (String::from("?"), String::new()),
+                Err(_) => (
+                    String::from(".word"),
+                    format!("0x{:08x}", u32::from_le_bytes(code)),
+                ),
             }
         } else {
             (String::from("?"), String::new())
