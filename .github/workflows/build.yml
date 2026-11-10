@@ -91,8 +91,11 @@ jobs:
           ls -la "$SO"
           SIZE=$(stat -c%s "$SO")
           echo "Bytes: $SIZE ($((SIZE/1024/1024)) MB)"
-          if [ "$SIZE" -gt 12582912 ]; then
-            echo "ERROR: .so > 12 MB — strip profile may not be active"
+          # Raised from 12 MB to 24 MB to accommodate the Unicorn (QEMU) execution
+          # core, which is larger than the hand-written tracer. Still catches a
+          # missing-strip regression (unstripped is ~40 MB+).
+          if [ "$SIZE" -gt 25165824 ]; then
+            echo "ERROR: .so > 24 MB — strip profile may not be active"
             exit 1
           fi
 

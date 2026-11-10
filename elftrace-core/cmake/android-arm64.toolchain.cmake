@@ -21,3 +21,10 @@ set(ANDROID_PLATFORM "android-24" CACHE STRING "Android API level" FORCE)
 set(ANDROID_NDK      "$ENV{ANDROID_NDK}" CACHE PATH "Android NDK root" FORCE)
 
 include("$ENV{ANDROID_NDK}/build/cmake/android.toolchain.cmake")
+
+# Unicorn builds every CPU it supports by default (x86, mips, ppc, ...). For an
+# Android ARM64 tool that is pure dead weight. Restrict it to aarch64 only.
+# Unicorn 2.x uses the name `aarch64` (1.x used `arm64`). This is a CACHE var,
+# so it persists into unicorn's CMakeLists even though we set it here first.
+set(UNICORN_ARCHS "aarch64" CACHE STRING "Unicorn target architectures" FORCE)
+
