@@ -23,6 +23,12 @@ sealed class Screen {
 
 class ELFTraceViewModel : ViewModel() {
 
+    /// Single-threaded dispatcher for ALL native (JNI) calls. The native
+    /// `ElfContext` — and especially the Unicorn engine inside it — is not
+    /// thread-safe. Running every native call on exactly one thread eliminates
+    /// data races, concurrent `&`/`&mut` aliasing, and the segfaults they cause.
+    private val nativeDispatcher = Dispatchers.IO.limitedParallelism(1)
+
     private val _bridge = MutableStateFlow<JNIBridge?>(null)
     val bridge: StateFlow<JNIBridge?> = _bridge.asStateFlow()
 
@@ -40,7 +46,7 @@ class ELFTraceViewModel : ViewModel() {
     val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
 
     fun refreshEntropyReport() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _entropyReport.value = b.getEntropyReport()
         }
@@ -53,7 +59,7 @@ class ELFTraceViewModel : ViewModel() {
     val hexStartAddress: StateFlow<Long> = _hexStartAddress.asStateFlow()
 
     fun loadHexDump(address: Long, length: Int = 2048) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             val alignedAddr = address - (address % 16)
             val bytes = b.readBytes(alignedAddr, length)
@@ -63,7 +69,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun savePatchedBinary(context: Context, onResult: (String?) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onResult(null) }
                 return@launch
@@ -93,7 +99,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun resolveIl2CppMetadata(path: String, onComplete: (Int) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onComplete(-1) }
                 return@launch
@@ -166,10 +172,20 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun loadElf(path: String, fileName: String = "") {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             currentFileName.value = if (fileName.isNotEmpty()) fileName else File(path).name
-            val b = JNIBridge.open(path) ?: return@launch
-            _bridge.value = b
+            val newBridge = JNIBridge.open(path) ?: return@launch
+            // Swap the bridge and close the old one under the same lock that guards
+            // all native tracer calls, so an in-flight step on the old handle can
+            // finish before it is freed (avoids use-after-free / SIGSEGV).
+            val old = synchronized(traceLock) {
+                val prev = _bridge.value
+                traceReady = false
+                _bridge.value = newBridge
+                prev
+            }
+            try { old?.close() } catch (_: Throwable) {}
+            val b = newBridge
             val info = b.getInfo()
             _elfInfo.value = info
 
@@ -187,18 +203,22 @@ class ELFTraceViewModel : ViewModel() {
         _selectedSymbolName.value = name
         // New target: Step/Back must (re)initialize the native tracer.
         synchronized(traceLock) { traceReady = false }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _instructions.value = b.disassemble(address, 256)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
-            val init = b.startTrace(address)
+            // Serialize with Step/Back: the Unicorn handle is not thread-safe.
+            val init = synchronized(traceLock) {
+                val st = b.startTrace(address)
+                traceReady = st.error == null
+                st
+            }
             // If the engine failed to initialize, show the real reason now.
             if (init.error != null) {
                 _traceState.value = init
             } else {
-                synchronized(traceLock) { traceReady = true }
                 val firstInsn = _instructions.value.firstOrNull()
                 val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
                 _traceState.value = TraceState(pc = address, current_insn = initialInsn)
@@ -207,7 +227,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun applyQuickPatch(address: Long, patchType: Int, isThumb: Boolean = false, onComplete: (PatchResult) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             val res = b.quickPatch(address, patchType, isThumb)
             if (res.success) {
@@ -227,7 +247,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun loadXrefsFor(address: Long, onResult: (List<XRefItem>) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onResult(emptyList()) }
                 return@launch
@@ -243,7 +263,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun loadHierarchy(address: Long, onResult: (CallHierarchy) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onResult(CallHierarchy()) }
                 return@launch
@@ -254,47 +274,58 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun runSecurityScan() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _scanReport.value = b.scanSecurity()
         }
     }
 
     fun stepTrace() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
-            // Lazily initialize if selectFunction()'s init has not landed yet.
-            ensureTraceInit(b, _currentAddress.value)?.let {
-                _traceState.value = it
-                return@launch
+            // The Unicorn handle is NOT thread-safe. Hold `traceLock` for the whole
+            // init+step so concurrent taps can never hit it from two threads
+            // (that segfaults and aborts the process).
+            val state = synchronized(traceLock) {
+                if (!traceReady) {
+                    val init = b.startTrace(_currentAddress.value)
+                    if (init.error != null) return@synchronized init
+                    traceReady = true
+                }
+                b.stepTrace()
             }
-            val nextState = b.stepTrace()
-            _traceState.value = nextState
+            _traceState.value = state
         }
     }
 
     fun stepBackTrace() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
-            ensureTraceInit(b, _currentAddress.value)?.let {
-                _traceState.value = it
-                return@launch
+            val state = synchronized(traceLock) {
+                if (!traceReady) {
+                    val init = b.startTrace(_currentAddress.value)
+                    if (init.error != null) return@synchronized init
+                    traceReady = true
+                }
+                b.stepBackTrace()
             }
-            val prevState = b.stepBackTrace()
-            _traceState.value = prevState
+            _traceState.value = state
         }
     }
 
     fun resetTrace() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             val addr = _currentAddress.value
-            val init = b.startTrace(addr)
+            // Serialize with Step/Back (Unicorn is not thread-safe).
+            val init = synchronized(traceLock) {
+                val st = b.startTrace(addr)
+                traceReady = st.error == null
+                st
+            }
             if (init.error != null) {
-                synchronized(traceLock) { traceReady = false }
                 _traceState.value = init
             } else {
-                synchronized(traceLock) { traceReady = true }
                 val firstInsn = _instructions.value.firstOrNull()
                 val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
                 _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
@@ -303,14 +334,14 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun refreshSecurityScan() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _scanReport.value = b.scanSecurity()
         }
     }
 
     fun renameFunction(address: Long, newName: String, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onComplete(false) }
                 return@launch
@@ -329,7 +360,7 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun assemblePatch(address: Long, text: String, onComplete: (PatchResult) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
                 launch(Dispatchers.Main) { onComplete(PatchResult(error = "No binary loaded")) }
                 return@launch
