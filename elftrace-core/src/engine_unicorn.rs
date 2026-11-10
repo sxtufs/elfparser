@@ -17,7 +17,7 @@ use crate::elf_parser::ElfContext;
 use crate::tracer::RegisterState;
 use object::{Object, ObjectSegment};
 use std::collections::VecDeque;
-use unicorn_engine::unicorn_const::{Arch, Mode, Perm};
+use unicorn_engine::unicorn_const::{Arch, Mode, Prot};
 use unicorn_engine::{RegisterARM64, Unicorn};
 
 const STACK_TOP: u64 = 0x7FFF_FFFF_0000;
@@ -83,7 +83,7 @@ impl UnicornTracer {
 
         // Emulated stack.
         let stack_start = STACK_TOP - STACK_SIZE;
-        uc.mem_map(stack_start, STACK_SIZE, Perm::ALL)
+        uc.mem_map(stack_start, STACK_SIZE as usize, Prot::ALL)
             .map_err(|e| format!("Stack mapping failed: {:?}", e))?;
 
         uc.reg_write(RegisterARM64::SP, STACK_TOP)
@@ -136,7 +136,7 @@ impl UnicornTracer {
             ));
         }
 
-        uc.mem_map(start, size, Perm::ALL)
+        uc.mem_map(start, size as usize, Prot::ALL)
             .map_err(|e| format!("Image mapping failed: {:?}", e))?;
 
         for (addr, data) in chunks {
