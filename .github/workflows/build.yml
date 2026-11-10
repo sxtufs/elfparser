@@ -207,14 +207,15 @@ jobs:
           # and fails on 'bits/libc-header-start.h'.
           export BINDGEN_EXTRA_CLANG_ARGS="--target=$TRIPLE --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/$TRIPLE"
 
-          # The Unicorn C library is built by the `cmake` crate. Point it at the
-          # NDK toolchain file and the Android compilers so it cross-compiles.
-          export CMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake"
+          # The Unicorn C library is built by the `cmake` crate. The crate honours
+          # the CMAKE_TOOLCHAIN_FILE *env var* (proven by the NDK toolchain being
+          # loaded), but it does NOT turn our ANDROID_ABI env into a CMake cache
+          # variable — so the NDK toolchain defaulted to armeabi-v7a. Point it at
+          # our wrapper, which seeds ANDROID_ABI=arm64-v8a as a cache var first.
           export ANDROID_NDK="$NDK"
           export ANDROID_NDK_HOME="$NDK"
           export ANDROID_NDK_ROOT="$NDK"
-          export ANDROID_ABI="arm64-v8a"
-          export ANDROID_PLATFORM="android-$API"
+          export CMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/elftrace-core/cmake/android-arm64.toolchain.cmake"
 
           export CC_aarch64_linux_android="$CC_BIN"
           export CXX_aarch64_linux_android="$CXX_BIN"
