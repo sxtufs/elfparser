@@ -1691,14 +1691,31 @@ pub enum Tracer {
 
 impl Tracer {
     pub fn new(entry_pc: u64, ctx: &ElfContext) -> Result<Self, String> {
+        // Engine selection policy (deliberate, not incidental):
+        //
+        //   * ARM64 (e_machine 183): ALWAYS use the hand-written `VirtualCpu`.
+        //     It is safe Rust — it cannot segfault, cannot JIT, cannot hang the
+        //     process. On packed/hardened ARM64 .so files, Unicorn's JIT has
+        //     repeatedly crashed or wedged; VirtualCpu just returns an Err we
+        //     can show the user.
+        //
+        //   * ARM32 / x86_64 / x86: use Unicorn. VirtualCpu is ARM64-only, so
+        //     Unicorn is the only way to step those arches at all.
+        let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+        let is_arm64 = e_machine == 183;
+
         #[cfg(feature = "engine-unicorn")]
         {
-            let engine = crate::engine_unicorn::UnicornTracer::new(entry_pc, ctx)?;
-            Ok(Tracer::Unicorn(engine))
+            if !is_arm64 {
+                let engine = crate::engine_unicorn::UnicornTracer::new(entry_pc, ctx)?;
+                return Ok(Tracer::Unicorn(engine));
+            }
+            Ok(Tracer::Native(VirtualCpu::new(entry_pc)))
         }
         #[cfg(not(feature = "engine-unicorn"))]
         {
             let _ = ctx;
+            let _ = is_arm64;
             Ok(Tracer::Native(VirtualCpu::new(entry_pc)))
         }
     }
