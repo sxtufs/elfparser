@@ -175,22 +175,21 @@ class ELFTraceViewModel : ViewModel() {
         viewModelScope.launch(nativeDispatcher) {
             currentFileName.value = if (fileName.isNotEmpty()) fileName else File(path).name
             val newBridge = JNIBridge.open(path) ?: return@launch
-            // Swap the bridge and close the old one under the same lock that guards
-            // all native tracer calls, so an in-flight step on the old handle can
-            // finish before it is freed (avoids use-after-free / SIGSEGV).
-            val old = synchronized(traceLock) {
-                val prev = _bridge.value
-                traceReady = false
-                _bridge.value = newBridge
-                prev
-            }
+            // We are already on the single native thread, so no lock is needed.
+            // Close the previous bridge before swapping it out.
+            val old = _bridge.value
+            traceReady = false
+            _bridge.value = newBridge
             try { old?.close() } catch (_: Throwable) {}
             val b = newBridge
             val info = b.getInfo()
             _elfInfo.value = info
 
-            val firstAddr = info.syms.firstOrNull()?.value ?: info.entry
-            val firstName = info.syms.firstOrNull()?.displayName ?: "entry"
+            // Pick the first symbol that is actually executable code. The symbol
+            // table often starts with undefined imports (address 0, e.g. strchr).
+            val firstSym = info.syms.firstOrNull { it.value != 0L }
+            val firstAddr = firstSym?.value ?: info.entry
+            val firstName = firstSym?.displayName ?: "entry"
             selectFunction(firstAddr, firstName)
             _stringsList.value = b.getStrings()
             _scanReport.value = b.scanSecurity()
@@ -199,22 +198,33 @@ class ELFTraceViewModel : ViewModel() {
     }
 
     fun selectFunction(address: Long, name: String) {
+        // These are StateFlow writes — non-blocking, safe on the UI thread.
         _currentAddress.value = address
         _selectedSymbolName.value = name
-        // New target: Step/Back must (re)initialize the native tracer.
-        synchronized(traceLock) { traceReady = false }
+        // Everything else runs on the single native thread. No `synchronized`
+        // here: blocking the UI thread on the native lock causes ANRs.
         viewModelScope.launch(nativeDispatcher) {
+            // Invalidate the tracer for the new target *inside* the worker.
+            traceReady = false
+            if (address == 0L) {
+                // Address 0 is an undefined import, not executable code.
+                _instructions.value = emptyList()
+                _decompileText.value = "// selected symbol is an unresolved import (address 0)"
+                _flowchartText.value = ""
+                _traceState.value = TraceState(
+                    pc = 0,
+                    error = "Cannot trace: '$name' is an undefined import (address 0)"
+                )
+                return@launch
+            }
             val b = _bridge.value ?: return@launch
             _instructions.value = b.disassemble(address, 256)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
-            // Serialize with Step/Back: the Unicorn handle is not thread-safe.
-            val init = synchronized(traceLock) {
-                val st = b.startTrace(address)
-                traceReady = st.error == null
-                st
-            }
+            // Already on the single native thread; no lock needed.
+            val init = b.startTrace(address)
+            traceReady = init.error == null
             // If the engine failed to initialize, show the real reason now.
             if (init.error != null) {
                 _traceState.value = init
