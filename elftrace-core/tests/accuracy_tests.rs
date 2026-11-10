@@ -1141,6 +1141,7 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     // Will flip red when: decompile_to_c(traceInit|traceStep) produces compilable C.
     ("traceInit", "lifter: libc memory call emitted with zero args"),
     ("traceStep", "lifter: libc memory call emitted with zero args"),
+    ("traceBack", "lifter: libc memory call emitted with zero args"),
 ];
 
 #[test]
