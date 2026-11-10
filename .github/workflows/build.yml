@@ -52,11 +52,32 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
+      - name: Install cmake (Unicorn C library)
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
       - name: Build Rust core for arm64-v8a
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          SYSROOT="$TOOLCHAIN/sysroot"
+          API=24
+          TRIPLE=aarch64-linux-android
+          # Enable the Unicorn execution engine for the SHIPPED .so only. Host
+          # `cargo test` below stays on the built-in CPU (no cmake/libclang
+          # needed on the runner), while the APK gets the multi-arch engine.
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=$TRIPLE --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/$TRIPLE"
+          export ANDROID_NDK="$NDK"
+          export ANDROID_NDK_HOME="$NDK"
+          export ANDROID_NDK_ROOT="$NDK"
+          export CMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/elftrace-core/cmake/android-arm64.toolchain.cmake"
+          export CC_aarch64_linux_android="$TOOLCHAIN/bin/${TRIPLE}${API}-clang"
+          export CXX_aarch64_linux_android="$TOOLCHAIN/bin/${TRIPLE}${API}-clang++"
+          export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
+          export RANLIB_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ranlib"
           cd elftrace-core
-          cargo ndk -t arm64-v8a -p 24 -o ../app/src/main/jniLibs build --release
+          cargo ndk -t arm64-v8a -p $API -o ../app/src/main/jniLibs build --release --features engine-unicorn
           cd ..
           test -f app/src/main/jniLibs/arm64-v8a/libelftrace.so || {
             echo "ERROR: cargo ndk did not produce libelftrace.so"
@@ -153,77 +174,3 @@ jobs:
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Experimental: compiles the Unicorn-backed execution engine to surface errors
-  # while it is being brought up. `continue-on-error` keeps this job from
-  # blocking the release APK. Remove that line once it compiles cleanly, then
-  # flip the default engine.
-  unicorn-experimental:
-    name: Compile Unicorn core (experimental)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: elftrace-core
-          shared-key: "elftrace-unicorn-arm64"
-
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --version 3.5.4 --locked
-
-      - name: Setup Android NDK
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26b
-          add-to-path: true
-
-      - name: Install cmake
-        run: sudo apt-get update && sudo apt-get install -y cmake
-
-      - name: Build with Unicorn engine
-        env:
-          NDK: ${{ steps.ndk.outputs.ndk-path }}
-        run: |
-          set -euo pipefail
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-          SYSROOT="$TOOLCHAIN/sysroot"
-          API=24
-          TRIPLE=aarch64-linux-android
-          CC_BIN="$TOOLCHAIN/bin/${TRIPLE}${API}-clang"
-          CXX_BIN="$TOOLCHAIN/bin/${TRIPLE}${API}-clang++"
-          echo "CC  = $CC_BIN"
-          echo "SYS = $SYSROOT"
-
-          # bindgen (unicorn-engine-sys) must point libclang at the Android
-          # sysroot; otherwise it resolves <stdint.h> from the host /usr/include
-          # and fails on 'bits/libc-header-start.h'.
-          export BINDGEN_EXTRA_CLANG_ARGS="--target=$TRIPLE --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/$TRIPLE"
-
-          # The Unicorn C library is built by the `cmake` crate. The crate honours
-          # the CMAKE_TOOLCHAIN_FILE *env var* (proven by the NDK toolchain being
-          # loaded), but it does NOT turn our ANDROID_ABI env into a CMake cache
-          # variable — so the NDK toolchain defaulted to armeabi-v7a. Point it at
-          # our wrapper, which seeds ANDROID_ABI=arm64-v8a as a cache var first.
-          export ANDROID_NDK="$NDK"
-          export ANDROID_NDK_HOME="$NDK"
-          export ANDROID_NDK_ROOT="$NDK"
-          export CMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/elftrace-core/cmake/android-arm64.toolchain.cmake"
-
-          export CC_aarch64_linux_android="$CC_BIN"
-          export CXX_aarch64_linux_android="$CXX_BIN"
-          export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
-          export RANLIB_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ranlib"
-
-          cd elftrace-core
-          cargo ndk -t arm64-v8a -p $API build --release --features engine-unicorn
