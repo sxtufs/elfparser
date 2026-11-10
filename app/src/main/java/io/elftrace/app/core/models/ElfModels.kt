@@ -128,6 +128,16 @@ data class CallHierarchy(
     val callees: List<CalleeItem> = emptyList()
 )
 
+data class RegEntry(
+    val name: String = "",
+    val value: Long = 0
+)
+
+data class FlagEntry(
+    val name: String = "",
+    val value: Boolean = false
+)
+
 data class TraceState(
     val pc: Long = 0,
     val sp: Long = 0,
@@ -136,6 +146,11 @@ data class TraceState(
     val z: Boolean = false,
     val c: Boolean = false,
     val v: Boolean = false,
+    // Architecture-neutral view (populated by the Unicorn engine).
+    // Empty for the legacy hand-written ARM64 engine.
+    val arch: String = "",
+    val regs: List<RegEntry> = emptyList(),
+    val flags: List<FlagEntry> = emptyList(),
     val current_insn: String = "",
     val mnemonic: String = "",
     val op_str: String = "",

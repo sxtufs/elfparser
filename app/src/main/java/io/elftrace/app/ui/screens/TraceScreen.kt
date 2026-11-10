@@ -144,10 +144,23 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    FlagBadge("Z", state.z, isChanged = state.changed_flags.contains("z"), colors)
-                    FlagBadge("N", state.n, isChanged = state.changed_flags.contains("n"), colors)
-                    FlagBadge("C", state.c, isChanged = state.changed_flags.contains("c"), colors)
-                    FlagBadge("V", state.v, isChanged = state.changed_flags.contains("v"), colors)
+                    // Prefer the architecture-native flag view when the engine
+                    // provides one (x86 -> CF/ZF/SF/OF); otherwise show ARM's N/Z/C/V.
+                    if (state.flags.isNotEmpty()) {
+                        state.flags.forEach { f ->
+                            FlagBadge(
+                                f.name,
+                                f.value,
+                                isChanged = state.changed_flags.contains(f.name.lowercase()),
+                                colors
+                            )
+                        }
+                    } else {
+                        FlagBadge("Z", state.z, isChanged = state.changed_flags.contains("z"), colors)
+                        FlagBadge("N", state.n, isChanged = state.changed_flags.contains("n"), colors)
+                        FlagBadge("C", state.c, isChanged = state.changed_flags.contains("c"), colors)
+                        FlagBadge("V", state.v, isChanged = state.changed_flags.contains("v"), colors)
+                    }
                 }
 
                 Spacer(Modifier.height(6.dp))
@@ -157,12 +170,19 @@ fun TraceScreen(viewModel: ELFTraceViewModel) {
                 Spacer(Modifier.height(4.dp))
 
                 val regList = remember(state) {
-                    val list = mutableListOf<Pair<String, Long>>()
-                    list.add("SP" to state.sp)
-                    state.x.forEachIndexed { i, val64 ->
-                        list.add("X$i" to val64)
+                    // Prefer the architecture-neutral register view when the engine
+                    // provides one (R0..R15, RAX..RIP, ...). Fall back to the
+                    // legacy ARM64 layout (X0..X30 + SP) for the hand-written CPU.
+                    if (state.regs.isNotEmpty()) {
+                        state.regs.map { it.name to it.value }
+                    } else {
+                        val list = mutableListOf<Pair<String, Long>>()
+                        list.add("SP" to state.sp)
+                        state.x.forEachIndexed { i, val64 ->
+                            list.add("X$i" to val64)
+                        }
+                        list
                     }
-                    list
                 }
 
                 LazyVerticalGrid(

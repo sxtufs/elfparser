@@ -8,8 +8,23 @@ use crate::elf_parser::ElfContext;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// One named register in an architecture-neutral view.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RegEntry {
+    pub name: String,
+    pub value: u64,
+}
+
+/// One named condition flag in an architecture-neutral view.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FlagEntry {
+    pub name: String,
+    pub value: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterState {
+    // ---- Legacy ARM64 view (kept for UI compatibility) ----
     pub x: [u64; 31],
     pub sp: u64,
     pub pc: u64,
@@ -17,6 +32,17 @@ pub struct RegisterState {
     pub z: bool,
     pub c: bool,
     pub v: bool,
+    // ---- Architecture-neutral view (populated by the Unicorn engine) ----
+    /// "arm64" | "arm" | "x86_64" | "x86" | "".
+    #[serde(default)]
+    pub arch: String,
+    /// Ordered registers to display (native names: X0.., R0.., RAX..).
+    #[serde(default)]
+    pub regs: Vec<RegEntry>,
+    /// Native condition flags to display (N/Z/C/V or ZF/SF/CF/OF).
+    #[serde(default)]
+    pub flags: Vec<FlagEntry>,
+    // ---- Execution annotation ----
     pub mnemonic: String,
     pub op_str: String,
     pub current_insn: String,
@@ -44,6 +70,9 @@ impl VirtualCpu {
                 z: false,
                 c: false,
                 v: false,
+                arch: "arm64".to_string(),
+                regs: Vec::new(),
+                flags: Vec::new(),
                 mnemonic: String::new(),
                 op_str: String::new(),
                 current_insn: "Initial State".to_string(),
