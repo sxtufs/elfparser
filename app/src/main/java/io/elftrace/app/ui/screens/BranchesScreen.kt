@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,25 +22,39 @@ import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
 
 /**
- * Control-flow Decision Locator.
+ * Branch / control-flow analyzer for the selected function.
  *
- * Scans the current function's disassembly and surfaces every *decision point*:
- * conditional branches (`b.cond`, `cbz/cbnz`, `tbz/tbnz`), the comparison that
- * guards them, and conditional selects (`csel`, `cset`, `cinc`, `ccmp`, ...).
+ * Turns a flat disassembly into higher-level structure that a linear listing
+ * hides:
+ *   * COND    — conditional branches (`b.cond`, `cbz/cbnz`, `tbz/tbnz`) with
+ *               their guard (the `cmp/tst` that set the flags, when applicable).
+ *   * SELECT  — conditional selects (`csel`, `cset`, `cinc`, ...).
+ *   * SWITCH  — jump-table / computed-dispatch patterns
+ *               (`adrp+add+ldrsw+br`, `tbh/tbn`, pc-relative tables).
+ *   * LOOP    — a branch whose target is *below* it (a back-edge), i.e. a loop.
  *
- * This is the fastest way to find the `if`s that matter when reversing — license
- * checks, validation gates, feature flags, switch dispatch — and jump straight
- * to the instruction. Pure data over the already-loaded instruction list; it
- * performs no native calls and cannot crash.
+ * It analyzes the full-function disassembly window (`analysisInstructions`),
+ * not just the 256-byte slice the Code tab shows, so it sees every branch. It
+ * performs no native calls — pure data — so it cannot crash.
  */
 @Composable
 fun BranchesScreen(viewModel: ELFTraceViewModel) {
     val colors = LocalELFTraceColors.current
-    val instructions by viewModel.instructions.collectAsState()
+    val instructions by viewModel.analysisInstructions.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
     val currentAddr by viewModel.currentAddress.collectAsState()
 
-    val decisions = remember(instructions) { findDecisions(instructions) }
+    var filter by remember { mutableStateOf(BranchFilter.All) }
+
+    val all = remember(instructions) { analyze(instructions) }
+    val shown = remember(all, filter) {
+        when (filter) {
+            BranchFilter.All -> all
+            BranchFilter.Cond -> all.filter { it.kind == "COND" }
+            BranchFilter.Loops -> all.filter { it.isLoop }
+            BranchFilter.Switch -> all.filter { it.kind == "SWITCH" }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -69,7 +84,8 @@ fun BranchesScreen(viewModel: ELFTraceViewModel) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "${decisions.size} branch decision(s) in ${instructions.size} instructions",
+                    text = "${all.size} branch(es), ${all.count { it.isLoop }} loop(s), " +
+                        "${all.count { it.kind == "SWITCH" }} switch(es) in ${instructions.size} insns",
                     color = colors.textSecondary,
                     fontSize = 11.sp
                 )
@@ -78,10 +94,34 @@ fun BranchesScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            BranchFilter.values().forEach { f ->
+                val selected = filter == f
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (selected) colors.primary.copy(alpha = 0.18f) else colors.card,
+                            RoundedCornerShape(50)
+                        )
+                        .clickable { filter = f }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = f.label,
+                        color = if (selected) colors.primary else colors.textSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
         if (instructions.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Select a function in Files to analyze its decisions",
+                    "Select a function in Files to analyze its branches",
                     color = colors.textSecondary,
                     fontSize = 12.sp
                 )
@@ -91,60 +131,10 @@ fun BranchesScreen(viewModel: ELFTraceViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(decisions) { d ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = colors.card),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.selectFunction(d.address, "sub_%08X".format(d.address))
-                                viewModel.navigateTo(Screen.Code)
-                            }
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = d.kind,
-                                    color = kindColor(d.kind, colors.mnemonic, colors.register, colors.primary),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "0x%08X".format(d.address),
-                                    color = colors.address,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp
-                                )
-                                Spacer(Modifier.weight(1f))
-                                if (d.target != null) {
-                                    Text(
-                                        text = "→ 0x%08X".format(d.target),
-                                        color = colors.textSecondary,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 10.sp
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text = d.text,
-                                color = colors.textPrimary,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp
-                            )
-                            if (d.guardText != null) {
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    text = "guard: ${d.guardText}",
-                                    color = colors.textSecondary,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
+                items(shown) { b ->
+                    BranchCard(b, colors) {
+                        viewModel.selectFunction(b.address, "sub_%08X".format(b.address))
+                        viewModel.navigateTo(Screen.Code)
                     }
                 }
             }
@@ -152,107 +142,177 @@ fun BranchesScreen(viewModel: ELFTraceViewModel) {
     }
 }
 
-private data class Decision(
+@Composable
+private fun BranchCard(b: Branch, colors: io.elftrace.app.ui.theme.ELFTraceColors, onClick: () -> Unit) {
+    val accent = when (b.kind) {
+        "SWITCH" -> colors.register
+        "SELECT" -> colors.primary
+        else -> colors.mnemonic
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = b.kind,
+                    color = accent,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "0x%08X".format(b.address),
+                    color = colors.address,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp
+                )
+                Spacer(Modifier.width(6.dp))
+                if (b.isLoop) {
+                    Badge("LOOP ↵", colors.changedReg)
+                }
+                Spacer(Modifier.weight(1f))
+                if (b.target != null) {
+                    Text(
+                        text = "→ 0x%08X".format(b.target),
+                        color = colors.textSecondary,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = b.text,
+                color = colors.textPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp
+            )
+            if (b.detail != null) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = b.detail,
+                    color = colors.textSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Badge(text: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.18f), RoundedCornerShape(50))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+private enum class BranchFilter(val label: String) {
+    All("All"),
+    Cond("Branches"),
+    Loops("Loops"),
+    Switch("Switches")
+}
+
+private data class Branch(
     val address: Long,
     val kind: String,
     val text: String,
     val target: Long?,
-    val guardAddress: Long?,
-    val guardText: String?
+    val isLoop: Boolean,
+    val detail: String?
 )
 
-private fun kindColor(kind: String, mnemonic: androidx.compose.ui.graphics.Color, register: androidx.compose.ui.graphics.Color, primary: androidx.compose.ui.graphics.Color) = when (kind) {
-    "COND" -> mnemonic
-    "SELECT" -> register
-    "CMP" -> primary
-    else -> mnemonic
-}
+// ---- analysis ----------------------------------------------------------
 
-/// True for a conditional (not unconditional) branch mnemonic.
-private fun isCondBranch(m: String): Boolean = when {
-    m.startsWith("b.") -> true
-    m.startsWith("cb") -> true   // cbz / cbnz
-    m.startsWith("tb") -> true   // tbz / tbnz
-    else -> false
-}
+private val COMPARE_MNEMONICS = setOf(
+    "cmp", "cmn", "tst", "subs", "adds", "ands", "ccmp", "ccmn", "fcmp", "fcmpe"
+)
 
-private fun isCompare(m: String): Boolean =
-    m in setOf("cmp", "cmn", "tst", "subs", "adds", "ands", "ccmp", "ccmn", "fcmpe", "fcmp")
-
-private fun isSelect(m: String): Boolean =
+private fun isFlagBranch(m: String) = m.startsWith("b.")
+private fun isRegTestBranch(m: String) = m.startsWith("cb") || m.startsWith("tb")
+private fun isSelect(m: String) =
     m.startsWith("csel") || m.startsWith("cset") || m.startsWith("cinc") ||
-        m.startsWith("cinv") || m.startsWith("cneg") || m == "csinc" || m == "csinv" || m == "csneg"
+        m.startsWith("cinv") || m.startsWith("cneg") ||
+        m == "csinc" || m == "csinv" || m == "csneg"
 
-/// Extract the branch target from an op string like `w0, #0x2000` or `0x2000`.
-private fun branchTarget(opStr: String): Long? {
+/// Extract the last `0x...` operand as a branch target.
+private fun lastHex(opStr: String): Long? {
     val idx = opStr.lastIndexOf("0x")
     if (idx < 0) return null
     val hex = opStr.substring(idx + 2).takeWhile { it.isLetterOrDigit() }
     return hex.toLongOrNull(16)
 }
 
-/// Branches that test the *condition flags* set by a preceding compare. These
-/// may legitimately show a `cmp`/`tst` guard.
-private fun isFlagBranch(m: String): Boolean = m.startsWith("b.")
-
-/// Branches that test a *register value* (`cbz/cbnz/tbz/tbnz`). They read a
-/// register directly and are NOT affected by NZCV, so they never have a
-/// compare guard.
-private fun isRegTestBranch(m: String): Boolean =
-    m.startsWith("cb") || m.startsWith("tb")
-
-private fun findDecisions(instructions: List<Instruction>): List<Decision> {
-    val out = ArrayList<Decision>()
-    var pendingCompare: Instruction? = null
-    for (ins in instructions) {
+/// Analyze a full-function instruction list into a flat list of branches.
+private fun analyze(instructions: List<Instruction>): List<Branch> {
+    val out = ArrayList<Branch>()
+    var guard: Instruction? = null
+    var i = 0
+    while (i < instructions.size) {
+        val ins = instructions[i]
         val m = ins.mnemonic.lowercase()
-        if (isCompare(m)) {
-            pendingCompare = ins
-        } else if (isFlagBranch(m)) {
-            // b.cond — depends on the flags, so attach the pending compare.
-            out.add(
-                Decision(
-                    address = ins.address,
-                    kind = "COND",
-                    text = "${ins.mnemonic} ${ins.op_str}",
-                    target = branchTarget(ins.op_str),
-                    guardAddress = pendingCompare?.address,
-                    guardText = pendingCompare?.let { "${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
-                )
-            )
-            pendingCompare = null
-        } else if (isRegTestBranch(m)) {
-            // cbz/cbnz/tbz/tbnz — register test, no flag guard.
-            out.add(
-                Decision(
-                    address = ins.address,
-                    kind = "COND",
-                    text = "${ins.mnemonic} ${ins.op_str}",
-                    target = branchTarget(ins.op_str),
-                    guardAddress = null,
-                    guardText = null
-                )
-            )
-            pendingCompare = null
-        } else if (isSelect(m)) {
-            out.add(
-                Decision(
-                    address = ins.address,
-                    kind = "SELECT",
-                    text = "${ins.mnemonic} ${ins.op_str}",
-                    target = null,
-                    guardAddress = pendingCompare?.address,
-                    guardText = pendingCompare?.let { "${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
-                )
-            )
-            pendingCompare = null
-        } else {
-            // Any other real instruction breaks the compare→branch adjacency.
-            pendingCompare = null
+
+        // --- Switch / computed dispatch heuristics ---
+        // Pattern A: `br <reg>` shortly after an `ldrsw`/`ldr` from a table.
+        // Pattern B: `tbh` / `tbn` (table branch).
+        if (m == "tbh" || m == "tbn") {
+            out.add(Branch(ins.address, "SWITCH", "${ins.mnemonic} ${ins.op_str}", null, false,
+                "table branch (switch dispatch)"))
+            guard = null; i++; continue
         }
+        if (m == "br") {
+            // Look back up to 4 instructions for the table load that fed this br.
+            val tableLoad = (i - 1 downTo maxOf(0, i - 4)).map { instructions[it] }.firstOrNull {
+                val mm = it.mnemonic.lowercase()
+                mm == "ldrsw" || mm == "ldr" || mm == "ldrb" || mm == "ldrh"
+            }
+            if (tableLoad != null) {
+                out.add(Branch(ins.address, "SWITCH", "${ins.mnemonic} ${ins.op_str}", null, false,
+                    "computed jump via ${tableLoad.mnemonic} ${tableLoad.op_str}"))
+            }
+            guard = null; i++; continue
+        }
+
+        // --- Conditional branches ---
+        if (isFlagBranch(m) || isRegTestBranch(m)) {
+            val target = lastHex(ins.op_str)
+            val isLoop = target != null && target <= ins.address
+            val guardText = if (isFlagBranch(m)) {
+                guard?.let { "guard: ${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
+            } else null
+            out.add(Branch(ins.address, "COND", "${ins.mnemonic} ${ins.op_str}", target, isLoop, guardText))
+            guard = null; i++; continue
+        }
+
+        // --- Conditional selects ---
+        if (isSelect(m)) {
+            val guardText = guard?.let { "guard: ${it.mnemonic} ${it.op_str} @ 0x%08X".format(it.address) }
+            out.add(Branch(ins.address, "SELECT", "${ins.mnemonic} ${ins.op_str}", null, false, guardText))
+            guard = null; i++; continue
+        }
+
+        // --- Track the flag-setting guard, else invalidate it ---
+        if (m in COMPARE_MNEMONICS) {
+            guard = ins
+        } else {
+            guard = null
+        }
+        i++
     }
     return out
 }
-
-private fun lastCompare(instructions: List<Instruction>): Instruction? =
-    instructions.lastOrNull { isCompare(it.mnemonic.lowercase()) }

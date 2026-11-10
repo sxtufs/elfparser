@@ -129,6 +129,11 @@ class ELFTraceViewModel : ViewModel() {
     private val _instructions = MutableStateFlow<List<Instruction>>(emptyList())
     val instructions: StateFlow<List<Instruction>> = _instructions.asStateFlow()
 
+    /// A larger disassembly window of the current function, used only by the
+    /// Branches analyzer (so it sees the whole function, not just 256 bytes).
+    private val _analysisInstructions = MutableStateFlow<List<Instruction>>(emptyList())
+    val analysisInstructions: StateFlow<List<Instruction>> = _analysisInstructions.asStateFlow()
+
     private val _decompileText = MutableStateFlow("")
     val decompileText: StateFlow<String> = _decompileText.asStateFlow()
 
@@ -192,6 +197,15 @@ class ELFTraceViewModel : ViewModel() {
             }
             val b = _bridge.value ?: return@launch
             _instructions.value = b.disassemble(address, 256)
+            // Full-function window for the Branches analyzer. Use the symbol size
+            // when known (capped to keep it bounded), else a generous default.
+            val symSize = _elfInfo.value?.syms
+                ?.firstOrNull { it.value == address }?.size ?: 0L
+            val analysisWindow = when {
+                symSize in 4L..(1024L * 1024L) -> symSize + 64   // symbol size + slack
+                else -> 4096L                                    // 4 KB default
+            }
+            _analysisInstructions.value = b.disassemble(address, analysisWindow)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
