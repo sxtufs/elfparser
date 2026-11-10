@@ -1123,25 +1123,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     // Will flip red when: decompile_to_c(save0) produces compilable C.
     ("save0", "inline asm branch exceeds immediate-operand range"),
 
-    // init0: emits a libc memory call (memcpy family) with ZERO args because
-    // the lifter's arg_liveness tracking missed the register writes that precede
-    // the `bl memcpy`. This is a lifter-side edge case, not a codegen one — the
-    // codegen (void*) cast fix works correctly for calls with args.
-    // Fix: extend arm64.rs bl/arg_live tracking to seed x0..x7 as "written" when
-    // the preceding block writes them via ldr/mov chains that the current scan
-    // does not trace through complex address computations.
-    // Will flip red when: decompile_to_c(init0) produces compilable C.
-    ("init0", "lifter: libc memory call emitted with zero args"),
-
-    // traceInit / traceStep: SAME root cause as init0 — the arm64 lifter emits
-    // `memcpy()` with zero args because arg_liveness tracking does not trace the
-    // register writes that set up the libc memcpy call (e.g. the match/serde_json
-    // paths introduce a memcpy). Not a codegen bug; the fix is the shared lifter
-    // fix described on the init0 entry above.
-    // Will flip red when: decompile_to_c(traceInit|traceStep) produces compilable C.
-    ("traceInit", "lifter: libc memory call emitted with zero args"),
-    ("traceStep", "lifter: libc memory call emitted with zero args"),
-    ("traceBack", "lifter: libc memory call emitted with zero args"),
 ];
 
 #[test]
