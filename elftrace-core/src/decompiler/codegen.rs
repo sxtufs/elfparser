@@ -523,6 +523,16 @@ impl<'a> CodeGenerator<'a> {
                             .as_deref()
                             .map(is_libc_memory_fn)
                             .unwrap_or(false);
+                        // pthread_* family: canonical prototypes take pointer types
+                        // (pthread_t*, const pthread_attr_t*, void*(*)(void*), void*)
+                        // that don't match `(uint64_t)(uintptr_t)` wraps. Emit a
+                        // function-pointer cast against a `uint64_t`-arg prototype
+                        // so the call is well-typed without changing the values.
+                        // Result: `((int64_t(*)(uint64_t,...))pthread_create)(...)`.
+                        let is_pthread = name
+                            .as_deref()
+                            .map(is_pthread_fn)
+                            .unwrap_or(false);
                         let formatted_args = args
                             .iter()
                             .enumerate()
@@ -535,6 +545,10 @@ impl<'a> CodeGenerator<'a> {
                                 );
                                 let cast = if is_libc_mem {
                                     libc_arg_cast(name.as_deref().unwrap_or(""), i)
+                                } else if is_pthread {
+                                    // No wrapper - value flows directly into the
+                                    // int64_t prototype arg below.
+                                    ""
                                 } else {
                                     "(uint64_t)(uintptr_t)"
                                 };
@@ -544,6 +558,11 @@ impl<'a> CodeGenerator<'a> {
                             .join(", ");
                         let call_expr = if is_libc_mem {
                             format!("((int64_t)(uintptr_t){}({}))", call_name, formatted_args)
+                        } else if is_pthread {
+                            format!(
+                                "((int64_t(*)({})){})({})",
+                                proto_args, call_name, formatted_args
+                            )
                         } else {
                             format!("{}({})", call_name, formatted_args)
                         };
@@ -1228,4 +1247,18 @@ fn sub_register_info(r: &str) -> Option<(String, &'static str)> {
     }
 
     None
+}
+
+/// Returns true for POSIX thread functions. Their canonical prototypes take
+/// pointer types (pthread_t*, const pthread_attr_t*, function pointer, void*)
+/// that don't line up with the generic `(uint64_t)(uintptr_t)` arg wrapper the
+/// emitter applies to unresolved calls. For the pthread family we instead
+/// emit a function-pointer cast against a `uint64_t`-arg prototype:
+///
+///     ((int64_t(*)(uint64_t, ...))pthread_create)(a0, a1, a2, x3)
+///
+/// This preserves the exact argument values and compiles cleanly under
+/// -Werror without changing the observable call semantics.
+fn is_pthread_fn(name: &str) -> bool {
+    name.starts_with("pthread_")
 }
