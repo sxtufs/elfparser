@@ -83,7 +83,7 @@ impl UnicornTracer {
 
         // Emulated stack.
         let stack_start = STACK_TOP - STACK_SIZE;
-        uc.mem_map(stack_start, STACK_SIZE as usize, Prot::ALL)
+        uc.mem_map(stack_start, STACK_SIZE, Prot::ALL)
             .map_err(|e| format!("Stack mapping failed: {:?}", e))?;
 
         uc.reg_write(RegisterARM64::SP, STACK_TOP)
@@ -136,7 +136,7 @@ impl UnicornTracer {
             ));
         }
 
-        uc.mem_map(start, size as usize, Prot::ALL)
+        uc.mem_map(start, size, Prot::ALL)
             .map_err(|e| format!("Image mapping failed: {:?}", e))?;
 
         for (addr, data) in chunks {
@@ -215,19 +215,20 @@ impl UnicornTracer {
             .map_err(|e| format!("PC read failed: {:?}", e))?;
 
         // Decode the instruction at PC for display (read straight from emulated
-        // memory, so it works for any mapped code region).
-        let (mnem, ops) = match self.uc.mem_read(pc, 4) {
-            Ok(code) => {
-                let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
-                match crate::disasm::disassemble(&code, pc, 4, e_machine, false) {
-                    Ok(ins) => match ins.data.into_iter().next() {
-                        Some(i) => (i.mnemonic, i.op_str),
-                        None => (String::from("?"), String::new()),
-                    },
-                    Err(_) => (String::from("?"), String::new()),
-                }
+        // memory, so it works for any mapped code region). `mem_read` fills a
+        // caller-provided buffer and returns `Result<(), _>`.
+        let mut code = [0u8; 4];
+        let (mnem, ops) = if self.uc.mem_read(pc, &mut code).is_ok() {
+            let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+            match crate::disasm::disassemble(&code, pc, 4, e_machine, false) {
+                Ok(ins) => match ins.data.into_iter().next() {
+                    Some(i) => (i.mnemonic, i.op_str),
+                    None => (String::from("?"), String::new()),
+                },
+                Err(_) => (String::from("?"), String::new()),
             }
-            Err(_) => (String::from("?"), String::new()),
+        } else {
+            (String::from("?"), String::new())
         };
 
         let prev = self.snapshot()?;

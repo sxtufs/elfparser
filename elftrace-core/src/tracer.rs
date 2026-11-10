@@ -1069,7 +1069,7 @@ impl VirtualCpu {
                         let sh = (sh & 31) as u32;
                         let lo = lo as u32;
                         let hi = hi as u32;
-                        if sh == 0 { lo as u64 } else { (((hi << (32 - sh)) | (lo >> sh)) as u64) }
+                        if sh == 0 { lo as u64 } else { ((hi << (32 - sh)) | (lo >> sh)) as u64 }
                     } else {
                         let sh = (sh & 63) as u32;
                         if sh == 0 { lo } else { (hi << (64 - sh)) | (lo >> sh) }
