@@ -197,41 +197,68 @@ impl UnicornTracer {
 
     fn map_image(uc: &mut Unicorn<'static, ()>, raw: &[u8]) -> Result<(), String> {
         let file = object::File::parse(raw).map_err(|e| format!("ELF parse failed: {:?}", e))?;
-        let mut lo = u64::MAX;
-        let mut hi = 0u64;
-        let mut chunks: Vec<(u64, Vec<u8>)> = Vec::new();
+
+        // Collect each PT_LOAD segment as a page-aligned memory region. Mapping
+        // per-segment (instead of one giant span) handles non-contiguous
+        // layouts common in hardened/packed libraries.
+        // Each region carries the segment's *true* load address (`addr`) and its
+        // page-aligned mapping start (`page_start`). File bytes must be written
+        // at `addr`, not `page_start`, for non-page-aligned segments.
+        let mut regions: Vec<(u64, u64, u64, Vec<u8>)> = Vec::new(); // (addr, page_start, page_size, data)
         for seg in file.segments() {
-            let addr = seg.address();
             let memsz = seg.size();
             if memsz == 0 {
                 continue;
             }
-            lo = lo.min(addr);
-            hi = hi.max(addr.wrapping_add(memsz));
+            let addr = seg.address();
+            let page_start = addr & !(PAGE - 1);
+            let raw_end = addr.wrapping_add(memsz);
+            let page_end = (raw_end + PAGE - 1) & !(PAGE - 1);
+            let page_size = page_end - page_start;
             let data = seg.data().map(|d| d.to_vec()).unwrap_or_default();
-            chunks.push((addr, data));
+            regions.push((addr, page_start, page_size, data));
         }
-        if lo == u64::MAX {
+
+        if regions.is_empty() {
             return Err("ELF has no loadable segments".to_string());
         }
-        let start = lo & !(PAGE - 1);
-        let end = (hi + PAGE - 1) & !(PAGE - 1);
-        let size = end - start;
-        if size == 0 {
-            return Err("ELF image has zero size".to_string());
+
+        // Merge page ranges first, so we never call mem_map on an overlapping
+        // region (Unicorn rejects overlaps). Then write data per segment.
+        let mut ranges: Vec<(u64, u64)> = regions
+            .iter()
+            .map(|(_addr, page_start, page_size, _)| (*page_start, *page_start + *page_size))
+            .collect();
+        ranges.sort_by_key(|r| r.0);
+        let mut merged: Vec<(u64, u64)> = Vec::new();
+        for (s, e) in ranges {
+            if let Some(last) = merged.last_mut() {
+                if s <= last.1 {
+                    if e > last.1 {
+                        last.1 = e;
+                    }
+                    continue;
+                }
+            }
+            merged.push((s, e));
         }
-        if size > 0x2000_0000 {
-            return Err(format!(
-                "Refusing to map {} MiB image (unexpected segment layout)",
-                size / 0x10_0000
-            ));
+
+        let mut total: u64 = 0;
+        for (s, e) in &merged {
+            let sz = e - s;
+            total += sz;
+            uc.mem_map(*s, sz, Prot::ALL)
+                .map_err(|er| format!("Image mapping at 0x{:x} ({} bytes) failed: {:?}", s, sz, er))?;
         }
-        uc.mem_map(start, size, Prot::ALL)
-            .map_err(|e| format!("Image mapping failed: {:?}", e))?;
-        for (addr, data) in chunks {
+        if total > 0x2000_0000 {
+            return Err(format!("Refusing to map {} MiB image", total / 0x10_0000));
+        }
+
+        for (addr, _page_start, _page_size, data) in regions {
             if !data.is_empty() {
+                // Write file-backed bytes at the segment's true load address.
                 uc.mem_write(addr, &data)
-                    .map_err(|e| format!("Image write at 0x{:x} failed: {:?}", addr, e))?;
+                    .map_err(|er| format!("Image write at 0x{:x} failed: {:?}", addr, er))?;
             }
         }
         Ok(())

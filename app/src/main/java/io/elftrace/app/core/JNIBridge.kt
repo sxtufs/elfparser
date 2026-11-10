@@ -29,7 +29,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun readBytes0(handle: Long, address: Long, length: Int): ByteArray
 
         // In-process Execution Tracer
-        @JvmStatic private external fun traceInit(handle: Long, address: Long)
+        @JvmStatic private external fun traceInit(handle: Long, address: Long): String
         @JvmStatic private external fun traceStep(handle: Long): String
         @JvmStatic private external fun traceBack(handle: Long): String
 
@@ -113,8 +113,13 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         return readBytes0(handle, address, length)
     }
 
-    fun startTrace(address: Long) {
-        traceInit(handle, address)
+    fun startTrace(address: Long): TraceState {
+        val json = traceInit(handle, address)
+        return try {
+            gson.fromJson(json, TraceState::class.java) ?: TraceState()
+        } catch (e: Exception) {
+            TraceState(error = e.message)
+        }
     }
 
     fun stepTrace(): TraceState {

@@ -172,7 +172,16 @@ unsafe fn handle_trace_init(handle: jlong, address: jlong) {
             let c: &ElfContext = ctx;
             crate::tracer::Tracer::new(address as u64, c)
         };
-        ctx.vcpu = tracer.ok();
+        match tracer {
+            Ok(t) => {
+                ctx.vcpu = Some(t);
+                ctx.trace_init_error = None;
+            }
+            Err(e) => {
+                ctx.vcpu = None;
+                ctx.trace_init_error = Some(e);
+            }
+        }
     }
 }
 
@@ -190,14 +199,19 @@ unsafe fn handle_trace_step(env: &JNIEnv, handle: jlong) -> jstring {
                 env.new_string(json).unwrap().into_inner()
             }
             Err(e) => {
-                let err_json = format!("{{\"error\":\"{}\"}}", e);
+                // Use serde_json so quotes/backslashes in the message are escaped.
+                let err_json = serde_json::json!({ "error": e }).to_string();
                 env.new_string(err_json).unwrap().into_inner()
             }
         }
     } else {
-        env.new_string("{\"error\":\"Tracer not initialized\"}")
-            .unwrap()
-            .into_inner()
+        // Surface the real initialization failure instead of a generic message.
+        let msg = ctx
+            .trace_init_error
+            .clone()
+            .unwrap_or_else(|| "Tracer not initialized".to_string());
+        let err_json = serde_json::json!({ "error": msg }).to_string();
+        env.new_string(err_json).unwrap().into_inner()
     }
 }
 
@@ -346,12 +360,26 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_finalize0(
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_traceInit(
-    _env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     address: jlong,
-) {
-    handle_trace_init(handle, address)
+) -> jstring {
+    handle_trace_init(handle, address);
+    // Report initialization success/failure immediately so the UI can show it
+    // instead of only after the first Step.
+    if handle == 0 {
+        return env
+            .new_string("{\"error\":\"Invalid handle\"}")
+            .unwrap()
+            .into_inner();
+    }
+    let ctx = &*(handle as *const ElfContext);
+    let json = match &ctx.trace_init_error {
+        Some(e) => serde_json::json!({ "error": e }).to_string(),
+        None => "{}".to_string(),
+    };
+    env.new_string(json).unwrap().into_inner()
 }
 
 #[no_mangle]

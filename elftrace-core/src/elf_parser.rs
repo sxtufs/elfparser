@@ -9,6 +9,9 @@ pub struct ElfContext {
     pub raw: Vec<u8>,
     pub vcpu: Option<crate::tracer::Tracer>,
     pub syms_map: HashMap<u64, SymsDTO>,
+    /// Last tracer-initialization failure, surfaced to the UI instead of being
+    /// silently dropped when `Tracer::new` fails.
+    pub trace_init_error: Option<String>,
 }
 
 impl ElfContext {
@@ -27,6 +30,7 @@ impl ElfContext {
             raw: Vec::new(),
             vcpu: None,
             syms_map: HashMap::new(),
+            trace_init_error: None,
         }
     }
 
@@ -207,6 +211,7 @@ impl ElfContext {
             raw,
             vcpu: None,
             syms_map,
+            trace_init_error: None,
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)

@@ -174,10 +174,15 @@ class ELFTraceViewModel : ViewModel() {
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
-            b.startTrace(address)
-            val firstInsn = _instructions.value.firstOrNull()
-            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
-            _traceState.value = TraceState(pc = address, current_insn = initialInsn)
+            val init = b.startTrace(address)
+            // If the engine failed to initialize, show the real reason now.
+            if (init.error != null) {
+                _traceState.value = init
+            } else {
+                val firstInsn = _instructions.value.firstOrNull()
+                val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
+                _traceState.value = TraceState(pc = address, current_insn = initialInsn)
+            }
         }
     }
 
@@ -255,10 +260,14 @@ class ELFTraceViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val b = _bridge.value ?: return@launch
             val addr = _currentAddress.value
-            b.startTrace(addr)
-            val firstInsn = _instructions.value.firstOrNull()
-            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
-            _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
+            val init = b.startTrace(addr)
+            if (init.error != null) {
+                _traceState.value = init
+            } else {
+                val firstInsn = _instructions.value.firstOrNull()
+                val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
+                _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
+            }
         }
     }
 
