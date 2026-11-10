@@ -386,6 +386,54 @@ impl ElfContext {
         None
     }
 
+    /// True when `vaddr` lies inside a loadable segment's *memory* image but
+    /// beyond its file-backed bytes — i.e. a `.bss` / `NOBITS` section or the
+    /// zero-fill tail of a `PT_LOAD` segment (`p_memsz > p_filesz`). Such bytes
+    /// read as 0 at runtime but have no backing bytes in `self.raw`.
+    pub fn is_zero_fill_vaddr(&self, vaddr: u64) -> bool {
+        if vaddr == 0 {
+            return false;
+        }
+        let obj_file = match object::File::parse(&*self.raw) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+
+        // NOBITS sections (.bss, .tbss) have an address+size but no file range.
+        for section in obj_file.sections() {
+            let sec_addr = section.address();
+            let sec_size = section.size();
+            if sec_addr == 0 || sec_size == 0 {
+                continue;
+            }
+            if let Some(sec_end) = sec_addr.checked_add(sec_size) {
+                if vaddr >= sec_addr && vaddr < sec_end {
+                    match section.file_range() {
+                        Some((_, fsize)) if (vaddr - sec_addr) < fsize => return false,
+                        _ => return true,
+                    }
+                }
+            }
+        }
+
+        // Segment tail: inside p_memsz but past p_filesz.
+        for segment in obj_file.segments() {
+            let seg_addr = segment.address();
+            let seg_size = segment.size();
+            if seg_size == 0 {
+                continue;
+            }
+            if let Some(seg_end) = seg_addr.checked_add(seg_size) {
+                if vaddr >= seg_addr && vaddr < seg_end {
+                    let (_, file_size) = segment.file_range();
+                    return (vaddr - seg_addr) >= file_size;
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn offset_to_vaddr(&self, offset: u64) -> Option<u64> {
         let obj_file = object::File::parse(&*self.raw).ok()?;
 

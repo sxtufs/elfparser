@@ -28,6 +28,9 @@ pub struct VirtualCpu {
     pub state: RegisterState,
     pub history: Vec<RegisterState>,
     pub memory: HashMap<u64, u8>,
+    /// Top of the emulated stack window (initial SP); used to decide whether a
+    /// read falls in the stack region so it can be zero-filled.
+    pub stack_top: u64,
 }
 
 impl VirtualCpu {
@@ -49,6 +52,7 @@ impl VirtualCpu {
             },
             history: Vec::new(),
             memory: HashMap::new(),
+            stack_top: 0x7FFF_FFFF_0000,
         }
     }
 
@@ -56,7 +60,30 @@ impl VirtualCpu {
         let pc = self.state.pc;
         let offset = match ctx.vaddr_to_offset(pc) {
             Some(off) => off as usize,
-            None => return Err(format!("PC 0x{:08x} outside mapped ELF sections", pc)),
+            None => {
+                // Diagnose *why* we left executable memory. `state.mnemonic` still holds
+                // the previously executed instruction, which is the branch that landed
+                // us here.
+                let prev = if self.state.mnemonic.is_empty() {
+                    "entry point".to_string()
+                } else {
+                    format!("{} {}", self.state.mnemonic, self.state.op_str)
+                };
+                return Err(if pc == 0 {
+                    format!(
+                        "Jumped to address 0 after `{}` — unresolved external call or null \
+                         pointer. The dynamic linker is not emulated, so imports resolve to 0. \
+                         Use Back to inspect the caller.",
+                        prev
+                    )
+                } else {
+                    format!(
+                        "PC 0x{:016x} is not executable (arrived via `{}`) — branch into data or \
+                         unmapped memory.",
+                        pc, prev
+                    )
+                });
+            }
         };
 
         if offset >= ctx.raw.len() {
@@ -1476,37 +1503,53 @@ impl VirtualCpu {
         }
     }
 
-    fn read_mem(&self, ctx: &ElfContext, addr: u64, size_bytes: u8) -> Result<u64, String> {
-        let mut val = 0u64;
-        let mut all_present = true;
-        for i in 0..size_bytes as u64 {
-            match self.memory.get(&(addr + i)) {
-                Some(&b) => val |= (b as u64) << (8 * i),
-                None => {
-                    all_present = false;
-                    break;
-                }
-            }
+    /// Resolve one byte of guest memory. Returns `None` only when the byte is
+    /// genuinely outside any mapped region, so callers can produce a precise error.
+    fn read_byte(&self, ctx: &ElfContext, addr: u64) -> Option<u8> {
+        // 1. Written-overlay bytes (stack spills, patched globals) win.
+        if let Some(&b) = self.memory.get(&addr) {
+            return Some(b);
         }
-        if all_present {
-            return Ok(val);
-        }
-
+        // 2. File-backed bytes.
         if let Some(off) = ctx.vaddr_to_offset(addr) {
             let off = off as usize;
-            if off + size_bytes as usize <= ctx.raw.len() {
-                val = 0;
-                for i in 0..size_bytes as usize {
-                    val |= (ctx.raw[off + i] as u64) << (8 * i);
-                }
-                return Ok(val);
+            if off < ctx.raw.len() {
+                return Some(ctx.raw[off]);
             }
         }
+        // 3. Zero-fill regions: `.bss` / NOBITS sections, `PT_LOAD` tails, and the
+        //    emulated stack. At runtime these read as 0 before any write.
+        if ctx.is_zero_fill_vaddr(addr) || self.is_stack_addr(addr) {
+            return Some(0);
+        }
+        None
+    }
 
-        Err(format!(
-            "Unmapped memory read at 0x{:016x} ({} bytes)",
-            addr, size_bytes
-        ))
+    /// The emulated stack lives just below the initial SP and above a bound.
+    /// Android threads get an 8 MiB stack by default, so this window matches the
+    /// largest region real code can legitimately touch. Reads below it are
+    /// genuinely unmapped and still halt with a precise error.
+    fn is_stack_addr(&self, addr: u64) -> bool {
+        const STACK_SIZE: u64 = 0x80_0000; // 8 MiB
+        let top = self.stack_top;
+        addr < top && addr >= top.saturating_sub(STACK_SIZE)
+    }
+
+    fn read_mem(&self, ctx: &ElfContext, addr: u64, size_bytes: u8) -> Result<u64, String> {
+        let mut val = 0u64;
+        for i in 0..size_bytes as u64 {
+            let a = addr.wrapping_add(i);
+            match self.read_byte(ctx, a) {
+                Some(b) => val |= (b as u64) << (8 * i),
+                None => {
+                    return Err(format!(
+                        "Unmapped memory read at 0x{:016x} ({} bytes)",
+                        addr, size_bytes
+                    ));
+                }
+            }
+        }
+        Ok(val)
     }
 
     fn write_mem(&mut self, addr: u64, val: u64, size_bytes: u8) {

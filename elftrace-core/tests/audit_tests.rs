@@ -837,6 +837,32 @@ fn test_tracer_unmapped_read_halts() {
 }
 
 #[test]
+fn test_tracer_zero_fill_reads() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let mut v = VirtualCpu::new(0x1000);
+
+    // Reading an untouched stack slot must yield 0 rather than halting. This is
+    // the `.bss`/stack zero-fill case that previously produced
+    // "Unmapped memory read".
+    v.state.x[1] = v.state.sp - 0x100;
+    v.execute_insn(&ctx, 0x1000, "ldr", "x0, [x1]", 0x1004)
+        .expect("stack read must not halt");
+    assert_eq!(v.state.x[0], 0, "unwritten stack must read as zero");
+
+    // Write then read must observe the written value (overlay wins over
+    // zero-fill).
+    v.state.x[2] = 0xCAFE;
+    v.execute_insn(&ctx, 0x1004, "str", "x2, [x1]", 0x1008).unwrap();
+    v.execute_insn(&ctx, 0x1008, "ldr", "x0, [x1]", 0x100C).unwrap();
+    assert_eq!(v.state.x[0], 0xCAFE);
+}
+
+#[test]
 fn test_tracer_conditional_select() {
     use elftrace::tracer::VirtualCpu;
     let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
