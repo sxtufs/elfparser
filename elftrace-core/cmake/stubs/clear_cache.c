@@ -15,6 +15,8 @@
  * forward to it. Signature matches compiler-rt: (char *begin, char *end).
  */
 
-void __clear_cache(char *begin, char *end) {
-    __builtin___clear_cache(begin, end);
+// clang declares __clear_cache as a builtin with signature
+// `void (void *, void *)`, so we must match it exactly (char* conflicts).
+void __clear_cache(void *begin, void *end) {
+    __builtin___clear_cache((char *)begin, (char *)end);
 }
