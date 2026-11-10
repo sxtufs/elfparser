@@ -1,0 +1,33 @@
+[package]
+name = "elftrace"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "elftrace"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+object = { version = "0.32", default-features = false, features = ["read_core", "elf", "std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+jni = "0.19"
+capstone = "0.12"
+thiserror = "1.0"
+cpp_demangle = "0.4"
+
+[profile.release]
+# Remove internal symbol names (Rust function/type names).
+# Keeps .dynsym (exported JNI symbols) — required for Android JNI loading.
+strip = "symbols"
+
+# Thin LTO: cross-crate inlining. Fast compile, most of the size/optimization benefit.
+lto = "thin"
+
+# Single codegen unit: better optimization, slower compile. CI has time.
+codegen-units = 1
+
+# Abort on panic instead of unwinding. Two benefits:
+#   1. Removes unwinding tables (~500 KB savings)
+#   2. Prevents a Rust panic from unwinding across the JNI boundary
+panic = "abort"

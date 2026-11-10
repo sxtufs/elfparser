@@ -1,0 +1,152 @@
+name: Build ELFTrace
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: elftrace-core
+          shared-key: "elftrace-android-arm64"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 3.5.4 --locked
+
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: Build Rust core for arm64-v8a
+        run: |
+          set -euo pipefail
+          cd elftrace-core
+          cargo ndk -t arm64-v8a -p 24 -o ../app/src/main/jniLibs build --release
+          cd ..
+          test -f app/src/main/jniLibs/arm64-v8a/libelftrace.so || {
+            echo "ERROR: cargo ndk did not produce libelftrace.so"
+            exit 1
+          }
+
+      - name: Install AArch64 cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Run Rust tests
+        run: |
+          set -uo pipefail
+          cd elftrace-core
+          # Many tests skip gracefully when fixtures are absent (real APK .so files
+          # aren't checked into the repo). Tests that CAN run here include:
+          #   - audit_tests: pure-logic tests (patcher, resolvers, malformed ELF)
+          #   - accuracy_tests: lifter/codegen tests using ElfContext::stub()
+          #   - self-compile gate + batch E end-to-end (find the .so built above)
+          # A failed test here blocks the APK build — that's the point.
+          cargo test --all -- --test-threads=1
+
+      - name: Verify .so — size, exports, stripped
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          SO=app/src/main/jniLibs/arm64-v8a/libelftrace.so
+
+          echo "=== Size ==="
+          ls -la "$SO"
+          SIZE=$(stat -c%s "$SO")
+          echo "Bytes: $SIZE ($((SIZE/1024/1024)) MB)"
+          if [ "$SIZE" -gt 12582912 ]; then
+            echo "ERROR: .so > 12 MB — strip profile may not be active"
+            exit 1
+          fi
+
+          echo "=== JNI exports survived strip (must be >= 10) ==="
+          EXPORTS=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" \
+            --dyn-syms "$SO" | grep -c "Java_io_elftrace_app_core_JNIBridge" || true)
+          echo "Found $EXPORTS JNI exports"
+          if [ "$EXPORTS" -lt 10 ]; then
+            echo "ERROR: expected >= 10 JNI exports after strip, found $EXPORTS"
+            exit 1
+          fi
+
+          echo "=== Internal Rust symbols stripped (must be 0) ==="
+          INTERNAL=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" \
+            --syms "$SO" 2>/dev/null | grep -c "core::fmt\|alloc::vec" || true)
+          echo "Internal symbols found: $INTERNAL (must be 0)"
+          if [ "$INTERNAL" -ne 0 ]; then
+            echo "ERROR: strip did not remove .symtab"
+            exit 1
+          fi
+
+      - name: Make Gradlew Executable
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify .so inside APK
+        run: |
+          set -euo pipefail
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          echo "Checking $APK"
+          unzip -l "$APK" | grep "lib/arm64-v8a/libelftrace.so" || {
+            echo "ERROR: libelftrace.so not packaged in APK"
+            exit 1
+          }
+          UNZIPPED_SIZE=$(unzip -p "$APK" lib/arm64-v8a/libelftrace.so | wc -c)
+          ON_DISK_SIZE=$(stat -c%s app/src/main/jniLibs/arm64-v8a/libelftrace.so)
+          if [ "$UNZIPPED_SIZE" -ne "$ON_DISK_SIZE" ]; then
+            echo "ERROR: APK .so size ($UNZIPPED_SIZE) != built .so size ($ON_DISK_SIZE)"
+            exit 1
+          fi
+          echo "APK .so verified: $UNZIPPED_SIZE bytes"
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ELFTrace-Release
+          path: app/build/outputs/apk/release/*.apk
+
+      - name: Create GitHub Release (On Tag)
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/apk/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
