@@ -529,6 +529,162 @@ fn test_tracer_arithmetic() {
 }
 
 #[test]
+fn test_tracer_extensions_and_rev() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let mut v = VirtualCpu::new(0x1000);
+
+    // sxtb x0, w1 — 0x80 must sign-extend to 0xFFFF_FFFF_FFFF_FF80
+    v.state.x[1] = 0x80;
+    v.execute_insn(&ctx, 0x1000, "sxtb", "x0, w1", 0x1004)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xFFFF_FFFF_FFFF_FF80);
+
+    // sxth w0, w1 — 16-bit sign extend, zero-extended into x
+    v.state.x[1] = 0x8001;
+    v.execute_insn(&ctx, 0x1004, "sxth", "w0, w1", 0x1008)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xFFFF_8001);
+
+    // sxtw x0, w1 — sign-extend low 32 bits
+    v.state.x[1] = 0x8000_0000;
+    v.execute_insn(&ctx, 0x1008, "sxtw", "x0, w1", 0x100C)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xFFFF_FFFF_8000_0000);
+
+    // uxtb / uxth / uxtw truncate
+    v.state.x[1] = 0xDEAD_BEEF_CAFE_BABE;
+    v.execute_insn(&ctx, 0x100C, "uxtb", "w0, w1", 0x1010)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xBE);
+    v.execute_insn(&ctx, 0x1010, "uxth", "w0, w1", 0x1014)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xBABE);
+    v.execute_insn(&ctx, 0x1014, "uxtw", "x0, w1", 0x1018)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0xCAFE_BABE);
+
+    // rev w0, w1 — byte-swap 32-bit
+    v.state.x[1] = 0x1234_5678;
+    v.execute_insn(&ctx, 0x1018, "rev", "w0, w1", 0x101C)
+        .unwrap();
+    assert_eq!(v.state.x[0], 0x7856_3412);
+}
+
+#[test]
+fn test_tracer_call_and_ret() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let mut v = VirtualCpu::new(0x1000);
+
+    // bl 0x2000 — sets x30 (LR) to next_pc and jumps
+    v.state.x[30] = 0;
+    v.execute_insn(&ctx, 0x1000, "bl", "0x2000", 0x1004)
+        .unwrap();
+    assert_eq!(v.state.x[30], 0x1004, "bl must write return addr to x30");
+    assert_eq!(v.state.pc, 0x2000, "bl must jump to target");
+
+    // ret — jumps to x30
+    v.execute_insn(&ctx, 0x2000, "ret", "", 0x2004).unwrap();
+    assert_eq!(v.state.pc, 0x1004, "ret must jump to x30");
+
+    // blr x5 — indirect call
+    v.state.x[5] = 0x3000;
+    v.execute_insn(&ctx, 0x1004, "blr", "x5", 0x1008).unwrap();
+    assert_eq!(v.state.x[30], 0x1008, "blr must set LR");
+    assert_eq!(v.state.pc, 0x3000, "blr must jump to register target");
+}
+
+#[test]
+fn test_tracer_svc_is_skipped() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let mut v = VirtualCpu::new(0x1000);
+
+    // svc #0 must NOT abort the trace; it advances to next_pc and annotates.
+    v.state.x[8] = 64; // write(2)
+    let res = v.execute_insn(&ctx, 0x1000, "svc", "#0", 0x1004);
+    assert!(res.is_ok(), "svc must not error out the emulator");
+    assert_eq!(v.state.pc, 0x1004, "svc must advance past the instruction");
+    assert!(
+        v.state.current_insn.contains("syscall nr=64"),
+        "svc annotation should include the syscall number, got: {}",
+        v.state.current_insn
+    );
+}
+
+#[test]
+fn test_tracer_cond_branches() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let mut v = VirtualCpu::new(0x1000);
+
+    // b.hi taken only when C && !Z
+    v.state.c = true;
+    v.state.z = false;
+    v.execute_insn(&ctx, 0x1000, "b.hi", "0x2000", 0x1004)
+        .unwrap();
+    assert_eq!(v.state.pc, 0x2000);
+
+    // b.vs taken only when V set
+    v.state.pc = 0x1004;
+    v.state.v = true;
+    v.execute_insn(&ctx, 0x1004, "b.vs", "0x3000", 0x1008)
+        .unwrap();
+    assert_eq!(v.state.pc, 0x3000);
+
+    // b.ls taken when !C || Z
+    v.state.pc = 0x1008;
+    v.state.c = false;
+    v.execute_insn(&ctx, 0x1008, "b.ls", "0x4000", 0x100C)
+        .unwrap();
+    assert_eq!(v.state.pc, 0x4000);
+}
+
+#[test]
+fn test_tracer_run_helpers() {
+    use elftrace::tracer::VirtualCpu;
+    let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
+        Some(p) => p,
+        None => return,
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+
+    // Zero step budget must perform no work and return 0.
+    let mut v = VirtualCpu::new(0x1000);
+    let n = v.run_until(&ctx, 0, |_| true).unwrap();
+    assert_eq!(n, 0, "zero budget must run zero steps");
+    assert!(v.history.is_empty(), "no history should be recorded");
+
+    // run_steps with a zero budget returns the unchanged current state.
+    let before = v.state.clone();
+    let after = v.run_steps(&ctx, 0).unwrap();
+    assert_eq!(after.pc, before.pc);
+    assert!(v.history.is_empty());
+
+    // run_until_return with a zero budget never steps, so it reports 0 even
+    // though the initial PC is inside the function range.
+    let r = v.run_until_return(&ctx, 0x1000, 0x2000, 0).unwrap();
+    assert_eq!(r, 0);
+}
+
+#[test]
 fn test_tracer_shifts() {
     use elftrace::tracer::VirtualCpu;
     let path = match fixture("test_fixtures/accuracy/fx_a64_O2.so") {
