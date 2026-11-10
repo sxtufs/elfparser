@@ -108,18 +108,6 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         return readBytes0(handle, address, length)
     }
 
-    // Execution tracing was removed from the product (the native tracer was
-    // unstable on real files). These are retained as no-ops so callers compile
-    // and never throw; the UI no longer surfaces them.
-    fun startTrace(@Suppress("UNUSED_PARAMETER") address: Long): TraceState =
-        TraceState(error = "Execution tracing is no longer available")
-
-    fun stepTrace(): TraceState =
-        TraceState(error = "Execution tracing is no longer available")
-
-    fun stepBackTrace(): TraceState =
-        TraceState(error = "Execution tracing is no longer available")
-
     fun getXrefs(address: Long): List<XRefItem> {
         val json = getXrefs(handle, address)
         return try {

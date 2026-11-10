@@ -141,26 +141,6 @@ class ELFTraceViewModel : ViewModel() {
     private val _scanReport = MutableStateFlow<ScanReport?>(null)
     val scanReport: StateFlow<ScanReport?> = _scanReport.asStateFlow()
 
-    private val _traceState = MutableStateFlow<TraceState?>(null)
-    val traceState: StateFlow<TraceState?> = _traceState.asStateFlow()
-
-    /// True once the native tracer has been initialized for the current address.
-    /// Guarded by `traceLock` so Step/Back can lazily (re)initialize it.
-    private var traceReady = false
-    private val traceLock = Any()
-
-    /// Ensure the tracer is initialized for `address` before stepping. Returns an
-    /// error TraceState when initialization fails, or null on success.
-    private fun ensureTraceInit(b: JNIBridge, address: Long): TraceState? {
-        synchronized(traceLock) {
-            if (traceReady) return null
-            val init = b.startTrace(address)
-            if (init.error != null) return init
-            traceReady = true
-            return null
-        }
-    }
-
     private val _currentAddress = MutableStateFlow<Long>(0)
     val currentAddress: StateFlow<Long> = _currentAddress.asStateFlow()
 
@@ -178,7 +158,6 @@ class ELFTraceViewModel : ViewModel() {
             // We are already on the single native thread, so no lock is needed.
             // Close the previous bridge before swapping it out.
             val old = _bridge.value
-            traceReady = false
             _bridge.value = newBridge
             try { old?.close() } catch (_: Throwable) {}
             val b = newBridge
@@ -204,17 +183,11 @@ class ELFTraceViewModel : ViewModel() {
         // Everything else runs on the single native thread. No `synchronized`
         // here: blocking the UI thread on the native lock causes ANRs.
         viewModelScope.launch(nativeDispatcher) {
-            // Invalidate the tracer for the new target *inside* the worker.
-            traceReady = false
             if (address == 0L) {
                 // Address 0 is an undefined import, not executable code.
                 _instructions.value = emptyList()
                 _decompileText.value = "// selected symbol is an unresolved import (address 0)"
                 _flowchartText.value = ""
-                _traceState.value = TraceState(
-                    pc = 0,
-                    error = "Cannot trace: '$name' is an undefined import (address 0)"
-                )
                 return@launch
             }
             val b = _bridge.value ?: return@launch
@@ -222,14 +195,6 @@ class ELFTraceViewModel : ViewModel() {
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
             loadHexDump(address, 2048)
-            // Do NOT initialize the tracer here. Unicorn init on a large/packed
-            // .so can be slow, and because this runs on the single native thread
-            // it would block Hierarchy / Cross-References / Step behind it. The
-            // tracer is initialized lazily on the first Step instead.
-            traceReady = false
-            val firstInsn = _instructions.value.firstOrNull()
-            val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
-            _traceState.value = TraceState(pc = address, current_insn = initialInsn)
         }
     }
 
@@ -284,59 +249,6 @@ class ELFTraceViewModel : ViewModel() {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _scanReport.value = b.scanSecurity()
-        }
-    }
-
-    fun stepTrace() {
-        viewModelScope.launch(nativeDispatcher) {
-            val b = _bridge.value ?: return@launch
-            // The Unicorn handle is NOT thread-safe. Hold `traceLock` for the whole
-            // init+step so concurrent taps can never hit it from two threads
-            // (that segfaults and aborts the process).
-            val state = synchronized(traceLock) {
-                if (!traceReady) {
-                    val init = b.startTrace(_currentAddress.value)
-                    if (init.error != null) return@synchronized init
-                    traceReady = true
-                }
-                b.stepTrace()
-            }
-            _traceState.value = state
-        }
-    }
-
-    fun stepBackTrace() {
-        viewModelScope.launch(nativeDispatcher) {
-            val b = _bridge.value ?: return@launch
-            val state = synchronized(traceLock) {
-                if (!traceReady) {
-                    val init = b.startTrace(_currentAddress.value)
-                    if (init.error != null) return@synchronized init
-                    traceReady = true
-                }
-                b.stepBackTrace()
-            }
-            _traceState.value = state
-        }
-    }
-
-    fun resetTrace() {
-        viewModelScope.launch(nativeDispatcher) {
-            val b = _bridge.value ?: return@launch
-            val addr = _currentAddress.value
-            // Serialize with Step/Back (Unicorn is not thread-safe).
-            val init = synchronized(traceLock) {
-                val st = b.startTrace(addr)
-                traceReady = st.error == null
-                st
-            }
-            if (init.error != null) {
-                _traceState.value = init
-            } else {
-                val firstInsn = _instructions.value.firstOrNull()
-                val initialInsn = if (firstInsn != null) "${firstInsn.mnemonic} ${firstInsn.op_str}" else "Entry Point"
-                _traceState.value = TraceState(pc = addr, current_insn = initialInsn)
-            }
         }
     }
 
