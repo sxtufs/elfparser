@@ -104,19 +104,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 NavigationBarItem(
-                                    selected = currentScreen == Screen.Branches,
-                                    onClick = { viewModel.navigateTo(Screen.Branches) },
-                                    icon = { Icon(Icons.Default.AccountTree, contentDescription = "Branches") },
-                                    label = { Text("Branches", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = colors.primary,
-                                        selectedTextColor = colors.primary,
-                                        unselectedIconColor = colors.textSecondary,
-                                        unselectedTextColor = colors.textSecondary,
-                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
-                                    )
-                                )
-                                NavigationBarItem(
                                     selected = currentScreen == Screen.Analysis,
                                     onClick = { viewModel.navigateTo(Screen.Analysis) },
                                     icon = { Icon(Icons.Default.Search, contentDescription = "Analysis") },
@@ -159,8 +146,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-
-                            Screen.Branches -> BranchesScreen(viewModel)
 
                             Screen.Analysis -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
