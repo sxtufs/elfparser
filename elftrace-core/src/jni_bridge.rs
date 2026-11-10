@@ -172,6 +172,7 @@ unsafe fn handle_trace_init(handle: jlong, address: jlong) {
             let c: &ElfContext = ctx;
             crate::tracer::Tracer::new(address as u64, c)
         };
+        ctx.trace_inited = true;
         match tracer {
             Ok(t) => {
                 ctx.vcpu = Some(t);
@@ -205,11 +206,15 @@ unsafe fn handle_trace_step(env: &JNIEnv, handle: jlong) -> jstring {
             }
         }
     } else {
-        // Surface the real initialization failure instead of a generic message.
-        let msg = ctx
-            .trace_init_error
-            .clone()
-            .unwrap_or_else(|| "Tracer not initialized".to_string());
+        // Surface the real initialization failure, and make the impossible state
+        // self-diagnosing: if traceInit never ran, say so explicitly.
+        let msg = if let Some(e) = &ctx.trace_init_error {
+            e.clone()
+        } else if !ctx.trace_inited {
+            "Tracer not initialized: traceInit was never called".to_string()
+        } else {
+            "Tracer not initialized: init ran but produced no engine and no error".to_string()
+        };
         let err_json = serde_json::json!({ "error": msg }).to_string();
         env.new_string(err_json).unwrap().into_inner()
     }
@@ -230,11 +235,15 @@ unsafe fn handle_trace_back(env: &JNIEnv, handle: jlong) -> jstring {
                 .into_inner()
         }
     } else {
-        // Surface the real init failure on the Back path too.
-        let msg = ctx
-            .trace_init_error
-            .clone()
-            .unwrap_or_else(|| "Tracer not initialized".to_string());
+        // Surface the real init failure on the Back path too, with the same
+        // self-diagnosing distinction as the step path.
+        let msg = if let Some(e) = &ctx.trace_init_error {
+            e.clone()
+        } else if !ctx.trace_inited {
+            "Tracer not initialized: traceInit was never called".to_string()
+        } else {
+            "Tracer not initialized: init ran but produced no engine and no error".to_string()
+        };
         let err_json = serde_json::json!({ "error": msg }).to_string();
         env.new_string(err_json).unwrap().into_inner()
     }

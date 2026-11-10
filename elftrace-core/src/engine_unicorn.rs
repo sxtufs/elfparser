@@ -446,7 +446,7 @@ impl UnicornTracer {
         }
     }
 
-    pub fn step(&mut self, ctx: &ElfContext) -> Result<RegisterState, String> {
+    pub fn step(&mut self, _ctx: &ElfContext) -> Result<RegisterState, String> {
         let pc = self.read_pc()?;
         let read_len = self.read_len();
         let mut code = vec![0u8; read_len];

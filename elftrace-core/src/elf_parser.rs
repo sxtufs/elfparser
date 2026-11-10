@@ -12,6 +12,9 @@ pub struct ElfContext {
     /// Last tracer-initialization failure, surfaced to the UI instead of being
     /// silently dropped when `Tracer::new` fails.
     pub trace_init_error: Option<String>,
+    /// True once `traceInit` has been called, so the UI can distinguish
+    /// "init never ran" from "init ran and failed/succeeded".
+    pub trace_inited: bool,
 }
 
 impl ElfContext {
@@ -31,6 +34,7 @@ impl ElfContext {
             vcpu: None,
             syms_map: HashMap::new(),
             trace_init_error: None,
+            trace_inited: false,
         }
     }
 
@@ -212,6 +216,7 @@ impl ElfContext {
             vcpu: None,
             syms_map,
             trace_init_error: None,
+            trace_inited: false,
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)
