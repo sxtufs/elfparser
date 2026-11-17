@@ -72,6 +72,7 @@ pub struct PluginReport {
 
 const MAX_MATCHES_PER_RULE: usize = 64;
 
+#[inline(never)]
 pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
     let manifest: PluginManifest = match serde_json::from_str(plugin_json) {
         Ok(m) => m,
@@ -237,6 +238,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
     }
 }
 
+#[inline(never)]
 pub fn apply_plugin_patch(
     ctx: &mut ElfContext,
     address: u64,
