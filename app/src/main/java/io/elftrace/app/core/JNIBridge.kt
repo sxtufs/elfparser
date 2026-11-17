@@ -46,6 +46,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
 
         // In-Place Instruction Assembler
         @JvmStatic private external fun assemblePatch(handle: Long, address: Long, text: String): String
+
+        // JSON Signature & Patch Plugins
+        @JvmStatic private external fun runPlugin(handle: Long, pluginJson: String): String
+        @JvmStatic private external fun applyPluginPatch(handle: Long, address: Long, mode: String, value: String): String
     }
 
     fun assemblePatch(address: Long, text: String): PatchResult {
@@ -163,6 +167,24 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
 
     fun renameFunction(address: Long, newName: String): Boolean {
         return renameFunction(handle, address, newName)
+    }
+
+    fun runPlugin(pluginJson: String): PluginReport {
+        val json = runPlugin(handle, pluginJson)
+        return try {
+            gson.fromJson(json, PluginReport::class.java) ?: PluginReport(error = "Empty plugin response")
+        } catch (e: Exception) {
+            PluginReport(error = e.message)
+        }
+    }
+
+    fun applyPluginPatch(address: Long, mode: String, value: String): PatchResult {
+        val json = applyPluginPatch(handle, address, mode, value)
+        return try {
+            gson.fromJson(json, PatchResult::class.java) ?: PatchResult(error = "Unknown error")
+        } catch (e: Exception) {
+            PatchResult(error = e.message)
+        }
     }
 
     override fun close() {

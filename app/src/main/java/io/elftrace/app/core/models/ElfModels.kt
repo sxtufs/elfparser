@@ -128,3 +128,56 @@ data class CallHierarchy(
     val callees: List<CalleeItem> = emptyList()
 )
 
+data class PluginPatch(
+    val mode: String = "",
+    val value: String = "",
+    val offset: Long = 0
+)
+
+data class PluginRule(
+    val name: String = "",
+    val type: String = "",
+    val pattern: String = "",
+    val severity: String = "INFO",
+    val description: String = "",
+    val patch: PluginPatch? = null
+)
+
+data class PluginManifest(
+    val id: String = "",
+    val name: String = "",
+    val version: String = "1.0",
+    val author: String = "",
+    val description: String = "",
+    val arch: List<String> = emptyList(),
+    val rules: List<PluginRule> = emptyList()
+)
+
+data class PluginFinding(
+    val rule_name: String = "",
+    val rule_type: String = "",
+    val address: Long = 0,
+    val offset: Long = 0,
+    val matched_value: String = "",
+    val severity: String = "INFO",
+    val description: String = "",
+    val symbol_name: String? = null,
+    val patch: PluginPatch? = null
+)
+
+data class PluginReport(
+    val plugin_id: String = "",
+    val plugin_name: String = "",
+    val total_findings: Int = 0,
+    val findings: List<PluginFinding> = emptyList(),
+    val error: String? = null
+)
+
+data class LoadedPlugin(
+    val manifest: PluginManifest,
+    val rawJson: String,
+    val enabled: Boolean = true,
+    val isBuiltIn: Boolean = false,
+    val lastReport: PluginReport? = null
+)
+

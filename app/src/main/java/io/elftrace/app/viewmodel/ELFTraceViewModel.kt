@@ -18,6 +18,7 @@ sealed class Screen {
     object Files : Screen()
     object Code : Screen()
     object Analysis : Screen()
+    object Plugins : Screen()
 }
 
 class ELFTraceViewModel : ViewModel() {
@@ -285,6 +286,220 @@ class ELFTraceViewModel : ViewModel() {
             }
             val res = b.assemblePatch(address, text)
             if (res.success) {
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(res) }
+        }
+    }
+
+    // ==========================================
+    // Plugins (JSON Signature & Patch Recipes)
+    // ==========================================
+
+    private val gson = com.google.gson.Gson()
+
+    private val _plugins = MutableStateFlow<List<LoadedPlugin>>(defaultBuiltInPlugins())
+    val plugins: StateFlow<List<LoadedPlugin>> = _plugins.asStateFlow()
+
+    private val _isRunningPlugins = MutableStateFlow(false)
+    val isRunningPlugins: StateFlow<Boolean> = _isRunningPlugins.asStateFlow()
+
+    private fun defaultBuiltInPlugins(): List<LoadedPlugin> {
+        val builtInJsons = listOf(
+            """
+            {
+              "id": "builtin-ssl-pinning",
+              "name": "SSL Pinning & TLS Hooks",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects BoringSSL/OpenSSL certificate verification hooks and pinning strings.",
+              "rules": [
+                {
+                  "name": "SSL_CTX_set_custom_verify",
+                  "type": "symbol",
+                  "pattern": "SSL_CTX_set_custom_verify",
+                  "severity": "HIGH",
+                  "description": "BoringSSL custom certificate verification callback",
+                  "patch": { "mode": "quick", "value": "ret_void", "offset": 0 }
+                },
+                {
+                  "name": "SSL_get_verify_result",
+                  "type": "symbol",
+                  "pattern": "SSL_get_verify_result",
+                  "severity": "HIGH",
+                  "description": "OpenSSL/BoringSSL verification result check",
+                  "patch": { "mode": "quick", "value": "ret_false", "offset": 0 }
+                },
+                {
+                  "name": "X509_verify_cert",
+                  "type": "symbol",
+                  "pattern": "X509_verify_cert",
+                  "severity": "MEDIUM",
+                  "description": "X.509 certificate chain verification",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "Pinning String Indicator",
+                  "type": "string",
+                  "pattern": "sha256/",
+                  "severity": "INFO",
+                  "description": "Potential certificate pin hash string"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-anti-tamper",
+              "name": "Root, Frida & Anti-Debug",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Finds common root, Frida, Xposed, and ptrace anti-tamper indicators.",
+              "rules": [
+                {
+                  "name": "ptrace Symbol",
+                  "type": "symbol",
+                  "pattern": "ptrace",
+                  "severity": "HIGH",
+                  "description": "Anti-debug ptrace call"
+                },
+                {
+                  "name": "Frida String",
+                  "type": "string",
+                  "pattern": "frida",
+                  "severity": "HIGH",
+                  "description": "Frida detection string"
+                },
+                {
+                  "name": "Magisk / Su String",
+                  "type": "string",
+                  "pattern": "/system/bin/su",
+                  "severity": "MEDIUM",
+                  "description": "Root binary path check"
+                },
+                {
+                  "name": "TracerPid Check",
+                  "type": "string",
+                  "pattern": "TracerPid",
+                  "severity": "MEDIUM",
+                  "description": "/proc/self/status TracerPid anti-debug check"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-jni-entrypoints",
+              "name": "JNI & Native Entrypoints",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Locates JNI_OnLoad, RegisterNatives, and exported Java_* methods.",
+              "rules": [
+                {
+                  "name": "JNI_OnLoad",
+                  "type": "symbol",
+                  "pattern": "JNI_OnLoad",
+                  "severity": "INFO",
+                  "description": "Native library initialization entrypoint"
+                },
+                {
+                  "name": "Java_ Export",
+                  "type": "symbol",
+                  "pattern": "Java_",
+                  "severity": "INFO",
+                  "description": "Static JNI method export"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+        return builtInJsons.mapNotNull { raw ->
+            try {
+                val manifest = gson.fromJson(raw, PluginManifest::class.java)
+                LoadedPlugin(manifest = manifest, rawJson = raw, enabled = true, isBuiltIn = true)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    fun importPluginJson(rawJson: String): Result<PluginManifest> {
+        return try {
+            val manifest = gson.fromJson(rawJson, PluginManifest::class.java)
+                ?: return Result.failure(IllegalArgumentException("Empty plugin JSON"))
+            if (manifest.id.isBlank() || manifest.name.isBlank()) {
+                return Result.failure(IllegalArgumentException("Plugin must have non-empty 'id' and 'name'"))
+            }
+            val newPlugin = LoadedPlugin(
+                manifest = manifest,
+                rawJson = rawJson,
+                enabled = true,
+                isBuiltIn = false
+            )
+            val current = _plugins.value.toMutableList()
+            val existingIdx = current.indexOfFirst { it.manifest.id == manifest.id }
+            if (existingIdx >= 0) {
+                current[existingIdx] = newPlugin
+            } else {
+                current.add(0, newPlugin)
+            }
+            _plugins.value = current
+            Result.success(manifest)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun togglePlugin(id: String) {
+        _plugins.value = _plugins.value.map {
+            if (it.manifest.id == id) it.copy(enabled = !it.enabled) else it
+        }
+    }
+
+    fun removePlugin(id: String) {
+        _plugins.value = _plugins.value.filterNot { it.manifest.id == id && !it.isBuiltIn }
+    }
+
+    fun runPlugin(id: String) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: return@launch
+            val target = _plugins.value.firstOrNull { it.manifest.id == id } ?: return@launch
+            _isRunningPlugins.value = true
+            val report = b.runPlugin(target.rawJson)
+            _plugins.value = _plugins.value.map {
+                if (it.manifest.id == id) it.copy(lastReport = report) else it
+            }
+            _isRunningPlugins.value = false
+        }
+    }
+
+    fun runAllEnabledPlugins() {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: return@launch
+            _isRunningPlugins.value = true
+            val updated = _plugins.value.map { plugin ->
+                if (plugin.enabled) {
+                    plugin.copy(lastReport = b.runPlugin(plugin.rawJson))
+                } else {
+                    plugin
+                }
+            }
+            _plugins.value = updated
+            _isRunningPlugins.value = false
+        }
+    }
+
+    fun applyPluginPatch(address: Long, patch: PluginPatch, onComplete: (PatchResult) -> Unit) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(PatchResult(error = "No binary loaded")) }
+                return@launch
+            }
+            val targetAddr = address + patch.offset
+            val res = b.applyPluginPatch(targetAddr, patch.mode, patch.value)
+            if (res.success && _currentAddress.value != 0L) {
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)

@@ -116,6 +116,19 @@ class MainActivity : ComponentActivity() {
                                         indicatorColor = colors.primary.copy(alpha = 0.18f)
                                     )
                                 )
+                                NavigationBarItem(
+                                    selected = currentScreen == Screen.Plugins,
+                                    onClick = { viewModel.navigateTo(Screen.Plugins) },
+                                    icon = { Icon(Icons.Default.Extension, contentDescription = "Plugins") },
+                                    label = { Text("Plugins", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = colors.primary,
+                                        selectedTextColor = colors.primary,
+                                        unselectedIconColor = colors.textSecondary,
+                                        unselectedTextColor = colors.textSecondary,
+                                        indicatorColor = colors.primary.copy(alpha = 0.18f)
+                                    )
+                                )
                             }
                         }
                     }
@@ -163,6 +176,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
+
+                            Screen.Plugins -> PluginsScreen(viewModel)
                         }
                     }
                 }

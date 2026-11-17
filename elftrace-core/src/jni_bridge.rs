@@ -496,3 +496,70 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_renameFunction(
         0
     }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_runPlugin(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    plugin_json: JString,
+) -> jstring {
+    if handle == 0 {
+        return env
+            .new_string("{\"plugin_id\":\"\",\"plugin_name\":\"\",\"total_findings\":0,\"findings\":[],\"error\":\"Invalid handle\"}")
+            .unwrap()
+            .into_inner();
+    }
+    let ctx = &*(handle as *const ElfContext);
+    let json_str: String = match env.get_string(plugin_json) {
+        Ok(s) => s.into(),
+        Err(_) => {
+            return env
+                .new_string("{\"plugin_id\":\"\",\"plugin_name\":\"\",\"total_findings\":0,\"findings\":[],\"error\":\"Invalid plugin JSON\"}")
+                .unwrap()
+                .into_inner();
+        }
+    };
+    let report = crate::plugins::run_plugin(ctx, &json_str);
+    let out = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+    env.new_string(out).unwrap().into_inner()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_applyPluginPatch(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    address: jlong,
+    mode_str: JString,
+    value_str: JString,
+) -> jstring {
+    if handle == 0 {
+        return env
+            .new_string("{\"success\":false,\"error\":\"Invalid handle\"}")
+            .unwrap()
+            .into_inner();
+    }
+    let ctx = &mut *(handle as *mut ElfContext);
+    let mode: String = match env.get_string(mode_str) {
+        Ok(s) => s.into(),
+        Err(_) => {
+            return env
+                .new_string("{\"success\":false,\"error\":\"Invalid patch mode\"}")
+                .unwrap()
+                .into_inner();
+        }
+    };
+    let value: String = match env.get_string(value_str) {
+        Ok(s) => s.into(),
+        Err(_) => {
+            return env
+                .new_string("{\"success\":false,\"error\":\"Invalid patch value\"}")
+                .unwrap()
+                .into_inner();
+        }
+    };
+    let res = crate::plugins::apply_plugin_patch(ctx, address as u64, &mode, &value);
+    let out = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+    env.new_string(out).unwrap().into_inner()
+}
