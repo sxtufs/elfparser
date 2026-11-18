@@ -149,6 +149,40 @@ impl ElfContext {
                     None
                 };
 
+                // For AArch64, decode `adrp x16, page; ldr x17, [x16, #off]` in .plt
+                // to map each GOT slot (r_offset) to its exact PLT stub address.
+                let mut aarch64_got_to_stub: HashMap<u64, u64> = HashMap::new();
+                if e_machine == 183 {
+                    if let Ok(plt_bytes) = plt.data() {
+                        let mut off = 0usize;
+                        while off + 8 <= plt_bytes.len() {
+                            let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
+                            let w1 = u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
+                            if (w0 & 0x9F00_001F) == 0x9000_0010 && (w1 & 0xFFC0_03FF) == 0xF940_0211 {
+                                let pc = plt_start + off as u64;
+                                let immlo = ((w0 >> 29) & 0x3) as i64;
+                                let immhi = ((w0 >> 5) & 0x7_FFFF) as i64;
+                                let mut imm21 = (immhi << 2) | immlo;
+                                if (imm21 & (1 << 20)) != 0 {
+                                    imm21 |= !0x1F_FFFF;
+                                }
+                                let page = ((pc & !0xFFF) as i64).wrapping_add(imm21 << 12) as u64;
+                                let uimm12 = (((w1 >> 10) & 0xFFF) as u64) * 8;
+                                let got_addr = page.wrapping_add(uimm12);
+                                // If preceded by `bti c` (0xD503245F), stub starts 4 bytes earlier
+                                let stub_start = if off >= 4 {
+                                    let prev = u32::from_le_bytes(plt_bytes[off - 4..off].try_into().unwrap());
+                                    if prev == 0xD503_245F { pc - 4 } else { pc }
+                                } else {
+                                    pc
+                                };
+                                aarch64_got_to_stub.entry(got_addr).or_insert(stub_start);
+                            }
+                            off += 4;
+                        }
+                    }
+                }
+
                 if let Ok(rel_data) = rela_plt.data() {
                     let is_rela = rela_plt.name().unwrap_or("").contains("rela");
                     let entry_size = if is_64 {
@@ -168,6 +202,11 @@ impl ElfContext {
                     let count = rel_data.len() / entry_size;
                     for idx in 0..count {
                         let entry = &rel_data[idx * entry_size..(idx + 1) * entry_size];
+                        let r_offset = if is_64 {
+                            u64::from_le_bytes(entry[0..8].try_into().unwrap_or([0; 8]))
+                        } else {
+                            u32::from_le_bytes(entry[0..4].try_into().unwrap_or([0; 4])) as u64
+                        };
                         let sym_idx = if is_64 {
                             let r_info =
                                 u64::from_le_bytes(entry[8..16].try_into().unwrap_or([0; 8]));
@@ -181,7 +220,10 @@ impl ElfContext {
                         if let Some(raw_name) = get_dynsym_name(sym_idx) {
                             let clean_name = raw_name.split('@').next().unwrap_or(&raw_name);
                             if !clean_name.is_empty() {
-                                let stub_addr = plt_start + header_size + (idx as u64 * stub_size);
+                                let stub_addr = aarch64_got_to_stub
+                                    .get(&r_offset)
+                                    .copied()
+                                    .unwrap_or_else(|| plt_start + header_size + (idx as u64 * stub_size));
                                 let demangled = demangle_name(clean_name);
                                 syms_map.entry(stub_addr).or_insert(SymsDTO {
                                     sym: clean_name.to_string(),

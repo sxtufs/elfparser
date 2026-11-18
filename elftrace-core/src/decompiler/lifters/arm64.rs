@@ -753,6 +753,7 @@ impl InstructionLifter for Arm64Lifter {
                             } else {
                                 IrExpr::Const(resolved)
                             };
+                            mark_arm64_arg_written(parts[0], &mut self.arg_live);
                             return vec![IrStmt::Assign { dst, src: src_expr }];
                         }
                     }
