@@ -343,6 +343,14 @@ class ELFTraceViewModel : ViewModel() {
                   "patch": { "mode": "quick", "value": "ret_void", "offset": 0 }
                 },
                 {
+                  "name": "SSL_CTX_set_verify",
+                  "type": "symbol",
+                  "pattern": "SSL_CTX_set_verify",
+                  "severity": "HIGH",
+                  "description": "OpenSSL/Cronet/gRPC certificate verification setup",
+                  "patch": { "mode": "quick", "value": "ret_void", "offset": 0 }
+                },
+                {
                   "name": "SSL_get_verify_result",
                   "type": "symbol",
                   "pattern": "SSL_get_verify_result",
@@ -391,6 +399,27 @@ class ELFTraceViewModel : ViewModel() {
                   "description": "Frida detection string"
                 },
                 {
+                  "name": "Frida Thread (gum-js-loop)",
+                  "type": "string",
+                  "pattern": "gum-js-loop",
+                  "severity": "HIGH",
+                  "description": "Anti-Frida thread name scan"
+                },
+                {
+                  "name": "Frida Thread (gmain)",
+                  "type": "string",
+                  "pattern": "gmain",
+                  "severity": "MEDIUM",
+                  "description": "Anti-Frida GLib main thread scan"
+                },
+                {
+                  "name": "Frida Default Port (27042)",
+                  "type": "string",
+                  "pattern": "27042",
+                  "severity": "MEDIUM",
+                  "description": "Frida server default TCP port check"
+                },
+                {
                   "name": "Magisk / Su String",
                   "type": "string",
                   "pattern": "/system/bin/su",
@@ -428,6 +457,52 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "Java_",
                   "severity": "INFO",
                   "description": "Static JNI method export"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-packers",
+              "name": "Packers & Protectors",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects DexProtector, 360 Jiagu, Tencent Legu, Bangcle, and dynamic DEX loaders.",
+              "rules": [
+                {
+                  "name": "DexProtector Payload (DPLF)",
+                  "type": "byte_pattern",
+                  "pattern": "44 50 4C 46",
+                  "severity": "HIGH",
+                  "description": "DexProtector embedded DPLF packed-library magic"
+                },
+                {
+                  "name": "360 Jiagu Indicator",
+                  "type": "string",
+                  "pattern": "libjiagu",
+                  "severity": "HIGH",
+                  "description": "360 Jiagu packer library reference"
+                },
+                {
+                  "name": "Tencent Legu Indicator",
+                  "type": "string",
+                  "pattern": "libshell",
+                  "severity": "HIGH",
+                  "description": "Tencent Legu packer stub reference"
+                },
+                {
+                  "name": "Bangcle / SecNeo Indicator",
+                  "type": "string",
+                  "pattern": "libsecexe",
+                  "severity": "HIGH",
+                  "description": "Bangcle packer library reference"
+                },
+                {
+                  "name": "ART DefineClass / DexClassLoader",
+                  "type": "string",
+                  "pattern": "DexClassLoader",
+                  "severity": "MEDIUM",
+                  "description": "Dynamic DEX loading / unpacking indicator"
                 }
               ]
             }
