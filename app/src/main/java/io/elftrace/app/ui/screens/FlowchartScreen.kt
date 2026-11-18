@@ -171,8 +171,11 @@ private fun parseCfgText(text: String): CfgGraph {
     }
     flushBlock()
 
+    val cleanSummary = summaryLines
+        .filterNot { it.startsWith("CONTROL FLOW GRAPH:", ignoreCase = true) }
+        .joinToString(" • ")
     return CfgGraph(
-        summary = summaryLines.joinToString(" • "),
+        summary = cleanSummary,
         blocks = blocks,
         edges = edges
     )
@@ -613,10 +616,10 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                                         }
                                         for (e in outEdges) {
                                             val (label, chipColor) = when (e.kind) {
-                                                CfgEdgeKind.TRUE -> "T->B${e.toId}" to GreenAccent
-                                                CfgEdgeKind.FALSE -> "F->B${e.toId}" to RedAccent
-                                                CfgEdgeKind.JUMP -> "J->B${e.toId}" to colors.primary
-                                                CfgEdgeKind.FALLTHROUGH -> "->B${e.toId}" to colors.textSecondary
+                                                CfgEdgeKind.TRUE -> "T: B${e.toId}" to GreenAccent
+                                                CfgEdgeKind.FALSE -> "F: B${e.toId}" to RedAccent
+                                                CfgEdgeKind.JUMP -> "J: B${e.toId}" to colors.primary
+                                                CfgEdgeKind.FALLTHROUGH -> "B${e.toId}" to colors.textSecondary
                                             }
                                             Text(
                                                 text = label,
