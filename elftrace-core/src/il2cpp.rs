@@ -16,13 +16,25 @@ pub struct Il2CppMethodScript {
     pub signature: String,
 }
 
-/// Parses Il2CppDumper's standard `script.json` and injects all C# methods directly into the ELF symbol table
+#[derive(Debug, Clone, Deserialize)]
+struct Il2CppScriptWrapper {
+    #[serde(alias = "ScriptMethod", alias = "scriptMethod", default)]
+    script_method: Vec<Il2CppMethodScript>,
+}
+
+/// Parses Il2CppDumper's `script.json` (both top-level array and `{ "ScriptMethod": [...] }` object)
+/// and injects all C# methods directly into the ELF symbol table.
 pub fn load_script_json(ctx: &mut ElfContext, json_path: &str) -> Result<usize, String> {
     let content = fs::read_to_string(Path::new(json_path))
         .map_err(|e| format!("Failed to read script.json: {}", e))?;
 
-    let methods: Vec<Il2CppMethodScript> = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse script.json: {}", e))?;
+    let methods: Vec<Il2CppMethodScript> = if let Ok(arr) = serde_json::from_str(&content) {
+        arr
+    } else {
+        let wrapper: Il2CppScriptWrapper = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse script.json: {}", e))?;
+        wrapper.script_method
+    };
 
     let count = methods.len();
     for m in methods {

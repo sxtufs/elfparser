@@ -186,6 +186,9 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                             break;
                         }
                         let display = sym.demangled.as_deref().unwrap_or(sym.sym.as_str());
+                        if display.starts_with("typeinfo ") || display.starts_with("vtable ") {
+                            continue;
+                        }
                         if sym.sym.to_lowercase().contains(&needle)
                             || display.to_lowercase().contains(&needle)
                         {

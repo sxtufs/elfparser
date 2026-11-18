@@ -597,9 +597,17 @@ class ELFTraceViewModel : ViewModel() {
               "description": "Detects APK signature checks, /proc/self/maps memory integrity, and emulator/hook checks.",
               "rules": [
                 {
-                  "name": "Signature / Tamper Symbol",
+                  "name": "checkSignature",
                   "type": "symbol",
-                  "pattern": "Signature",
+                  "pattern": "checkSignature",
+                  "severity": "HIGH",
+                  "description": "Potential APK/binary signature check routine",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "verifySignature",
+                  "type": "symbol",
+                  "pattern": "verifySignature",
                   "severity": "HIGH",
                   "description": "Potential APK/binary signature verification routine",
                   "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }

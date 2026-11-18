@@ -431,7 +431,7 @@ private fun PluginFindingRow(
                 fontSize = 11.sp,
                 maxLines = 2
             )
-            if (!finding.symbol_name.isNullOrEmpty()) {
+            if (!finding.symbol_name.isNullOrEmpty() && finding.symbol_name != finding.matched_value) {
                 Text(
                     text = "Symbol: ${finding.symbol_name}",
                     color = colors.textSecondary,
@@ -456,13 +456,20 @@ private fun PluginFindingRow(
                     ) {
                         Text("Inspect", fontSize = 11.sp)
                     }
+                    val patchLabel = when (finding.patch.value.lowercase()) {
+                        "ret_true", "return_true", "true" -> "Patch: True"
+                        "ret_false", "return_false", "false" -> "Patch: False"
+                        "ret_void", "return_void", "void" -> "Patch: Void"
+                        "nop" -> "Patch: NOP"
+                        else -> "Patch (${finding.patch.value})"
+                    }
                     Button(
                         onClick = onPatch,
                         colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Patch (${finding.patch.mode}: ${finding.patch.value})", fontSize = 11.sp)
+                        Text(patchLabel, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
