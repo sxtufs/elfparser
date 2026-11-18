@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
@@ -54,6 +56,37 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     var selectedApkUri by remember { mutableStateOf<Uri?>(null) }
     var isScanningApk by remember { mutableStateOf(false) }
     var isExtractingSo by remember { mutableStateOf(false) }
+    var symFilter by remember { mutableStateOf("all") } // "all", "funcs", "jni"
+
+    val il2cppPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            coroutineScope.launch(Dispatchers.IO) {
+                val fileName = queryFileName(context, selectedUri)
+                val tempFile = File(context.cacheDir, fileName)
+                try {
+                    context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                        FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                    }
+                    withContext(Dispatchers.Main) {
+                        viewModel.resolveIl2CppMetadata(tempFile.absolutePath) { count ->
+                            val msg = when {
+                                count > 0 -> "Resolved $count Il2Cpp methods"
+                                count == 0 -> "Metadata validated (use script.json for symbols)"
+                                else -> "Failed to load Il2Cpp metadata"
+                            }
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
 
     // Stream-based, zero-copy file picker:
     // Safely handles 1GB+ APKs by streaming ZIP headers without copying the giant archive to disk.
@@ -233,8 +266,28 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text("ELF Header Metadata", style = MaterialTheme.typography.titleSmall, color = colors.primary, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = currentFileName.ifEmpty { "ELF Header Metadata" },
+                            style = MaterialTheme.typography.titleSmall,
+                            color = colors.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedButton(
+                            onClick = { il2cppPicker.launch(arrayOf("application/json", "*/*")) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("Il2Cpp JSON", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
 
                     val archName = when (info.e_machine) {
                         183 -> "AArch64 (ARM64)"
@@ -274,18 +327,36 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 )
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
 
-            val cleanHex = searchQuery.trim().removePrefix("0x").removePrefix("0X")
-            val parsedAddr = cleanHex.toLongOrNull(16)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("all" to "All", "funcs" to "Functions", "jni" to "JNI").forEach { (key, label) ->
+                    FilterChip(
+                        selected = symFilter == key,
+                        onClick = { symFilter = key },
+                        label = { Text(label, fontSize = 11.sp) }
+                    )
+                }
+            }
 
-            val filteredSyms = remember(searchQuery, info.syms) {
-                if (searchQuery.isBlank()) info.syms
-                else {
-                    info.syms.filter { sym ->
+            Spacer(Modifier.height(4.dp))
+
+            val filteredSyms = remember(searchQuery, symFilter, info.syms) {
+                val cleanHex = searchQuery.trim().removePrefix("0x").removePrefix("0X")
+                info.syms.filter { sym ->
+                    val matchesTab = when (symFilter) {
+                        "funcs" -> sym.value != 0L
+                        "jni" -> sym.isJni
+                        else -> true
+                    }
+                    val matchesQuery = searchQuery.isBlank() ||
                         sym.displayName.contains(searchQuery, ignoreCase = true) ||
                         (cleanHex.isNotEmpty() && "%08X".format(sym.value).contains(cleanHex, ignoreCase = true))
-                    }
+                    matchesTab && matchesQuery
                 }
             }
 
@@ -295,11 +366,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 flingBehavior = rememberMomentumFlingBehavior(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(
+                itemsIndexed(
                     items = filteredSyms,
-                    key = { "${it.value}_${it.sym}" },
-                    contentType = { "symbol_item" }
-                ) { sym ->
+                    key = { idx, sym -> "${idx}_${sym.value}_${sym.sym}" },
+                    contentType = { _, _ -> "symbol_item" }
+                ) { _, sym ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.card),
                         shape = RoundedCornerShape(8.dp),
@@ -344,7 +415,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
         // Loading Dialog during background APK stream scan / SO extraction
         if (isScanningApk || isExtractingSo) {
-            AlertDialog(onDismissRequest = {}) {
+            Dialog(onDismissRequest = {}) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = colors.surface,
@@ -374,12 +445,12 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
         // APK Native Library Selection Dialog (Zero-Copy Stream Extraction)
         if (showApkPicker && selectedApkUri != null) {
-            AlertDialog(onDismissRequest = { showApkPicker = false }) {
+            Dialog(onDismissRequest = { showApkPicker = false }) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = colors.surface,
                     border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Select Native Library from APK", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)

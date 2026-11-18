@@ -643,7 +643,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "▲ Callers ($callersCount)",
+                                    text = "Callers ($callersCount)",
                                     color = if (selectedTab == 0) Color.White else colors.textSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -662,7 +662,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "▼ Callees ($calleesCount)",
+                                    text = "Callees ($calleesCount)",
                                     color = if (selectedTab == 1) Color.White else colors.textSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
