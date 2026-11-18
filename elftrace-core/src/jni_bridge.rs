@@ -520,8 +520,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_runPlugin(
                 .into_inner();
         }
     };
-    let report = crate::plugins::run_plugin(ctx, &json_str);
-    let out = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+    let out = crate::plugins::run_plugin_json(ctx, &json_str);
     env.new_string(out).unwrap().into_inner()
 }
 

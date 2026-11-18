@@ -73,6 +73,12 @@ pub struct PluginReport {
 const MAX_MATCHES_PER_RULE: usize = 64;
 
 #[inline(never)]
+pub fn run_plugin_json(ctx: &ElfContext, plugin_json: &str) -> String {
+    let report = run_plugin(ctx, plugin_json);
+    serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[inline(never)]
 pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
     let manifest: PluginManifest = match serde_json::from_str(plugin_json) {
         Ok(m) => m,
