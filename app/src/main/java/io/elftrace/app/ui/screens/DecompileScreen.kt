@@ -7,7 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -55,12 +57,10 @@ private fun highlightPseudoC(
     val commentColor = colors.textSecondary
     val stringColor = GreenAccent.copy(alpha = 0.85f)
     val keywordColor = colors.mnemonic
-    val typeColor = colors.primary.copy(alpha = 0.85f)
-    val numberColor = colors.operands
     val labelColor = colors.primary
 
     val tokenRegex = Regex(
-        """(//[^\n]*)|("(?:\\.|[^"\\])*")|\b(if|else|goto|return|while|for|do|switch|case|break|continue|__asm__)\b|\b(int64_t|uint64_t|int32_t|uint32_t|int16_t|uint16_t|int8_t|uint8_t|uintptr_t|void|char|bool)\b|\b(loc_[0-9a-fA-F]+)\b|\b(0x[0-9a-fA-F]+|\d+)\b"""
+        """(//[^\n]*)|("(?:\\.|[^"\\])*")|\b(if|else|goto|return|while|for|do|switch|case|break|continue|__asm__)\b|\b(loc_[0-9a-fA-F]+)\b"""
     )
 
     return buildAnnotatedString {
@@ -70,9 +70,7 @@ private fun highlightPseudoC(
                 m.groups[1] != null -> SpanStyle(color = commentColor)
                 m.groups[2] != null -> SpanStyle(color = stringColor)
                 m.groups[3] != null -> SpanStyle(color = keywordColor, fontWeight = FontWeight.SemiBold)
-                m.groups[4] != null -> SpanStyle(color = typeColor)
-                m.groups[5] != null -> SpanStyle(color = labelColor, fontWeight = FontWeight.Bold)
-                m.groups[6] != null -> SpanStyle(color = numberColor)
+                m.groups[4] != null -> SpanStyle(color = labelColor, fontWeight = FontWeight.Bold)
                 else -> null
             }
             if (style != null) {
@@ -245,52 +243,90 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
 
         if (showSearch) {
             Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Find in C code...", fontSize = 12.sp) },
-                singleLine = true,
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (searchQuery.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (searchQuery.isEmpty()) {
                             Text(
-                                text = if (matchCount > 0) "${currentMatchIdx + 1}/$matchCount" else "0",
-                                color = colors.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(end = 2.dp)
+                                text = "Find in C code...",
+                                color = colors.textSecondary,
+                                fontSize = 12.sp
                             )
-                            if (matchCount > 1) {
-                                IconButton(
-                                    onClick = {
-                                        val prev = if (currentMatchIdx > 0) currentMatchIdx - 1 else matchCount - 1
-                                        scrollToMatch(prev)
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.ChevronLeft, contentDescription = "Prev Match", modifier = Modifier.size(16.dp))
-                                }
-                                IconButton(
-                                    onClick = {
-                                        val next = (currentMatchIdx + 1) % matchCount
-                                        scrollToMatch(next)
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.ChevronRight, contentDescription = "Next Match", modifier = Modifier.size(16.dp))
-                                }
+                        }
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                color = colors.textPrimary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp
+                            ),
+                            cursorBrush = SolidColor(colors.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (searchQuery.isNotBlank()) {
+                        Text(
+                            text = if (matchCount > 0) "${currentMatchIdx + 1}/$matchCount" else "0",
+                            color = colors.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        if (matchCount > 1) {
+                            IconButton(
+                                onClick = {
+                                    val prev = if (currentMatchIdx > 0) currentMatchIdx - 1 else matchCount - 1
+                                    scrollToMatch(prev)
+                                },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = "Prev Match", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    val next = (currentMatchIdx + 1) % matchCount
+                                    scrollToMatch(next)
+                                },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronRight, contentDescription = "Next Match", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
                             }
                         }
-                        IconButton(onClick = {
+                    }
+                    IconButton(
+                        onClick = {
                             searchQuery = ""
                             showSearch = false
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
-                        }
+                        },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
+                }
+            }
         }
 
         Spacer(Modifier.height(4.dp))
