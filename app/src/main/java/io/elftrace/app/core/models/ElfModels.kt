@@ -150,7 +150,8 @@ data class PluginManifest(
     val author: String = "",
     val description: String = "",
     val arch: List<String> = emptyList(),
-    val rules: List<PluginRule> = emptyList()
+    val rules: List<PluginRule> = emptyList(),
+    val script: String? = null
 )
 
 data class PluginFinding(

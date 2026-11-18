@@ -1,6 +1,10 @@
+use crate::disasm::disassemble;
 use crate::elf_parser::ElfContext;
 use crate::patcher::{apply_quick_patch, assemble_and_patch, PatchResult, QuickPatchType};
+use crate::xref::find_callers_to;
+use rhai::{Array, Dynamic, Engine, Map};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginPatch {
@@ -46,6 +50,8 @@ pub struct PluginManifest {
     pub arch: Vec<String>,
     #[serde(default)]
     pub rules: Vec<PluginRule>,
+    #[serde(default)]
+    pub script: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,14 +240,247 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
         }
     }
 
+    let mut script_error: Option<String> = None;
+    if let Some(ref script_src) = manifest.script {
+        if !script_src.trim().is_empty() {
+            match execute_rhai_script(ctx, arch_name, script_src) {
+                Ok(mut script_findings) => findings.append(&mut script_findings),
+                Err(e) => script_error = Some(e),
+            }
+        }
+    }
+
     let total = findings.len();
     PluginReport {
         plugin_id: manifest.id,
         plugin_name: manifest.name,
         total_findings: total,
         findings,
-        error: None,
+        error: script_error,
     }
+}
+
+#[inline(never)]
+fn execute_rhai_script(
+    ctx: &ElfContext,
+    arch_name: &str,
+    script_src: &str,
+) -> Result<Vec<PluginFinding>, String> {
+    let mut engine = Engine::new();
+    engine.set_max_operations(200_000);
+
+    let arch_owned = arch_name.to_string();
+    engine.register_fn("arch", move || -> String { arch_owned.clone() });
+    engine.register_fn("hex", |val: i64| -> String { format!("0x{:x}", val as u64) });
+
+    // Safety: `ctx` outlives `engine` within this synchronous function call.
+    let ctx_ptr = ctx as *const ElfContext as usize;
+
+    engine.register_fn("find_bytes", move |pattern: &str| -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let mut out = Array::new();
+        if let Ok(pat) = parse_ida_pattern(pattern) {
+            if !pat.is_empty() {
+                let raw = &ctx_ref.raw;
+                let plen = pat.len();
+                let mut i = 0;
+                while i + plen <= raw.len() && out.len() < MAX_MATCHES_PER_RULE {
+                    let mut matched = true;
+                    for (j, pb) in pat.iter().enumerate() {
+                        if let Some(b) = pb {
+                            if raw[i + j] != *b {
+                                matched = false;
+                                break;
+                            }
+                        }
+                    }
+                    if matched {
+                        let vaddr = ctx_ref.offset_to_vaddr(i as u64).unwrap_or(i as u64);
+                        out.push(Dynamic::from(vaddr as i64));
+                        i += plen;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+        }
+        out
+    });
+
+    engine.register_fn("find_symbols", move |needle: &str| -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let q = needle.to_lowercase();
+        let mut out = Array::new();
+        if q.is_empty() {
+            return out;
+        }
+        for (&addr, sym) in &ctx_ref.syms_map {
+            if out.len() >= MAX_MATCHES_PER_RULE {
+                break;
+            }
+            let display = sym.demangled.as_deref().unwrap_or(sym.sym.as_str());
+            if sym.sym.to_lowercase().contains(&q) || display.to_lowercase().contains(&q) {
+                let mut m = Map::new();
+                m.insert("address".into(), Dynamic::from(addr as i64));
+                m.insert("name".into(), Dynamic::from(display.to_string()));
+                m.insert("size".into(), Dynamic::from(sym.size as i64));
+                out.push(Dynamic::from(m));
+            }
+        }
+        out
+    });
+
+    engine.register_fn("find_strings", move |needle: &str| -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let q = needle.to_lowercase();
+        let mut out = Array::new();
+        if q.is_empty() {
+            return out;
+        }
+        if let Ok(sdata) = ctx_ref.extract_strings() {
+            for item in sdata.data {
+                if out.len() >= MAX_MATCHES_PER_RULE {
+                    break;
+                }
+                if item.string.to_lowercase().contains(&q) {
+                    let mut m = Map::new();
+                    m.insert("address".into(), Dynamic::from(item.vaddr as i64));
+                    m.insert("offset".into(), Dynamic::from(item.paddr as i64));
+                    m.insert("value".into(), Dynamic::from(item.string));
+                    out.push(Dynamic::from(m));
+                }
+            }
+        }
+        out
+    });
+
+    engine.register_fn("get_xrefs", move |addr: i64| -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let refs = find_callers_to(ctx_ref, addr as u64);
+        let mut out = Array::new();
+        for r in refs.into_iter().take(MAX_MATCHES_PER_RULE) {
+            let mut m = Map::new();
+            m.insert("from".into(), Dynamic::from(r.from_address as i64));
+            m.insert("kind".into(), Dynamic::from(r.kind));
+            m.insert("instruction".into(), Dynamic::from(r.instruction));
+            m.insert(
+                "caller".into(),
+                Dynamic::from(r.caller_func.unwrap_or_default()),
+            );
+            out.push(Dynamic::from(m));
+        }
+        out
+    });
+
+    engine.register_fn("disasm", move |addr: i64, size: i64| -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let mut out = Array::new();
+        let vaddr = addr as u64;
+        let sz = (size.clamp(4, 1024)) as u64;
+        if let Some(off) = ctx_ref.vaddr_to_offset(vaddr) {
+            let off = off as usize;
+            if off < ctx_ref.raw.len() {
+                let e_machine = ctx_ref.get_info().map(|i| i.e_machine).unwrap_or(183);
+                let is_thumb = ctx_ref
+                    .syms_map
+                    .get(&vaddr)
+                    .map(|s| s.thumb)
+                    .unwrap_or(false);
+                if let Ok(code) = disassemble(&ctx_ref.raw[off..], vaddr, sz, e_machine, is_thumb) {
+                    for ins in code.data {
+                        let mut m = Map::new();
+                        m.insert("address".into(), Dynamic::from(ins.address as i64));
+                        m.insert("mnemonic".into(), Dynamic::from(ins.mnemonic));
+                        m.insert("op_str".into(), Dynamic::from(ins.op_str));
+                        out.push(Dynamic::from(m));
+                    }
+                }
+            }
+        }
+        out
+    });
+
+    engine.register_fn("read_u32", move |addr: i64| -> i64 {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        if let Some(off) = ctx_ref.vaddr_to_offset(addr as u64) {
+            let off = off as usize;
+            if off + 4 <= ctx_ref.raw.len() {
+                let val = u32::from_le_bytes(ctx_ref.raw[off..off + 4].try_into().unwrap());
+                return val as i64;
+            }
+        }
+        -1
+    });
+
+    let collected: Arc<Mutex<Vec<PluginFinding>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let c1 = Arc::clone(&collected);
+    engine.register_fn(
+        "report",
+        move |rule_name: &str, addr: i64, severity: &str, desc: &str| {
+            let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+            let vaddr = addr as u64;
+            let offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);
+            let sym_name = find_enclosing_symbol(ctx_ref, vaddr);
+            if let Ok(mut list) = c1.lock() {
+                if list.len() < 256 {
+                    list.push(PluginFinding {
+                        rule_name: rule_name.to_string(),
+                        rule_type: "rhai".to_string(),
+                        address: vaddr,
+                        offset,
+                        matched_value: format!("0x{:x}", vaddr),
+                        severity: severity.to_string(),
+                        description: desc.to_string(),
+                        symbol_name: sym_name,
+                        patch: None,
+                    });
+                }
+            }
+        },
+    );
+
+    let c2 = Arc::clone(&collected);
+    engine.register_fn(
+        "report_patch",
+        move |rule_name: &str,
+              addr: i64,
+              severity: &str,
+              desc: &str,
+              mode: &str,
+              value: &str| {
+            let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+            let vaddr = addr as u64;
+            let offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);
+            let sym_name = find_enclosing_symbol(ctx_ref, vaddr);
+            if let Ok(mut list) = c2.lock() {
+                if list.len() < 256 {
+                    list.push(PluginFinding {
+                        rule_name: rule_name.to_string(),
+                        rule_type: "rhai".to_string(),
+                        address: vaddr,
+                        offset,
+                        matched_value: format!("0x{:x}", vaddr),
+                        severity: severity.to_string(),
+                        description: desc.to_string(),
+                        symbol_name: sym_name,
+                        patch: Some(PluginPatch {
+                            mode: mode.to_string(),
+                            value: value.to_string(),
+                            offset: 0,
+                        }),
+                    });
+                }
+            }
+        },
+    );
+
+    engine
+        .run(script_src)
+        .map_err(|e| format!("Rhai script error: {}", e))?;
+
+    let out = collected.lock().map(|g| g.clone()).unwrap_or_default();
+    Ok(out)
 }
 
 #[inline(never)]

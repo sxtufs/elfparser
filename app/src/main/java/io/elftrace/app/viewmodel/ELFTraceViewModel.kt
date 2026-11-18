@@ -413,6 +413,144 @@ class ELFTraceViewModel : ViewModel() {
                 }
               ]
             }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-il2cpp-game",
+              "name": "Unity Il2Cpp & Game Engine",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects Unity Il2Cpp runtime exports and Unreal Engine (UE4/UE5) symbols.",
+              "rules": [
+                {
+                  "name": "il2cpp_init",
+                  "type": "symbol",
+                  "pattern": "il2cpp_init",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp runtime initialization"
+                },
+                {
+                  "name": "il2cpp_runtime_invoke",
+                  "type": "symbol",
+                  "pattern": "il2cpp_runtime_invoke",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp managed method invoker"
+                },
+                {
+                  "name": "il2cpp_string_new",
+                  "type": "symbol",
+                  "pattern": "il2cpp_string_new",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp string allocator"
+                },
+                {
+                  "name": "Unreal GWorld / GUObjectArray",
+                  "type": "string",
+                  "pattern": "GUObjectArray",
+                  "severity": "INFO",
+                  "description": "Unreal Engine global object array indicator"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-crypto-keys",
+              "name": "Crypto & Key Material",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Finds OpenSSL/BoringSSL/mbedTLS cipher routines and embedded PEM keys.",
+              "rules": [
+                {
+                  "name": "AES_set_encrypt_key",
+                  "type": "symbol",
+                  "pattern": "AES_set_encrypt_key",
+                  "severity": "MEDIUM",
+                  "description": "AES key schedule setup"
+                },
+                {
+                  "name": "EVP_DecryptInit",
+                  "type": "symbol",
+                  "pattern": "EVP_DecryptInit",
+                  "severity": "MEDIUM",
+                  "description": "OpenSSL EVP decryption initialization"
+                },
+                {
+                  "name": "mbedtls_aes",
+                  "type": "symbol",
+                  "pattern": "mbedtls_aes",
+                  "severity": "MEDIUM",
+                  "description": "mbedTLS AES routine"
+                },
+                {
+                  "name": "PEM Public Key",
+                  "type": "string",
+                  "pattern": "-----BEGIN PUBLIC KEY-----",
+                  "severity": "HIGH",
+                  "description": "Embedded PEM public key"
+                },
+                {
+                  "name": "PEM RSA Key",
+                  "type": "string",
+                  "pattern": "-----BEGIN RSA",
+                  "severity": "HIGH",
+                  "description": "Embedded RSA key material"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-iap-license",
+              "name": "License, IAP & Premium Checks",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Locates common entitlement, subscription, and license verification symbols.",
+              "rules": [
+                {
+                  "name": "isPremium / isPro",
+                  "type": "symbol",
+                  "pattern": "isPremium",
+                  "severity": "HIGH",
+                  "description": "Premium entitlement check",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "isSubscribed",
+                  "type": "symbol",
+                  "pattern": "isSubscribed",
+                  "severity": "HIGH",
+                  "description": "Subscription status check",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "checkLicense",
+                  "type": "symbol",
+                  "pattern": "checkLicense",
+                  "severity": "HIGH",
+                  "description": "License verification routine",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "verifyPurchase",
+                  "type": "symbol",
+                  "pattern": "verifyPurchase",
+                  "severity": "HIGH",
+                  "description": "In-app purchase verification",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-rhai-xref-tracer",
+              "name": "Rhai: Anti-Debug XRef Tracer",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Rhai script that traces callers of ptrace/kill/exit and suggests NOP patches.",
+              "script": "let targets = [\"ptrace\", \"__android_log_print\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    let xrefs = get_xrefs(s.address);\n    for x in xrefs {\n      if t == \"ptrace\" {\n        report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n      } else {\n        report(\"Log Call: \" + s.name, x.from, \"INFO\", \"Calls \" + s.name + \" (\" + x.instruction + \")\");\n      }\n    }\n  }\n}"
+            }
             """.trimIndent()
         )
         return builtInJsons.mapNotNull { raw ->
@@ -425,16 +563,34 @@ class ELFTraceViewModel : ViewModel() {
         }
     }
 
-    fun importPluginJson(rawJson: String): Result<PluginManifest> {
+    fun importPluginJson(rawInput: String, defaultName: String = "Custom Rhai Script"): Result<PluginManifest> {
         return try {
-            val manifest = gson.fromJson(rawJson, PluginManifest::class.java)
-                ?: return Result.failure(IllegalArgumentException("Empty plugin JSON"))
-            if (manifest.id.isBlank() || manifest.name.isBlank()) {
-                return Result.failure(IllegalArgumentException("Plugin must have non-empty 'id' and 'name'"))
+            val trimmed = rawInput.trim()
+            val (manifest, finalJson) = if (trimmed.startsWith("{")) {
+                val m = gson.fromJson(trimmed, PluginManifest::class.java)
+                    ?: return Result.failure(IllegalArgumentException("Empty plugin JSON"))
+                if (m.id.isBlank() || m.name.isBlank()) {
+                    return Result.failure(IllegalArgumentException("Plugin must have non-empty 'id' and 'name'"))
+                }
+                m to trimmed
+            } else {
+                if (trimmed.isEmpty()) {
+                    return Result.failure(IllegalArgumentException("Empty script"))
+                }
+                val id = "rhai-${System.currentTimeMillis()}"
+                val m = PluginManifest(
+                    id = id,
+                    name = defaultName,
+                    version = "1.0",
+                    author = "User",
+                    description = "Custom Rhai analysis script",
+                    script = trimmed
+                )
+                m to gson.toJson(m)
             }
             val newPlugin = LoadedPlugin(
                 manifest = manifest,
-                rawJson = rawJson,
+                rawJson = finalJson,
                 enabled = true,
                 isBuiltIn = false
             )

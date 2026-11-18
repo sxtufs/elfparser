@@ -179,11 +179,11 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
         AlertDialog(
             onDismissRequest = { showPasteDialog = false },
             containerColor = colors.surface,
-            title = { Text("Import Plugin JSON", color = colors.textPrimary) },
+            title = { Text("Import Plugin (JSON or Rhai)", color = colors.textPrimary) },
             text = {
                 Column {
                     Text(
-                        "Paste a JSON plugin manifest with byte_pattern, symbol, or string rules.",
+                        "Paste a JSON plugin manifest OR a raw Rhai script (find_symbols, find_strings, find_bytes, get_xrefs, disasm, report, report_patch).",
                         color = colors.textSecondary,
                         fontSize = 12.sp
                     )
@@ -194,7 +194,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp),
-                        placeholder = { Text("{\"id\":\"my-plugin\",\"name\":\"...\",\"rules\":[...]}", fontSize = 11.sp) },
+                        placeholder = { Text("let syms = find_symbols(\"check\");\nfor s in syms { report(\"Hit\", s.address, \"HIGH\", s.name); }", fontSize = 11.sp) },
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                     )
                 }
@@ -276,12 +276,22 @@ private fun PluginCard(
                     }
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "${plugin.manifest.rules.size} rules",
-                            color = colors.primary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        if (!plugin.manifest.script.isNullOrBlank()) {
+                            Text(
+                                text = "RHAI",
+                                color = AmberAccent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (plugin.manifest.rules.isNotEmpty()) {
+                            Text(
+                                text = "${plugin.manifest.rules.size} rules",
+                                color = colors.primary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                         if (report != null) {
                             val countColor = if (report.total_findings > 0) AmberAccent else GreenAccent
                             Text(
