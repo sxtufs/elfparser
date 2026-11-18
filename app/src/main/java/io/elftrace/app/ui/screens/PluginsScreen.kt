@@ -1,8 +1,6 @@
 package io.elftrace.app.ui.screens
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,8 +19,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.gson.Gson
 import io.elftrace.app.core.models.LoadedPlugin
 import io.elftrace.app.core.models.PluginFinding
+import io.elftrace.app.core.models.PluginManifest
+import io.elftrace.app.core.models.PluginPatch
+import io.elftrace.app.core.models.PluginRule
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
@@ -35,29 +37,11 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     val isRunning by viewModel.isRunningPlugins.collectAsState()
     val bridge by viewModel.bridge.collectAsState()
 
-    var showPasteDialog by remember { mutableStateOf(false) }
-    var pasteJsonText by remember { mutableStateOf("") }
     var expandedPluginId by remember { mutableStateOf<String?>(null) }
-
-    val jsonPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            try {
-                val text = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { r -> r.readText() }
-                if (text != null) {
-                    viewModel.importPluginJson(text).onSuccess { manifest ->
-                        Toast.makeText(context, "Imported plugin: ${manifest.name}", Toast.LENGTH_SHORT).show()
-                        expandedPluginId = manifest.id
-                    }.onFailure { err ->
-                        Toast.makeText(context, "Invalid plugin: ${err.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var ruleType by remember { mutableStateOf("symbol") }
+    var rulePattern by remember { mutableStateOf("") }
+    var rulePatch by remember { mutableStateOf("none") }
 
     Column(
         modifier = Modifier
@@ -89,11 +73,8 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { showPasteDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Paste JSON Plugin", tint = colors.primary)
-                    }
-                    IconButton(onClick = { jsonPicker.launch(arrayOf("application/json", "*/*")) }) {
-                        Icon(Icons.Default.FileOpen, contentDescription = "Import JSON", tint = colors.primary)
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Quick Rule", tint = colors.primary)
                     }
                     IconButton(
                         enabled = bridge != null && !isRunning,
@@ -169,46 +150,92 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
         }
     }
 
-    if (showPasteDialog) {
+    if (showAddDialog) {
         AlertDialog(
-            onDismissRequest = { showPasteDialog = false },
+            onDismissRequest = { showAddDialog = false },
             containerColor = colors.surface,
-            title = { Text("Import Plugin (JSON or Rhai)", color = colors.textPrimary) },
+            title = { Text("Quick Custom Rule", color = colors.textPrimary) },
             text = {
-                Column {
-                    Text(
-                        "Paste a JSON plugin manifest OR a raw Rhai script (find_symbols, find_strings, find_bytes, get_xrefs, disasm, report, report_patch).",
-                        color = colors.textSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Type", color = colors.textSecondary, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("symbol" to "Symbol", "string" to "String", "byte_pattern" to "Bytes").forEach { (key, label) ->
+                            FilterChip(
+                                selected = ruleType == key,
+                                onClick = { ruleType = key },
+                                label = { Text(label, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
-                        value = pasteJsonText,
-                        onValueChange = { pasteJsonText = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        placeholder = { Text("let syms = find_symbols(\"check\");\nfor s in syms { report(\"Hit\", s.address, \"HIGH\", s.name); }", fontSize = 11.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        value = rulePattern,
+                        onValueChange = { rulePattern = it },
+                        label = { Text("Pattern", fontSize = 12.sp) },
+                        placeholder = {
+                            val hint = when (ruleType) {
+                                "byte_pattern" -> "FD 7B BF A9 ?? ?? ?? 94"
+                                "string" -> "https://api."
+                                else -> "isVip"
+                            }
+                            Text(hint, fontSize = 12.sp)
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+
+                    Text("Optional Patch", color = colors.textSecondary, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("none" to "None", "ret_true" to "True", "ret_false" to "False", "nop" to "NOP").forEach { (key, label) ->
+                            FilterChip(
+                                selected = rulePatch == key,
+                                onClick = { rulePatch = key },
+                                label = { Text(label, fontSize = 11.sp) }
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.importPluginJson(pasteJsonText).onSuccess { manifest ->
-                        Toast.makeText(context, "Imported: ${manifest.name}", Toast.LENGTH_SHORT).show()
-                        expandedPluginId = manifest.id
-                        pasteJsonText = ""
-                        showPasteDialog = false
-                    }.onFailure { err ->
-                        Toast.makeText(context, "Error: ${err.message}", Toast.LENGTH_LONG).show()
+                TextButton(
+                    enabled = rulePattern.isNotBlank(),
+                    onClick = {
+                        val pat = rulePattern.trim()
+                        val patchObj = if (rulePatch == "none") null else PluginPatch(mode = "quick", value = rulePatch, offset = 0)
+                        val manifest = PluginManifest(
+                            id = "custom-${System.currentTimeMillis()}",
+                            name = "Custom: $pat",
+                            version = "1.0",
+                            author = "User",
+                            description = "Custom $ruleType search",
+                            rules = listOf(
+                                PluginRule(
+                                    name = pat,
+                                    type = ruleType,
+                                    pattern = pat,
+                                    severity = "HIGH",
+                                    description = "Custom $ruleType match",
+                                    patch = patchObj
+                                )
+                            )
+                        )
+                        val json = Gson().toJson(manifest)
+                        viewModel.importPluginJson(json).onSuccess {
+                            if (bridge != null) {
+                                viewModel.runPlugin(manifest.id)
+                            }
+                            expandedPluginId = manifest.id
+                            rulePattern = ""
+                            rulePatch = "none"
+                            showAddDialog = false
+                        }
                     }
-                }) {
-                    Text("Import", color = colors.primary)
+                ) {
+                    Text("Add", color = colors.primary)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showPasteDialog = false }) {
+                TextButton(onClick = { showAddDialog = false }) {
                     Text("Cancel", color = colors.textSecondary)
                 }
             }
