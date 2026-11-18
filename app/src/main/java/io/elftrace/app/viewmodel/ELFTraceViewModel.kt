@@ -874,25 +874,8 @@ class ELFTraceViewModel : ViewModel() {
               "name": "Raw Syscalls (svc #0)",
               "version": "1.0",
               "author": "ELFTrace",
-              "description": "Detects direct svc #0 syscalls used to bypass libc/Frida hooks.",
-              "rules": [
-                {
-                  "name": "ARM64 svc #0",
-                  "type": "byte_pattern",
-                  "pattern": "01 00 00 D4",
-                  "severity": "HIGH",
-                  "description": "Direct ARM64 supervisor call (bypasses libc hooks)",
-                  "patch": { "mode": "quick", "value": "nop", "offset": 0 }
-                },
-                {
-                  "name": "ARM32 svc #0",
-                  "type": "byte_pattern",
-                  "pattern": "00 00 00 EF",
-                  "severity": "HIGH",
-                  "description": "Direct ARM32 supervisor call (bypasses libc hooks)",
-                  "patch": { "mode": "quick", "value": "nop", "offset": 0 }
-                }
-              ]
+              "description": "Detects aligned svc #0 syscalls in executable code used to bypass libc/Frida hooks.",
+              "script": "let a = arch();\nlet pat = if a == \"aarch64\" { \"01 00 00 D4\" } else if a == \"arm\" { \"00 00 00 EF\" } else { \"\" };\nif pat != \"\" {\n  let hits = find_bytes(pat);\n  for addr in hits {\n    if (addr % 4) == 0 {\n      let ins = disasm(addr, 4);\n      if ins.len() > 0 && ins[0].mnemonic == \"svc\" {\n        report_patch(\"svc #0 (\" + a + \")\", addr, \"HIGH\", \"Direct supervisor call (bypasses libc hooks)\", \"quick\", \"nop\");\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
