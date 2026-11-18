@@ -544,6 +544,61 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-integrity-tamper",
+              "name": "Integrity, Signature & Emulator",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects APK signature checks, /proc/self/maps memory integrity, and emulator/hook checks.",
+              "rules": [
+                {
+                  "name": "Signature / Tamper Symbol",
+                  "type": "symbol",
+                  "pattern": "Signature",
+                  "severity": "HIGH",
+                  "description": "Potential APK/binary signature verification routine",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "Tamper Check Symbol",
+                  "type": "symbol",
+                  "pattern": "Tamper",
+                  "severity": "HIGH",
+                  "description": "Potential anti-tamper check function",
+                  "patch": { "mode": "quick", "value": "ret_false", "offset": 0 }
+                },
+                {
+                  "name": "/proc/self/maps Scan",
+                  "type": "string",
+                  "pattern": "/proc/self/maps",
+                  "severity": "MEDIUM",
+                  "description": "Memory map inspection (Frida/Xposed/hook detection)"
+                },
+                {
+                  "name": "classes.dex Integrity",
+                  "type": "string",
+                  "pattern": "classes.dex",
+                  "severity": "MEDIUM",
+                  "description": "DEX file integrity or CRC verification reference"
+                },
+                {
+                  "name": "Xposed / Substrate Indicator",
+                  "type": "string",
+                  "pattern": "xposed",
+                  "severity": "MEDIUM",
+                  "description": "Xposed framework detection string"
+                },
+                {
+                  "name": "QEMU / Emulator Check",
+                  "type": "string",
+                  "pattern": "ro.kernel.qemu",
+                  "severity": "LOW",
+                  "description": "Android emulator property check"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-rhai-xref-tracer",
               "name": "Rhai: Anti-Debug XRef Tracer",
               "version": "1.0",
