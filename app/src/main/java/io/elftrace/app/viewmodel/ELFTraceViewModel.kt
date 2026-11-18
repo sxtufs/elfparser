@@ -870,6 +870,43 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-raw-syscalls",
+              "name": "Raw Syscalls (svc #0)",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects direct svc #0 syscalls used to bypass libc/Frida hooks.",
+              "rules": [
+                {
+                  "name": "ARM64 svc #0",
+                  "type": "byte_pattern",
+                  "pattern": "01 00 00 D4",
+                  "severity": "HIGH",
+                  "description": "Direct ARM64 supervisor call (bypasses libc hooks)",
+                  "patch": { "mode": "quick", "value": "nop", "offset": 0 }
+                },
+                {
+                  "name": "ARM32 svc #0",
+                  "type": "byte_pattern",
+                  "pattern": "00 00 00 EF",
+                  "severity": "HIGH",
+                  "description": "Direct ARM32 supervisor call (bypasses libc hooks)",
+                  "patch": { "mode": "quick", "value": "nop", "offset": 0 }
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-rhai-jni-table",
+              "name": "Rhai: JNINativeMethod Table Recovery",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Scans .data/.data.rel.ro for hidden RegisterNatives (name, sig, fnPtr) triplets.",
+              "script": "let methods = find_jni_methods();\nfor m in methods {\n  report(\"JNI: \" + m.name, m.address, \"HIGH\", m.signature);\n}"
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-rhai-register-natives",
               "name": "Rhai: RegisterNatives Finder",
               "version": "1.0",

@@ -403,6 +403,11 @@ fn execute_rhai_script(
         out
     });
 
+    engine.register_fn("find_jni_methods", move || -> Array {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        scan_jni_native_methods(ctx_ref)
+    });
+
     engine.register_fn("read_u32", move |addr: i64| -> i64 {
         let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
         if let Some(off) = ctx_ref.vaddr_to_offset(addr as u64) {
@@ -574,6 +579,131 @@ fn parse_ida_pattern(pattern: &str) -> Result<Vec<Option<u8>>, String> {
         }
     }
     Ok(out)
+}
+
+fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
+    use object::{Object, ObjectSection, RelocationTarget};
+    let mut out = Array::new();
+    let Ok(obj) = object::File::parse(&*ctx.raw) else {
+        return out;
+    };
+
+    let is_64 = obj.is_64();
+    let ptr_size = if is_64 { 8usize } else { 4usize };
+
+    // Collect executable address ranges (.text, etc.)
+    let mut exec_ranges: Vec<(u64, u64)> = Vec::new();
+    for sec in obj.sections() {
+        if sec.kind() == object::SectionKind::Text {
+            let start = sec.address();
+            let end = start.saturating_add(sec.size());
+            if end > start {
+                exec_ranges.push((start, end));
+            }
+        }
+    }
+    let is_exec = |addr: u64| -> bool {
+        let clean = if is_64 { addr } else { addr & !1 };
+        exec_ranges.iter().any(|&(s, e)| clean >= s && clean < e)
+    };
+
+    // Build relocation map: slot_vaddr -> target_vaddr (for PIE R_*_RELATIVE)
+    let mut reloc_map: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    for sec in obj.sections() {
+        for (offset, reloc) in sec.relocations() {
+            if let RelocationTarget::Absolute = reloc.target() {
+                if reloc.addend() > 0 {
+                    reloc_map.insert(offset, reloc.addend() as u64);
+                }
+            }
+        }
+    }
+    if let Some(dyn_relocs) = obj.dynamic_relocations() {
+        for (offset, reloc) in dyn_relocs {
+            if reloc.addend() > 0 {
+                reloc_map.insert(offset, reloc.addend() as u64);
+            }
+        }
+    }
+
+    let read_ptr = |slot_vaddr: u64, raw_slice: &[u8]| -> u64 {
+        if let Some(&target) = reloc_map.get(&slot_vaddr) {
+            return target;
+        }
+        if is_64 && raw_slice.len() >= 8 {
+            u64::from_le_bytes(raw_slice[0..8].try_into().unwrap())
+        } else if !is_64 && raw_slice.len() >= 4 {
+            u32::from_le_bytes(raw_slice[0..4].try_into().unwrap()) as u64
+        } else {
+            0
+        }
+    };
+
+    let is_valid_jni_sig = |s: &str| -> bool {
+        if !s.starts_with('(') || s.len() < 3 || s.len() > 256 {
+            return false;
+        }
+        let Some(close) = s.find(')') else {
+            return false;
+        };
+        let ret = &s[close + 1..];
+        !ret.is_empty()
+            && matches!(
+                ret.as_bytes()[0],
+                b'V' | b'Z' | b'B' | b'C' | b'S' | b'I' | b'J' | b'F' | b'D' | b'L' | b'['
+            )
+    };
+
+    let is_valid_ident = |s: &str| -> bool {
+        !s.is_empty()
+            && s.len() <= 128
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+    };
+
+    for sec in obj.sections() {
+        let name = sec.name().unwrap_or("");
+        if name != ".data" && name != ".data.rel.ro" && name != ".rodata" {
+            continue;
+        }
+        let Ok(data) = sec.data() else {
+            continue;
+        };
+        let base_vaddr = sec.address();
+        let triplet_size = ptr_size * 3;
+        let mut off = 0usize;
+        while off + triplet_size <= data.len() && out.len() < MAX_MATCHES_PER_RULE {
+            let p_name = read_ptr(base_vaddr + off as u64, &data[off..off + ptr_size]);
+            let p_sig = read_ptr(
+                base_vaddr + (off + ptr_size) as u64,
+                &data[off + ptr_size..off + ptr_size * 2],
+            );
+            let p_fn = read_ptr(
+                base_vaddr + (off + ptr_size * 2) as u64,
+                &data[off + ptr_size * 2..off + triplet_size],
+            );
+
+            if p_name != 0 && p_sig != 0 && is_exec(p_fn) {
+                if let (Some(m_name), Some(m_sig)) = (
+                    ctx.get_string_at_vaddr(p_name),
+                    ctx.get_string_at_vaddr(p_sig),
+                ) {
+                    if is_valid_ident(&m_name) && is_valid_jni_sig(&m_sig) {
+                        let mut m = Map::new();
+                        m.insert("name".into(), Dynamic::from(m_name));
+                        m.insert("signature".into(), Dynamic::from(m_sig));
+                        m.insert("address".into(), Dynamic::from(p_fn as i64));
+                        out.push(Dynamic::from(m));
+                        off += triplet_size;
+                        continue;
+                    }
+                }
+            }
+            off += ptr_size;
+        }
+    }
+
+    out
 }
 
 fn find_enclosing_symbol(ctx: &ElfContext, vaddr: u64) -> Option<String> {
