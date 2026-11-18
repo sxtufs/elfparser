@@ -870,6 +870,16 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-rhai-register-natives",
+              "name": "Rhai: RegisterNatives Finder",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Locates JNI RegisterNatives vtable calls (0x6b8/0x35c), indirect blr sites in JNI_OnLoad, and RegisterNatives strings.",
+              "script": "let jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 512);\n  for ins in insns {\n    if ins.op_str.contains(\"0x6b8\") || ins.op_str.contains(\"0x35c\") {\n      report(\"RegisterNatives VTable\", ins.address, \"HIGH\", ins.mnemonic + \" \" + ins.op_str);\n    } else if ins.mnemonic == \"blr\" {\n      report(\"JNI Indirect Call (blr)\", ins.address, \"MEDIUM\", ins.mnemonic + \" \" + ins.op_str);\n    }\n  }\n}\nlet strs = find_strings(\"RegisterNatives\");\nfor st in strs {\n  report(\"RegisterNatives String\", st.address, \"INFO\", st.value);\n}"
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-rhai-jni-inspector",
               "name": "Rhai: JNI_OnLoad Call Inspector",
               "version": "1.0",
