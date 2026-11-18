@@ -36,7 +36,7 @@ class ELFTraceViewModel : ViewModel() {
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
-    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Security, 2: Entropy Radar
+    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Entropy Radar
 
     val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
 
@@ -171,7 +171,6 @@ class ELFTraceViewModel : ViewModel() {
             val firstName = firstSym?.displayName ?: "entry"
             selectFunction(firstAddr, firstName)
             _stringsList.value = b.getStrings()
-            _scanReport.value = b.scanSecurity()
             _entropyReport.value = b.getEntropyReport()
         }
     }
@@ -495,6 +494,34 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "-----BEGIN RSA",
                   "severity": "HIGH",
                   "description": "Embedded RSA key material"
+                },
+                {
+                  "name": "AES S-Box Table",
+                  "type": "byte_pattern",
+                  "pattern": "63 7C 77 7B F2 6B 6F C5 30 01 67 2B FE D7 AB 76",
+                  "severity": "MEDIUM",
+                  "description": "Standard AES-128/256 substitution table"
+                },
+                {
+                  "name": "AES Inverse S-Box Table",
+                  "type": "byte_pattern",
+                  "pattern": "52 09 6A D5 30 36 A5 38 BF 40 A3 9E 81 F3 D7 FB",
+                  "severity": "MEDIUM",
+                  "description": "Standard AES decryption table"
+                },
+                {
+                  "name": "SHA-256 Round Constants",
+                  "type": "byte_pattern",
+                  "pattern": "98 2F 8A 42 91 44 37 71 CF FB C0 B5 A5 DB B5 E9",
+                  "severity": "LOW",
+                  "description": "Standard SHA-256 hashing constants"
+                },
+                {
+                  "name": "MD5 Init Constants",
+                  "type": "byte_pattern",
+                  "pattern": "01 23 45 67 89 AB CD EF FE DC BA 98 76 54 32 10",
+                  "severity": "LOW",
+                  "description": "Standard MD5 initialization vector"
                 }
               ]
             }
