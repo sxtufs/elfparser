@@ -137,26 +137,30 @@ private fun parseCfgText(text: String): CfgGraph {
             continue
         }
 
-        trueRegex.find(trimmed)?.let { m ->
-            m.groupValues[1].toIntOrNull()?.let { to ->
+        val trueMatch = trueRegex.find(trimmed)
+        if (trueMatch != null) {
+            trueMatch.groupValues[1].toIntOrNull()?.let { to ->
                 edges.add(CfgEdge(id, to, CfgEdgeKind.TRUE))
             }
             continue
         }
-        falseRegex.find(trimmed)?.let { m ->
-            m.groupValues[1].toIntOrNull()?.let { to ->
+        val falseMatch = falseRegex.find(trimmed)
+        if (falseMatch != null) {
+            falseMatch.groupValues[1].toIntOrNull()?.let { to ->
                 edges.add(CfgEdge(id, to, CfgEdgeKind.FALSE))
             }
             continue
         }
-        jumpRegex.find(trimmed)?.let { m ->
-            m.groupValues[1].toIntOrNull()?.let { to ->
+        val jumpMatch = jumpRegex.find(trimmed)
+        if (jumpMatch != null) {
+            jumpMatch.groupValues[1].toIntOrNull()?.let { to ->
                 edges.add(CfgEdge(id, to, CfgEdgeKind.JUMP))
             }
             continue
         }
-        fallRegex.find(trimmed)?.let { m ->
-            m.groupValues[1].toIntOrNull()?.let { to ->
+        val fallMatch = fallRegex.find(trimmed)
+        if (fallMatch != null) {
+            fallMatch.groupValues[1].toIntOrNull()?.let { to ->
                 edges.add(CfgEdge(id, to, CfgEdgeKind.FALLTHROUGH))
             }
             continue
