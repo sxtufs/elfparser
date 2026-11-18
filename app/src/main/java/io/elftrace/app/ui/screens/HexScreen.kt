@@ -484,7 +484,7 @@ private fun HexRowLayout(
     ) {
         // 1. Address / OFFSET Column
         Box(
-            modifier = Modifier.weight(0.21f),
+            modifier = Modifier.weight(0.24f),
             contentAlignment = Alignment.CenterStart
         ) {
             addressContent()
@@ -492,7 +492,7 @@ private fun HexRowLayout(
 
         // 2. HEX Column
         Box(
-            modifier = Modifier.weight(0.55f),
+            modifier = Modifier.weight(0.52f),
             contentAlignment = Alignment.Center
         ) {
             hexContent()
