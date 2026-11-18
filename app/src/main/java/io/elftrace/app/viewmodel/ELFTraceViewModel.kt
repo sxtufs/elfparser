@@ -599,6 +599,111 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-network-endpoints",
+              "name": "Network, URLs & Sockets",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Surfaces hardcoded HTTP/HTTPS/WebSocket URLs and raw socket/TLS calls.",
+              "rules": [
+                {
+                  "name": "HTTPS URL",
+                  "type": "string",
+                  "pattern": "https://",
+                  "severity": "INFO",
+                  "description": "Hardcoded HTTPS endpoint"
+                },
+                {
+                  "name": "HTTP URL (Cleartext)",
+                  "type": "string",
+                  "pattern": "http://",
+                  "severity": "MEDIUM",
+                  "description": "Hardcoded cleartext HTTP endpoint"
+                },
+                {
+                  "name": "WebSocket URL",
+                  "type": "string",
+                  "pattern": "wss://",
+                  "severity": "INFO",
+                  "description": "Hardcoded WebSocket endpoint"
+                },
+                {
+                  "name": "Raw Socket Connect",
+                  "type": "symbol",
+                  "pattern": "connect",
+                  "severity": "INFO",
+                  "description": "POSIX socket connect() symbol"
+                },
+                {
+                  "name": "SSL_write",
+                  "type": "symbol",
+                  "pattern": "SSL_write",
+                  "severity": "INFO",
+                  "description": "OpenSSL/BoringSSL encrypted write"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-dynamic-loading",
+              "name": "Dynamic Loading & JNI Reflection",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Finds dlopen/dlsym dynamic loading and native-to-Java reflection calls.",
+              "rules": [
+                {
+                  "name": "dlopen",
+                  "type": "symbol",
+                  "pattern": "dlopen",
+                  "severity": "MEDIUM",
+                  "description": "Dynamic shared library loader"
+                },
+                {
+                  "name": "dlsym",
+                  "type": "symbol",
+                  "pattern": "dlsym",
+                  "severity": "MEDIUM",
+                  "description": "Dynamic symbol resolver"
+                },
+                {
+                  "name": "RegisterNatives",
+                  "type": "string",
+                  "pattern": "RegisterNatives",
+                  "severity": "INFO",
+                  "description": "Dynamic JNI method registration indicator"
+                },
+                {
+                  "name": "FindClass",
+                  "type": "string",
+                  "pattern": "FindClass",
+                  "severity": "INFO",
+                  "description": "JNI Java class lookup"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-rhai-secrets",
+              "name": "Rhai: Hardcoded Secrets & Tokens",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Rhai script scanning strings for API keys, bearer tokens, and private keys.",
+              "script": "let keys = [\"api_key\", \"apikey\", \"secret\", \"Bearer \", \"AIza\", \"-----BEGIN\"];\nfor k in keys {\n  let hits = find_strings(k);\n  for h in hits {\n    report(\"Secret Indicator: \" + k, h.address, \"HIGH\", h.value);\n  }\n}"
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-rhai-jni-inspector",
+              "name": "Rhai: JNI_OnLoad Call Inspector",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Rhai script that disassembles JNI_OnLoad and lists its outgoing branch/call targets.",
+              "script": "let syms = find_symbols(\"JNI_OnLoad\");\nfor s in syms {\n  report(\"JNI_OnLoad Entry\", s.address, \"INFO\", \"Size: \" + s.size + \" bytes\");\n  let insns = disasm(s.address, 128);\n  for ins in insns {\n    if ins.mnemonic == \"bl\" || ins.mnemonic == \"blr\" || ins.mnemonic == \"call\" {\n      report(\"JNI_OnLoad Call\", ins.address, \"INFO\", ins.mnemonic + \" \" + ins.op_str);\n    }\n  }\n}"
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-rhai-xref-tracer",
               "name": "Rhai: Anti-Debug XRef Tracer",
               "version": "1.0",
