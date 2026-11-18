@@ -49,11 +49,11 @@ private fun highlightPseudoC(
     colors: ELFTraceColors
 ): AnnotatedString {
     val commentColor = colors.textSecondary
-    val stringColor = GreenAccent
+    val stringColor = GreenAccent.copy(alpha = 0.85f)
     val keywordColor = colors.mnemonic
-    val typeColor = colors.primary
-    val numberColor = colors.register
-    val labelColor = AmberAccent
+    val typeColor = colors.primary.copy(alpha = 0.85f)
+    val numberColor = colors.operands
+    val labelColor = colors.primary
 
     val tokenRegex = Regex(
         """(//[^\n]*)|("(?:\\.|[^"\\])*")|\b(if|else|goto|return|while|for|do|switch|case|break|continue|__asm__)\b|\b(int64_t|uint64_t|int32_t|uint32_t|int16_t|uint16_t|int8_t|uint8_t|uintptr_t|void|char|bool)\b|\b(loc_[0-9a-fA-F]+)\b|\b(0x[0-9a-fA-F]+|\d+)\b"""
