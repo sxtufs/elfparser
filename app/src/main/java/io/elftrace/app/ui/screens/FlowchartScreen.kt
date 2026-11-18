@@ -447,8 +447,13 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                             val strokeWidth = if (isHighlighted) 4f else 2.5f
 
                             val startX = when (edge.kind) {
-                                CfgEdgeKind.TRUE -> from.x + from.width * 0.3f
-                                CfgEdgeKind.FALSE -> from.x + from.width * 0.7f
+                                CfgEdgeKind.TRUE, CfgEdgeKind.FALSE -> {
+                                    val fromCenter = from.x + from.width * 0.5f
+                                    val toCenter = to.x + to.width * 0.5f
+                                    if (toCenter < fromCenter) from.x + from.width * 0.3f
+                                    else if (toCenter > fromCenter) from.x + from.width * 0.7f
+                                    else fromCenter
+                                }
                                 else -> from.x + from.width * 0.5f
                             }
                             val startY = from.y + from.height
@@ -608,10 +613,10 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                                         }
                                         for (e in outEdges) {
                                             val (label, chipColor) = when (e.kind) {
-                                                CfgEdgeKind.TRUE -> "T→B${e.toId}" to GreenAccent
-                                                CfgEdgeKind.FALSE -> "F→B${e.toId}" to RedAccent
-                                                CfgEdgeKind.JUMP -> "J→B${e.toId}" to colors.primary
-                                                CfgEdgeKind.FALLTHROUGH -> "→B${e.toId}" to colors.textSecondary
+                                                CfgEdgeKind.TRUE -> "T->B${e.toId}" to GreenAccent
+                                                CfgEdgeKind.FALSE -> "F->B${e.toId}" to RedAccent
+                                                CfgEdgeKind.JUMP -> "J->B${e.toId}" to colors.primary
+                                                CfgEdgeKind.FALLTHROUGH -> "->B${e.toId}" to colors.textSecondary
                                             }
                                             Text(
                                                 text = label,
