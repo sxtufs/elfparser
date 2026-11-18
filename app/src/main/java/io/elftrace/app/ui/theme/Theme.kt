@@ -1,5 +1,7 @@
 package io.elftrace.app.ui.theme
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -22,6 +24,7 @@ private val LightScheme = lightColorScheme(
     onSurface = LightThemeColors.textPrimary,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ELFTraceTheme(
     darkTheme: Boolean = true,
@@ -30,7 +33,10 @@ fun ELFTraceTheme(
     val colors = if (darkTheme) DarkThemeColors else LightThemeColors
     val scheme = if (darkTheme) DarkScheme else LightScheme
 
-    CompositionLocalProvider(LocalELFTraceColors provides colors) {
+    CompositionLocalProvider(
+        LocalELFTraceColors provides colors,
+        LocalOverscrollConfiguration provides null
+    ) {
         MaterialTheme(
             colorScheme = scheme,
             typography = Typography,
