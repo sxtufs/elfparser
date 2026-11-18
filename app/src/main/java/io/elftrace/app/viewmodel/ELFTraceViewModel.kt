@@ -61,10 +61,29 @@ class ELFTraceViewModel : ViewModel() {
     fun loadHexDump(address: Long, length: Int = 2048) {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
-            val alignedAddr = address - (address % 16)
+            val safeAddr = address.coerceAtLeast(0L)
+            val alignedAddr = safeAddr - (safeAddr % 16)
             val bytes = b.readBytes(alignedAddr, length)
             _hexStartAddress.value = alignedAddr
             _hexBytes.value = bytes
+        }
+    }
+
+    fun patchHexBytes(address: Long, bytes: ByteArray, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(false) }
+                return@launch
+            }
+            b.patchBytes(address, bytes)
+            val alignedAddr = _hexStartAddress.value
+            _hexBytes.value = b.readBytes(alignedAddr, 2048)
+            if (_currentAddress.value != 0L) {
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(true) }
         }
     }
 

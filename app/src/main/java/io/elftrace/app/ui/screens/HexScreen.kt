@@ -1,14 +1,19 @@
 package io.elftrace.app.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -23,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 
@@ -38,6 +44,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
 
     var showGotoDialog by remember { mutableStateOf(false) }
     var gotoAddressInput by remember { mutableStateOf("") }
+    var selectedRow by remember(hexBytes, startAddress) { mutableStateOf<HexRow?>(null) }
+    var editingRow by remember { mutableStateOf<HexRow?>(null) }
+    var editHexInput by remember { mutableStateOf("") }
 
     val momentumFling = rememberMomentumFlingBehavior()
 
@@ -85,29 +94,53 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = {
-                    gotoAddressInput = "0x${"%08X".format(startAddress)}"
-                    showGotoDialog = true
-                }) {
+                IconButton(
+                    enabled = startAddress >= 2048L,
+                    onClick = { viewModel.loadHexDump((startAddress - 2048L).coerceAtLeast(0L), 2048) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Prev 2KB", tint = if (startAddress >= 2048L) colors.textPrimary else colors.textSecondary.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
+                }
+
+                IconButton(
+                    onClick = { viewModel.loadHexDump(startAddress + 2048L, 2048) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next 2KB", tint = colors.textPrimary, modifier = Modifier.size(20.dp))
+                }
+
+                IconButton(
+                    onClick = {
+                        gotoAddressInput = "0x${"%08X".format(startAddress)}"
+                        showGotoDialog = true
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(Icons.Default.NearMe, contentDescription = "Go to Address", tint = colors.primary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(onClick = {
-                    val fullDump = rows.joinToString("\n") { row ->
-                        val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
-                        val asciiStr = row.bytes.map { b ->
-                            val c = (b.toInt() and 0xFF).toChar()
-                            if (c in ' '..'~') c else '.'
-                        }.joinToString("")
-                        "%08X  %-24s  |%s|".format(row.address, hexStr, asciiStr)
-                    }
-                    clipboardManager.setText(AnnotatedString(fullDump))
-                    Toast.makeText(context, "Copied Hex Dump to clipboard", Toast.LENGTH_SHORT).show()
-                }) {
+                IconButton(
+                    onClick = {
+                        val fullDump = rows.joinToString("\n") { row ->
+                            val hexStr = row.bytes.joinToString(" ") { "%02X".format(it) }
+                            val asciiStr = row.bytes.map { b ->
+                                val c = (b.toInt() and 0xFF).toChar()
+                                if (c in ' '..'~') c else '.'
+                            }.joinToString("")
+                            "%08X  %-24s  |%s|".format(row.address, hexStr, asciiStr)
+                        }
+                        clipboardManager.setText(AnnotatedString(fullDump))
+                        Toast.makeText(context, "Copied Hex Dump to clipboard", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy Hex", tint = colors.textPrimary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(onClick = { viewModel.loadHexDump(startAddress, 2048) }) {
+                IconButton(
+                    onClick = { viewModel.loadHexDump(startAddress, 2048) },
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
                 }
             }
@@ -118,9 +151,10 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
         // Mobile-Optimized 8-Byte Hex View Card (Full horizontal width distribution)
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .background(colors.card, RoundedCornerShape(8.dp))
-                .padding(horizontal = 6.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
             SelectionContainer {
                 LazyColumn(
@@ -184,8 +218,17 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                             if (c in ' '..'~') c else '.'
                         }.joinToString("")
 
+                        val isSelected = selectedRow?.address == row.address
                         HexRowLayout(
-                            modifier = Modifier.padding(vertical = 1.5.dp),
+                            modifier = Modifier
+                                .background(
+                                    if (isSelected) colors.primary.copy(alpha = 0.14f) else Color.Transparent,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .clickable {
+                                    selectedRow = if (isSelected) null else row
+                                }
+                                .padding(vertical = 2.dp, horizontal = 2.dp),
                             addressContent = {
                                 Text(
                                     text = "%08X".format(row.address),
@@ -223,20 +266,161 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // Jump to Address Dialog
-        if (showGotoDialog) {
-            AlertDialog(onDismissRequest = { showGotoDialog = false }) {
+        // Byte Inspector & Quick Actions Bar (when a row is tapped)
+        selectedRow?.let { sel ->
+            Spacer(Modifier.height(4.dp))
+            val u32 = if (sel.bytes.size >= 4) {
+                ((sel.bytes[0].toLong() and 0xFF)) or
+                    ((sel.bytes[1].toLong() and 0xFF) shl 8) or
+                    ((sel.bytes[2].toLong() and 0xFF) shl 16) or
+                    ((sel.bytes[3].toLong() and 0xFF) shl 24)
+            } else null
+            val u64 = if (sel.bytes.size >= 8) {
+                (0 until 8).fold(0L) { acc, idx ->
+                    acc or ((sel.bytes[idx].toLong() and 0xFF) shl (idx * 8))
+                }
+            } else null
+
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "0x${"%08X".format(sel.address)}",
+                            color = colors.primary,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp
+                        )
+                        val infoText = buildString {
+                            if (u32 != null) append("u32: 0x${"%08X".format(u32)}")
+                            if (u64 != null) append("  u64: 0x${"%016X".format(u64)}")
+                        }
+                        if (infoText.isNotEmpty()) {
+                            Text(
+                                text = infoText,
+                                color = colors.textSecondary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                editHexInput = sel.bytes.joinToString(" ") { "%02X".format(it) }
+                                editingRow = sel
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Edit", fontSize = 11.sp)
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.selectFunction(sel.address, "0x${"%08X".format(sel.address)}")
+                                viewModel.codeSubTab.value = 0
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("Disasm", fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Edit Hex Bytes Dialog
+        editingRow?.let { row ->
+            Dialog(onDismissRequest = { editingRow = null }) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = colors.surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Edit Bytes @ 0x${"%08X".format(row.address)}",
+                            color = colors.primary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedTextField(
+                            value = editHexInput,
+                            onValueChange = { editHexInput = it },
+                            label = { Text("Hex Bytes (${row.bytes.size} bytes)", fontSize = 12.sp) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { editingRow = null }) {
+                                Text("Cancel", color = colors.textSecondary)
+                            }
+                            TextButton(onClick = {
+                                val clean = editHexInput.replace(" ", "").replace(",", "").trim()
+                                if (clean.isEmpty() || clean.length % 2 != 0 || !clean.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+                                    Toast.makeText(context, "Invalid hex bytes", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val newBytes = ByteArray(clean.length / 2) { idx ->
+                                        clean.substring(idx * 2, idx * 2 + 2).toInt(16).toByte()
+                                    }
+                                    viewModel.patchHexBytes(row.address, newBytes) { ok ->
+                                        if (ok) {
+                                            Toast.makeText(context, "Patched ${newBytes.size} bytes", Toast.LENGTH_SHORT).show()
+                                            editingRow = null
+                                        } else {
+                                            Toast.makeText(context, "Patch failed", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }) {
+                                Text("Apply", color = colors.primary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Jump to Address Dialog
+        if (showGotoDialog) {
+            Dialog(onDismissRequest = { showGotoDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text("Go to Hex Address", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
                         Text("Enter virtual address or file offset:", color = colors.textSecondary, fontSize = 11.sp)
-                        Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = gotoAddressInput,
                             onValueChange = { gotoAddressInput = it },
@@ -253,7 +437,6 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                 cursorColor = colors.primary
                             )
                         )
-                        Spacer(Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -296,32 +479,29 @@ private fun HexRowLayout(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // 1. Address / OFFSET Column (Fixed 66dp width, Left-aligned)
+        // 1. Address / OFFSET Column
         Box(
-            modifier = Modifier.width(66.dp),
+            modifier = Modifier.weight(0.22f),
             contentAlignment = Alignment.CenterStart
         ) {
             addressContent()
         }
 
-        Spacer(Modifier.width(6.dp))
-
-        // 2. HEX Column (Fixed 164dp width, Left-aligned, exact 24-character monospace grid)
+        // 2. HEX Column
         Box(
-            modifier = Modifier.width(164.dp),
+            modifier = Modifier.weight(0.52f),
             contentAlignment = Alignment.CenterStart
         ) {
             hexContent()
         }
 
-        Spacer(Modifier.width(8.dp))
-
-        // 3. ASCII Column (Fixed 74dp width, Centered, fits 10 chars with zero wrapping)
+        // 3. ASCII Column
         Box(
-            modifier = Modifier.width(74.dp),
-            contentAlignment = Alignment.Center
+            modifier = Modifier.weight(0.26f),
+            contentAlignment = Alignment.CenterEnd
         ) {
             asciiContent()
         }
