@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -49,6 +51,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
     var editHexInput by remember { mutableStateOf("") }
 
     val momentumFling = rememberMomentumFlingBehavior()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var dialogMode by remember { mutableStateOf("goto") } // "goto" or "search"
 
     // Break raw bytes into 8-byte rows (perfect fit for mobile screens & ARM64 4-byte alignment)
     val rows = remember(hexBytes, startAddress) {
@@ -158,6 +163,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
         ) {
             SelectionContainer {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     flingBehavior = momentumFling,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -406,7 +412,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // Jump to Address Dialog
+        // Go to Address / Search Dialog
         if (showGotoDialog) {
             Dialog(onDismissRequest = { showGotoDialog = false }) {
                 Surface(
@@ -419,12 +425,33 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Go to Hex Address", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Text("Enter virtual address or file offset:", color = colors.textSecondary, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = dialogMode == "goto",
+                                onClick = { dialogMode = "goto" },
+                                label = { Text("Go to Address", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = dialogMode == "search",
+                                onClick = {
+                                    dialogMode = "search"
+                                    if (gotoAddressInput.startsWith("0x", ignoreCase = true)) {
+                                        gotoAddressInput = ""
+                                    }
+                                },
+                                label = { Text("Find Hex / ASCII", fontSize = 11.sp) }
+                            )
+                        }
+
                         OutlinedTextField(
                             value = gotoAddressInput,
                             onValueChange = { gotoAddressInput = it },
-                            label = { Text("Address / Offset (e.g. 0x2A35C)") },
+                            label = {
+                                Text(
+                                    if (dialogMode == "goto") "Address / Offset (e.g. 0x2A35C)"
+                                    else "Hex (7F 45 4C 46) or ASCII text"
+                                )
+                            },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -448,19 +475,63 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                             Spacer(Modifier.width(8.dp))
                             Button(
                                 onClick = {
-                                    val clean = gotoAddressInput.trim().removePrefix("0x").removePrefix("0X")
-                                    val addr = clean.toLongOrNull(16)
-                                    if (addr != null) {
-                                        viewModel.loadHexDump(addr, 2048)
-                                        showGotoDialog = false
+                                    if (dialogMode == "goto") {
+                                        val clean = gotoAddressInput.trim().removePrefix("0x").removePrefix("0X")
+                                        val addr = clean.toLongOrNull(16)
+                                        if (addr != null) {
+                                            viewModel.loadHexDump(addr, 2048)
+                                            showGotoDialog = false
+                                        } else {
+                                            Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
+                                        }
                                     } else {
-                                        Toast.makeText(context, "Invalid hex address", Toast.LENGTH_SHORT).show()
+                                        val query = gotoAddressInput.trim()
+                                        if (query.isEmpty()) {
+                                            Toast.makeText(context, "Enter hex bytes or text", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        val hexClean = query.replace(" ", "")
+                                        val isHex = hexClean.length >= 2 && hexClean.length % 2 == 0 &&
+                                            hexClean.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+                                        val needle = if (isHex) {
+                                            ByteArray(hexClean.length / 2) { idx ->
+                                                hexClean.substring(idx * 2, idx * 2 + 2).toInt(16).toByte()
+                                            }
+                                        } else {
+                                            query.toByteArray(Charsets.UTF_8)
+                                        }
+                                        var matchIdx = -1
+                                        for (i in 0..(hexBytes.size - needle.size)) {
+                                            var ok = true
+                                            for (j in needle.indices) {
+                                                if (hexBytes[i + j] != needle[j]) {
+                                                    ok = false
+                                                    break
+                                                }
+                                            }
+                                            if (ok) {
+                                                matchIdx = i
+                                                break
+                                            }
+                                        }
+                                        if (matchIdx >= 0) {
+                                            val rowIdx = matchIdx / 8
+                                            if (rowIdx in rows.indices) {
+                                                selectedRow = rows[rowIdx]
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(rowIdx + 1)
+                                                }
+                                            }
+                                            showGotoDialog = false
+                                        } else {
+                                            Toast.makeText(context, "Not found in current 2 KB window", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
                                 shape = RoundedCornerShape(50)
                             ) {
-                                Text("Jump", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(if (dialogMode == "goto") "Jump" else "Find", color = Color.White, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
