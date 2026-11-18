@@ -1,9 +1,11 @@
 package io.elftrace.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import io.elftrace.app.viewmodel.Screen
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Equalizer
@@ -46,33 +48,29 @@ fun EntropyScreen(viewModel: ELFTraceViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Equalizer, contentDescription = null, tint = colors.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Entropy Radar & Packer Detector",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        val report = entropyReport
-                        val scoreText = if (report != null) "${report.overall_entropy} / 8.0" else "Calculating..."
-                        val verdictText = report?.overall_verdict ?: "Scan pending"
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Entropy Radar & Packer Detector",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val report = entropyReport
+                    val scoreText = if (report != null) "${report.overall_entropy} / 8.0" else "Calculating..."
+                    val verdictText = report?.overall_verdict ?: "Scan pending"
 
-                        val verdictColor = when {
-                            report?.is_likely_packed == true -> RedAccent
-                            (report?.overall_entropy ?: 0.0) > 6.4 -> AmberAccent
-                            else -> Color(0xFF4CAF50)
-                        }
-
-                        Text(
-                            text = "$scoreText  •  $verdictText",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = verdictColor,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    val verdictColor = when {
+                        report?.is_likely_packed == true -> RedAccent
+                        (report?.overall_entropy ?: 0.0) > 6.4 -> AmberAccent
+                        else -> Color(0xFF4CAF50)
                     }
+
+                    Text(
+                        text = "$scoreText  •  $verdictText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = verdictColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
                 IconButton(onClick = { viewModel.refreshEntropyReport() }) {
@@ -95,12 +93,18 @@ fun EntropyScreen(viewModel: ELFTraceViewModel) {
                     flingBehavior = rememberMomentumFlingBehavior(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(
+                    itemsIndexed(
                         items = sections,
-                        key = { "${it.address}_${it.name}" },
-                        contentType = { "entropy_item" }
-                    ) { sec ->
-                        SectionEntropyCard(sec, colors)
+                        key = { idx, it -> "${idx}_${it.address}_${it.name}" },
+                        contentType = { _, _ -> "entropy_item" }
+                    ) { _, sec ->
+                        SectionEntropyCard(sec, colors) {
+                            if (sec.address != 0L) {
+                                viewModel.loadHexDump(sec.address, 2048)
+                                viewModel.codeSubTab.value = 3
+                                viewModel.navigateTo(Screen.Code)
+                            }
+                        }
                     }
                 }
             }
@@ -113,7 +117,7 @@ fun EntropyScreen(viewModel: ELFTraceViewModel) {
 }
 
 @Composable
-private fun SectionEntropyCard(sec: SectionEntropy, colors: ELFTraceColors) {
+private fun SectionEntropyCard(sec: SectionEntropy, colors: ELFTraceColors, onClick: () -> Unit) {
     val progress = (sec.entropy / 8.0).toFloat().coerceIn(0f, 1f)
     val barColor = when {
         sec.is_high_entropy -> RedAccent
@@ -125,7 +129,9 @@ private fun SectionEntropyCard(sec: SectionEntropy, colors: ELFTraceColors) {
         colors = CardDefaults.cardColors(containerColor = colors.card),
         shape = RoundedCornerShape(8.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(
