@@ -434,6 +434,53 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-flutter-rn",
+              "name": "Flutter & React Native",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects Flutter SSL pinning, Dart AOT snapshots (libapp.so), and React Native Hermes/JSI.",
+              "rules": [
+                {
+                  "name": "Flutter SSL Verify",
+                  "type": "symbol",
+                  "pattern": "ssl_crypto_x509_session_verify_cert_chain",
+                  "severity": "HIGH",
+                  "description": "Flutter BoringSSL certificate chain verification (libflutter.so)",
+                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                },
+                {
+                  "name": "Dart Isolate Instructions",
+                  "type": "symbol",
+                  "pattern": "_kDartIsolateSnapshotInstructions",
+                  "severity": "INFO",
+                  "description": "Dart AOT compiled code entry in libapp.so"
+                },
+                {
+                  "name": "Dart VM Snapshot Data",
+                  "type": "symbol",
+                  "pattern": "_kDartVmSnapshotData",
+                  "severity": "INFO",
+                  "description": "Dart VM snapshot metadata in libapp.so"
+                },
+                {
+                  "name": "Hermes Runtime",
+                  "type": "symbol",
+                  "pattern": "hermes",
+                  "severity": "INFO",
+                  "description": "React Native Hermes JS engine symbol"
+                },
+                {
+                  "name": "React Native JSI",
+                  "type": "symbol",
+                  "pattern": "facebook::jsi",
+                  "severity": "INFO",
+                  "description": "React Native JavaScript Interface (JSI) bridge"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-il2cpp-game",
               "name": "Unity Il2Cpp & Game Engine",
               "version": "1.0",
@@ -754,6 +801,16 @@ class ELFTraceViewModel : ViewModel() {
               "author": "ELFTrace",
               "description": "Rhai script that disassembles JNI_OnLoad and lists its outgoing branch/call targets.",
               "script": "let syms = find_symbols(\"JNI_OnLoad\");\nfor s in syms {\n  report(\"JNI_OnLoad Entry\", s.address, \"INFO\", \"Size: \" + s.size + \" bytes\");\n  let insns = disasm(s.address, 128);\n  for ins in insns {\n    if ins.mnemonic == \"bl\" || ins.mnemonic == \"blr\" || ins.mnemonic == \"call\" {\n      report(\"JNI_OnLoad Call\", ins.address, \"INFO\", ins.mnemonic + \" \" + ins.op_str);\n    }\n  }\n}"
+            }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-rhai-watchdog",
+              "name": "Rhai: Watchdog Thread & Abort Tracer",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Traces pthread_create watchdog spawns and abort/kill/raise termination call sites.",
+              "script": "let targets = [\"pthread_create\", \"abort\", \"kill\", \"raise\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        let sev = if t == \"pthread_create\" { \"MEDIUM\" } else { \"HIGH\" };\n        report_patch(\"Calls \" + t, x.from, sev, x.caller + \" -> \" + x.instruction, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
