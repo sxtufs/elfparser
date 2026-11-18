@@ -810,7 +810,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Traces pthread_create watchdog spawns and abort/kill/raise termination call sites.",
-              "script": "let targets = [\"pthread_create\", \"abort\", \"kill\", \"raise\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        let sev = if t == \"pthread_create\" { \"MEDIUM\" } else { \"HIGH\" };\n        report_patch(\"Calls \" + t, x.from, sev, x.caller + \" -> \" + x.instruction, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
+              "script": "let targets = [\"pthread_create\", \"abort\", \"kill\", \"raise\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        let sev = if t == \"pthread_create\" { \"MEDIUM\" } else { \"HIGH\" };\n        let desc = if x.caller != \"\" { x.caller + \" -> \" + x.instruction } else { x.instruction };\n        report_patch(\"Calls \" + t, x.from, sev, desc, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
@@ -820,7 +820,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Rhai script that traces callers of ptrace/kill/exit and suggests NOP patches.",
-              "script": "let targets = [\"ptrace\", \"__android_log_print\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    let xrefs = get_xrefs(s.address);\n    for x in xrefs {\n      if t == \"ptrace\" {\n        report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n      } else {\n        report(\"Log Call: \" + s.name, x.from, \"INFO\", \"Calls \" + s.name + \" (\" + x.instruction + \")\");\n      }\n    }\n  }\n}"
+              "script": "let targets = [\"ptrace\", \"prctl\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
             }
             """.trimIndent()
         )
