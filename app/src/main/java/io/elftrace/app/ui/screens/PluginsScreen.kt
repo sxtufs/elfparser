@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -151,13 +152,24 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     }
 
     if (showAddDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            containerColor = colors.surface,
-            title = { Text("Quick Custom Rule", color = colors.textPrimary) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Type", color = colors.textSecondary, fontSize = 12.sp)
+        Dialog(onDismissRequest = { showAddDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Quick Custom Rule",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.textPrimary
+                    )
+
+                    Text("Type", color = colors.textSecondary, fontSize = 11.5.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("symbol" to "Symbol", "string" to "String", "byte_pattern" to "Bytes").forEach { (key, label) ->
                             FilterChip(
@@ -184,7 +196,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Text("Optional Patch", color = colors.textSecondary, fontSize = 12.sp)
+                    Text("Optional Patch", color = colors.textSecondary, fontSize = 11.5.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("none" to "None", "ret_true" to "True", "ret_false" to "False", "nop" to "NOP").forEach { (key, label) ->
                             FilterChip(
@@ -194,52 +206,54 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                             )
                         }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = rulePattern.isNotBlank(),
-                    onClick = {
-                        val pat = rulePattern.trim()
-                        val patchObj = if (rulePatch == "none") null else PluginPatch(mode = "quick", value = rulePatch, offset = 0)
-                        val manifest = PluginManifest(
-                            id = "custom-${System.currentTimeMillis()}",
-                            name = "Custom: $pat",
-                            version = "1.0",
-                            author = "User",
-                            description = "Custom $ruleType search",
-                            rules = listOf(
-                                PluginRule(
-                                    name = pat,
-                                    type = ruleType,
-                                    pattern = pat,
-                                    severity = "HIGH",
-                                    description = "Custom $ruleType match",
-                                    patch = patchObj
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showAddDialog = false }) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+                        TextButton(
+                            enabled = rulePattern.isNotBlank(),
+                            onClick = {
+                                val pat = rulePattern.trim()
+                                val patchObj = if (rulePatch == "none") null else PluginPatch(mode = "quick", value = rulePatch, offset = 0)
+                                val manifest = PluginManifest(
+                                    id = "custom-${System.currentTimeMillis()}",
+                                    name = "Custom: $pat",
+                                    version = "1.0",
+                                    author = "User",
+                                    description = "Custom $ruleType search",
+                                    rules = listOf(
+                                        PluginRule(
+                                            name = pat,
+                                            type = ruleType,
+                                            pattern = pat,
+                                            severity = "HIGH",
+                                            description = "Custom $ruleType match",
+                                            patch = patchObj
+                                        )
+                                    )
                                 )
-                            )
-                        )
-                        val json = Gson().toJson(manifest)
-                        viewModel.importPluginJson(json).onSuccess {
-                            if (bridge != null) {
-                                viewModel.runPlugin(manifest.id)
+                                val json = Gson().toJson(manifest)
+                                viewModel.importPluginJson(json).onSuccess {
+                                    if (bridge != null) {
+                                        viewModel.runPlugin(manifest.id)
+                                    }
+                                    expandedPluginId = manifest.id
+                                    rulePattern = ""
+                                    rulePatch = "none"
+                                    showAddDialog = false
+                                }
                             }
-                            expandedPluginId = manifest.id
-                            rulePattern = ""
-                            rulePatch = "none"
-                            showAddDialog = false
+                        ) {
+                            Text("Add", color = colors.primary)
                         }
                     }
-                ) {
-                    Text("Add", color = colors.primary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancel", color = colors.textSecondary)
                 }
             }
-        )
+        }
     }
 }
 
@@ -404,8 +418,14 @@ private fun PluginFindingRow(
                 )
             }
             Spacer(Modifier.height(2.dp))
+            val addrHex = "0x${finding.address.toString(16)}"
+            val addrLine = if (finding.matched_value.equals(addrHex, ignoreCase = true) || finding.matched_value.isBlank()) {
+                addrHex
+            } else {
+                "$addrHex • ${finding.matched_value}"
+            }
             Text(
-                text = "0x${finding.address.toString(16)} • ${finding.matched_value}",
+                text = addrLine,
                 color = colors.primary,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
