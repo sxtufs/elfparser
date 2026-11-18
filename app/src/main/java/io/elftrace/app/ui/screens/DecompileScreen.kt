@@ -10,9 +10,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.text.TextLayoutResult
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -107,6 +111,10 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
     var cleanMode by remember { mutableStateOf(true) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var currentMatchIdx by remember { mutableStateOf(0) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
     val displayTitle = remember(symbolName, currentAddr) {
         symbolName.ifEmpty { "sub_%08X".format(currentAddr) }
@@ -121,17 +129,39 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
         highlightPseudoC(displayedText, searchQuery, colors)
     }
 
-    val matchCount = remember(displayedText, searchQuery) {
-        if (searchQuery.isBlank()) 0
+    val matchOffsets = remember(displayedText, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
         else {
             val q = searchQuery.trim()
-            var count = 0
+            val list = mutableListOf<Int>()
             var idx = displayedText.indexOf(q, ignoreCase = true)
             while (idx >= 0) {
-                count++
+                list.add(idx)
                 idx = displayedText.indexOf(q, idx + q.length, ignoreCase = true)
             }
-            count
+            list
+        }
+    }
+    val matchCount = matchOffsets.size
+
+    fun scrollToMatch(index: Int) {
+        val layout = textLayoutResult ?: return
+        if (matchOffsets.isEmpty()) return
+        val safeIdx = index.coerceIn(0, matchOffsets.lastIndex)
+        currentMatchIdx = safeIdx
+        val charOffset = matchOffsets[safeIdx].coerceIn(0, displayedText.length)
+        val line = layout.getLineForOffset(charOffset)
+        val y = layout.getLineTop(line).toInt()
+        coroutineScope.launch {
+            scrollState.animateScrollTo((y - 80).coerceAtLeast(0))
+        }
+    }
+
+    LaunchedEffect(searchQuery, matchOffsets) {
+        if (matchOffsets.isNotEmpty()) {
+            scrollToMatch(0)
+        } else {
+            currentMatchIdx = 0
         }
     }
 
@@ -224,12 +254,32 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (searchQuery.isNotBlank()) {
                             Text(
-                                text = "$matchCount",
+                                text = if (matchCount > 0) "${currentMatchIdx + 1}/$matchCount" else "0",
                                 color = colors.primary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(end = 4.dp)
+                                modifier = Modifier.padding(end = 2.dp)
                             )
+                            if (matchCount > 1) {
+                                IconButton(
+                                    onClick = {
+                                        val prev = if (currentMatchIdx > 0) currentMatchIdx - 1 else matchCount - 1
+                                        scrollToMatch(prev)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.ChevronLeft, contentDescription = "Prev Match", modifier = Modifier.size(16.dp))
+                                }
+                                IconButton(
+                                    onClick = {
+                                        val next = (currentMatchIdx + 1) % matchCount
+                                        scrollToMatch(next)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.ChevronRight, contentDescription = "Next Match", modifier = Modifier.size(16.dp))
+                                }
+                            }
                         }
                         IconButton(onClick = {
                             searchQuery = ""
@@ -253,7 +303,7 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                 .fillMaxSize()
                 .background(colors.card, RoundedCornerShape(8.dp))
                 .padding(8.dp)
-                .verticalScroll(rememberScrollState(), flingBehavior = momentumFling)
+                .verticalScroll(scrollState, flingBehavior = momentumFling)
         ) {
             SelectionContainer {
                 Text(
@@ -262,6 +312,7 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
+                    onTextLayout = { textLayoutResult = it },
                     modifier = Modifier.fillMaxWidth(),
                     softWrap = true
                 )
