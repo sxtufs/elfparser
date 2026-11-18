@@ -79,18 +79,14 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Extension, contentDescription = null, tint = colors.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Plugins & Recipes", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
-                        val totalFindings = plugins.sumOf { it.lastReport?.total_findings ?: 0 }
-                        Text(
-                            text = "${plugins.size} plugins • $totalFindings findings",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary
-                        )
-                    }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Plugins & Recipes", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
+                    val totalFindings = plugins.sumOf { it.lastReport?.total_findings ?: 0 }
+                    Text(
+                        text = "${plugins.size} plugins • $totalFindings findings",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { showPasteDialog = true }) {
@@ -123,7 +119,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Load an ELF (.so) or APK in the Files tab to run plugins.",
+                    text = "Load a .so or APK in the Files tab to run plugins.",
                     color = colors.textSecondary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(14.dp)
@@ -143,15 +139,13 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
             ) { plugin ->
                 PluginCard(
                     plugin = plugin,
-                    hasBinary = bridge != null,
                     isExpanded = expandedPluginId == plugin.manifest.id,
                     onToggleExpand = {
-                        expandedPluginId = if (expandedPluginId == plugin.manifest.id) null else plugin.manifest.id
-                    },
-                    onToggleEnabled = { viewModel.togglePlugin(plugin.manifest.id) },
-                    onRun = {
-                        viewModel.runPlugin(plugin.manifest.id)
-                        expandedPluginId = plugin.manifest.id
+                        val willExpand = expandedPluginId != plugin.manifest.id
+                        expandedPluginId = if (willExpand) plugin.manifest.id else null
+                        if (willExpand && bridge != null && plugin.lastReport == null) {
+                            viewModel.runPlugin(plugin.manifest.id)
+                        }
                     },
                     onRemove = { viewModel.removePlugin(plugin.manifest.id) },
                     onJumpToAddress = { addr, sym ->
@@ -225,11 +219,8 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
 @Composable
 private fun PluginCard(
     plugin: LoadedPlugin,
-    hasBinary: Boolean,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
-    onToggleEnabled: () -> Unit,
-    onRun: () -> Unit,
     onRemove: () -> Unit,
     onJumpToAddress: (Long, String?) -> Unit,
     onApplyPatch: (PluginFinding) -> Unit
@@ -304,18 +295,9 @@ private fun PluginCard(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = plugin.enabled,
-                        onCheckedChange = { onToggleEnabled() }
-                    )
-                    IconButton(enabled = hasBinary, onClick = onRun) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Run Plugin", tint = if (hasBinary) GreenAccent else colors.textSecondary)
-                    }
-                    if (!plugin.isBuiltIn) {
-                        IconButton(onClick = onRemove) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
-                        }
+                if (!plugin.isBuiltIn) {
+                    IconButton(onClick = onRemove) {
+                        Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
                     }
                 }
             }
