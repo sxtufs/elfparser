@@ -116,7 +116,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
 
                 IconButton(
                     onClick = {
-                        gotoAddressInput = "0x${"%08X".format(startAddress)}"
+                        gotoAddressInput = if (dialogMode == "goto") "0x${"%08X".format(startAddress)}" else ""
                         showGotoDialog = true
                     },
                     modifier = Modifier.size(32.dp)
@@ -428,7 +428,12 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             FilterChip(
                                 selected = dialogMode == "goto",
-                                onClick = { dialogMode = "goto" },
+                                onClick = {
+                                    dialogMode = "goto"
+                                    if (gotoAddressInput.isBlank()) {
+                                        gotoAddressInput = "0x${"%08X".format(startAddress)}"
+                                    }
+                                },
                                 label = { Text("Go to Address", fontSize = 11.sp) }
                             )
                             FilterChip(
@@ -448,8 +453,16 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                             onValueChange = { gotoAddressInput = it },
                             label = {
                                 Text(
-                                    if (dialogMode == "goto") "Address / Offset (e.g. 0x2A35C)"
-                                    else "Hex (7F 45 4C 46) or ASCII text"
+                                    if (dialogMode == "goto") "Address / Offset"
+                                    else "Hex or ASCII",
+                                    fontSize = 12.sp
+                                )
+                            },
+                            placeholder = {
+                                Text(
+                                    if (dialogMode == "goto") "e.g. 0x2A35C"
+                                    else "e.g. 7F 45 4C 46 or JNI_OnLoad",
+                                    fontSize = 12.sp
                                 )
                             },
                             singleLine = true,
