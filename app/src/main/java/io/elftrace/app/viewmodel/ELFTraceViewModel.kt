@@ -757,6 +757,41 @@ class ELFTraceViewModel : ViewModel() {
                   "description": "DEX file integrity or CRC verification reference"
                 },
                 {
+                  "name": "JNI getPackageManager",
+                  "type": "string",
+                  "pattern": "getPackageManager",
+                  "severity": "HIGH",
+                  "description": "Native JNI call to PackageManager (common APK signature check)"
+                },
+                {
+                  "name": "JNI getPackageInfo",
+                  "type": "string",
+                  "pattern": "getPackageInfo",
+                  "severity": "HIGH",
+                  "description": "Native JNI call to getPackageInfo (APK signature/version check)"
+                },
+                {
+                  "name": "JNI Signature toByteArray",
+                  "type": "string",
+                  "pattern": "toByteArray",
+                  "severity": "MEDIUM",
+                  "description": "Converts APK Signature/Certificate to bytes for hashing"
+                },
+                {
+                  "name": "JNI MessageDigest",
+                  "type": "string",
+                  "pattern": "MessageDigest",
+                  "severity": "MEDIUM",
+                  "description": "Hashes APK signature or DEX bytes in native code"
+                },
+                {
+                  "name": "CRC32 Routine",
+                  "type": "symbol",
+                  "pattern": "crc32",
+                  "severity": "MEDIUM",
+                  "description": "CRC32 checksum routine (possible integrity check)"
+                },
+                {
                   "name": "Xposed / Substrate Indicator",
                   "type": "string",
                   "pattern": "xposed",
