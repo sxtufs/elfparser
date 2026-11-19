@@ -610,7 +610,7 @@ fn parse_ida_pattern(pattern: &str) -> Result<Vec<Option<u8>>, String> {
 }
 
 fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
-    use object::{Object, ObjectSection, RelocationTarget};
+    use object::{Object, ObjectSection, ObjectSegment, RelocationTarget};
     let mut out = Array::new();
     let Ok(obj) = object::File::parse(&*ctx.raw) else {
         return out;
@@ -619,14 +619,27 @@ fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
     let is_64 = obj.is_64();
     let ptr_size = if is_64 { 8usize } else { 4usize };
 
-    // Collect executable address ranges (.text, etc.)
+    // Collect executable address ranges (.text, or PF_X PT_LOAD segments for LIAPP/stripped ELFs)
     let mut exec_ranges: Vec<(u64, u64)> = Vec::new();
     for sec in obj.sections() {
-        if sec.kind() == object::SectionKind::Text {
+        if sec.kind() == object::SectionKind::Text && sec.size() > 16 {
             let start = sec.address();
             let end = start.saturating_add(sec.size());
             if end > start {
                 exec_ranges.push((start, end));
+            }
+        }
+    }
+    if exec_ranges.is_empty() {
+        for seg in obj.segments() {
+            if let object::SegmentFlags::Elf { p_flags } = seg.flags() {
+                if (p_flags & 1) != 0 && seg.size() > 0 {
+                    let start = seg.address();
+                    let end = start.saturating_add(seg.size());
+                    if end > start {
+                        exec_ranges.push((start, end));
+                    }
+                }
             }
         }
     }
@@ -689,15 +702,28 @@ fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
     };
 
+    let mut data_regions: Vec<(u64, &[u8])> = Vec::new();
     for sec in obj.sections() {
         let name = sec.name().unwrap_or("");
-        if name != ".data" && name != ".data.rel.ro" && name != ".rodata" {
-            continue;
+        if name == ".data" || name == ".data.rel.ro" || name == ".rodata" {
+            if let Ok(data) = sec.data() {
+                if data.len() > 16 {
+                    data_regions.push((sec.address(), data));
+                }
+            }
         }
-        let Ok(data) = sec.data() else {
-            continue;
-        };
-        let base_vaddr = sec.address();
+    }
+    if data_regions.is_empty() {
+        for seg in obj.segments() {
+            if let Ok(data) = seg.data() {
+                if data.len() > 16 {
+                    data_regions.push((seg.address(), data));
+                }
+            }
+        }
+    }
+
+    for (base_vaddr, data) in data_regions {
         let triplet_size = ptr_size * 3;
         let mut off = 0usize;
         while off + triplet_size <= data.len() && out.len() < MAX_MATCHES_PER_RULE {
