@@ -446,7 +446,7 @@ private fun PluginFindingRow(
                     fontSize = 11.sp
                 )
             }
-            if (finding.patch != null) {
+            if (finding.patch != null && finding.address != 0L) {
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(

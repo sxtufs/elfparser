@@ -275,6 +275,17 @@ fn execute_rhai_script(
     let arch_owned = arch_name.to_string();
     engine.register_fn("arch", move || -> String { arch_owned.clone() });
     engine.register_fn("hex", |val: i64| -> String { format!("0x{:x}", val as u64) });
+    engine.register_fn("parse_addr", |s: &str| -> i64 {
+        for part in s.split(',') {
+            let t = part.trim().trim_start_matches('#');
+            if let Some(hex_str) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+                if let Ok(v) = u64::from_str_radix(hex_str, 16) {
+                    return v as i64;
+                }
+            }
+        }
+        -1
+    });
 
     // Safety: `ctx` outlives `engine` within this synchronous function call.
     let ctx_ptr = ctx as *const ElfContext as usize;
