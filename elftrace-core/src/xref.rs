@@ -186,38 +186,106 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
 
                         i += 4;
                     }
-                } else {
-                    // Fallback Capstone scan for non-ARM64 (x86, ARM32/Thumb)
-                    let modes: &[bool] = if e_machine == 40 { &[true, false] } else { &[false] };
+                } else if e_machine == 40 {
+                    // Direct ARM32 + Thumb-2 hardware decoding (never stops on literal pools)
+                    let target_clean = target_vaddr & !1;
                     let mut seen_from = std::collections::HashSet::new();
-                    for &is_thumb in modes {
-                        let insns = match disassemble(
-                            data,
-                            sec_vaddr,
-                            data.len() as u64,
-                            e_machine,
-                            is_thumb,
-                        ) {
+
+                    // 1. Thumb-2 32-bit BL / BLX scan (2-byte aligned)
+                    let mut i = 0usize;
+                    while i + 4 <= data.len() {
+                        let hw1 = u16::from_le_bytes(data[i..i + 2].try_into().unwrap());
+                        let hw2 = u16::from_le_bytes(data[i + 2..i + 4].try_into().unwrap());
+                        if (hw1 & 0xF800) == 0xF000 && (hw2 & 0xC000) == 0xC000 {
+                            let from_addr = sec_vaddr + i as u64;
+                            let s = ((hw1 >> 10) & 1) as i64;
+                            let imm10 = (hw1 & 0x03FF) as i64;
+                            let j1 = ((hw2 >> 13) & 1) as i64;
+                            let j2 = ((hw2 >> 11) & 1) as i64;
+                            let i1 = (!(j1 ^ s)) & 1;
+                            let i2 = (!(j2 ^ s)) & 1;
+                            let imm11 = (hw2 & 0x07FF) as i64;
+                            let is_bl = (hw2 & 0x1000) != 0;
+                            let mut imm = (s << 24)
+                                | (i1 << 23)
+                                | (i2 << 22)
+                                | (imm10 << 12)
+                                | (imm11 << 1);
+                            if s != 0 {
+                                imm |= !0x01FF_FFFF;
+                            }
+                            let to_addr = if is_bl {
+                                (from_addr + 4).wrapping_add(imm as u64)
+                            } else {
+                                ((from_addr + 4) & !3).wrapping_add((imm & !3) as u64)
+                            };
+                            if (to_addr & !1) == target_clean && seen_from.insert(from_addr) {
+                                let mnem = if is_bl { "bl" } else { "blx" };
+                                refs.push(XRefItem {
+                                    from_address: from_addr,
+                                    to_address: to_addr,
+                                    kind: "Call".to_string(),
+                                    instruction: format!("{:<7} #0x{:x}", mnem, to_addr),
+                                    caller_func: find_caller(from_addr),
+                                });
+                            }
+                        }
+                        i += 2;
+                    }
+
+                    // 2. ARM32 32-bit BL / BLX scan (4-byte aligned)
+                    let mut j = 0usize;
+                    while j + 4 <= data.len() {
+                        let word = u32::from_le_bytes(data[j..j + 4].try_into().unwrap());
+                        let from_addr = sec_vaddr + j as u64;
+                        let is_arm_bl = (word & 0x0F00_0000) == 0x0B00_0000
+                            && (word & 0xF000_0000) != 0xF000_0000;
+                        let is_arm_blx = (word & 0xFE00_0000) == 0xFA00_0000;
+                        if is_arm_bl || is_arm_blx {
+                            let mut imm24 = (word & 0x00FF_FFFF) as i64;
+                            if (imm24 & 0x0080_0000) != 0 {
+                                imm24 |= !0x00FF_FFFF;
+                            }
+                            let h = if is_arm_blx {
+                                (((word >> 24) & 1) as i64) << 1
+                            } else {
+                                0
+                            };
+                            let to_addr = (from_addr + 8).wrapping_add(((imm24 << 2) | h) as u64);
+                            if (to_addr & !1) == target_clean && seen_from.insert(from_addr) {
+                                let mnem = if is_arm_bl { "bl" } else { "blx" };
+                                refs.push(XRefItem {
+                                    from_address: from_addr,
+                                    to_address: to_addr,
+                                    kind: "Call".to_string(),
+                                    instruction: format!("{:<7} #0x{:x}", mnem, to_addr),
+                                    caller_func: find_caller(from_addr),
+                                });
+                            }
+                        }
+                        j += 4;
+                    }
+                } else {
+                    // Fallback Capstone scan for x86 / x86_64
+                    let insns =
+                        match disassemble(data, sec_vaddr, data.len() as u64, e_machine, false) {
                             Ok(c) => c.data,
                             Err(_) => continue,
                         };
-                        for ins in insns {
-                            let mnem = ins.mnemonic.as_str();
-                            let ops = ins.op_str.as_str();
-                            let from_addr = ins.address;
-                            if mnem == "bl" || mnem == "blx" || mnem == "call" {
-                                if let Some(to_addr) = parse_imm_addr(ops) {
-                                    if (to_addr & !1) == (target_vaddr & !1)
-                                        && seen_from.insert(from_addr)
-                                    {
-                                        refs.push(XRefItem {
-                                            from_address: from_addr,
-                                            to_address: to_addr,
-                                            kind: "Call".to_string(),
-                                            instruction: format!("{:<7} {}", mnem, ops),
-                                            caller_func: find_caller(from_addr),
-                                        });
-                                    }
+                    for ins in insns {
+                        let mnem = ins.mnemonic.as_str();
+                        let ops = ins.op_str.as_str();
+                        let from_addr = ins.address;
+                        if mnem == "call" {
+                            if let Some(to_addr) = parse_imm_addr(ops) {
+                                if to_addr == target_vaddr {
+                                    refs.push(XRefItem {
+                                        from_address: from_addr,
+                                        to_address: to_addr,
+                                        kind: "Call".to_string(),
+                                        instruction: format!("{:<7} {}", mnem, ops),
+                                        caller_func: find_caller(from_addr),
+                                    });
                                 }
                             }
                         }
