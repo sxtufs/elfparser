@@ -542,9 +542,15 @@ impl ElfContext {
                 }
             }
 
-            // Inject .init_array constructors from PT_DYNAMIC (essential for LIAPP/packed ELFs)
+            // Inject .init_array constructors from PT_DYNAMIC only when section headers are
+            // stripped/corrupted (e.g. LIAPP), so normal ELFs with hundreds of C++ ctors stay clean.
+            let sections_corrupted = obj_file.section_by_name(".text").is_none()
+                || obj_file
+                    .section_by_name(".init_array")
+                    .map(|s| s.size() <= 16)
+                    .unwrap_or(true);
             let ptr_sz = if is_64 { 8 } else { 4 };
-            if !dyn_tables.init_array.is_empty() {
+            if sections_corrupted && !dyn_tables.init_array.is_empty() {
                 let mut rela_addends: HashMap<u64, u64> = HashMap::new();
                 if is_64 && !dyn_tables.rela_dyn.is_empty() {
                     for chunk in dyn_tables.rela_dyn.chunks_exact(24) {
