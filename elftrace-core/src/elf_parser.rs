@@ -149,8 +149,8 @@ impl ElfContext {
                     None
                 };
 
-                // For AArch64, decode `adrp x16, page; ldr x17, [x16, #off]` in .plt
-                // to map each GOT slot (r_offset) to its exact PLT stub address.
+                // Decode .plt stubs for AArch64 and ARM32 to map each GOT slot (r_offset)
+                // to its exact PLT stub address.
                 let mut aarch64_got_to_stub: HashMap<u64, u64> = HashMap::new();
                 if e_machine == 183 {
                     if let Ok(plt_bytes) = plt.data() {
@@ -177,6 +177,27 @@ impl ElfContext {
                                     pc
                                 };
                                 aarch64_got_to_stub.entry(got_addr).or_insert(stub_start);
+                            }
+                            off += 4;
+                        }
+                    }
+                } else if e_machine == 40 {
+                    if let Ok(plt_bytes) = plt.data() {
+                        let mut off = 0usize;
+                        while off + 12 <= plt_bytes.len() {
+                            let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
+                            let w1 = u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
+                            let w2 = u32::from_le_bytes(plt_bytes[off + 8..off + 12].try_into().unwrap());
+                            if (w0 & 0xFFFF_F000) == 0xE28F_C000
+                                && (w1 & 0xFFFF_F000) == 0xE28C_C000
+                                && (w2 & 0xFFFF_F000) == 0xE5BC_F000
+                            {
+                                let pc = plt_start + off as u64;
+                                let imm0 = (w0 & 0xFF).rotate_right(((w0 >> 8) & 0xF) * 2) as u64;
+                                let imm1 = (w1 & 0xFF).rotate_right(((w1 >> 8) & 0xF) * 2) as u64;
+                                let imm2 = (w2 & 0xFFF) as u64;
+                                let got_addr = (pc + 8).wrapping_add(imm0).wrapping_add(imm1).wrapping_add(imm2);
+                                aarch64_got_to_stub.entry(got_addr).or_insert(pc);
                             }
                             off += 4;
                         }
