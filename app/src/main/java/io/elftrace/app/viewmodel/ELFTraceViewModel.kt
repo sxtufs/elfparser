@@ -467,37 +467,8 @@ class ELFTraceViewModel : ViewModel() {
               "name": "LIAPP Protector",
               "version": "1.0",
               "author": "ELFTrace",
-              "description": "Detects Lockin LIAPP native loader, anti-dump inotify watchers, and self-ptrace forks.",
-              "rules": [
-                {
-                  "name": "LIAPP Library String",
-                  "type": "string",
-                  "pattern": "libliapp.so",
-                  "severity": "HIGH",
-                  "description": "LIAPP native protector identifier"
-                },
-                {
-                  "name": "LIAPP Anti-Dump (inotify)",
-                  "type": "symbol",
-                  "pattern": "inotify_rm_watch",
-                  "severity": "HIGH",
-                  "description": "Watches /proc/pid/mem or APK files for memory dumping"
-                },
-                {
-                  "name": "LIAPP Library Scanner (dl_iterate_phdr)",
-                  "type": "symbol",
-                  "pattern": "dl_iterate_phdr",
-                  "severity": "MEDIUM",
-                  "description": "Enumerates loaded shared libraries (Frida/Xposed detection)"
-                },
-                {
-                  "name": "LIAPP Self-Ptrace Fork",
-                  "type": "symbol",
-                  "pattern": "fork",
-                  "severity": "MEDIUM",
-                  "description": "Spawns child process for anti-debug ptrace attachment"
-                }
-              ]
+              "description": "Detects Lockin LIAPP loader entries, anti-dump watchers, and traces callers to decision points.",
+              "script": "let strs = find_strings(\"libliapp.so\");\nfor st in strs {\n  report(\"LIAPP Identifier\", st.address, \"HIGH\", st.value);\n}\nlet inits = find_symbols(\"init_array_\");\nfor ini in inits {\n  report(\"LIAPP Loader Entry (\" + ini.name + \")\", ini.address, \"HIGH\", \"Constructor in .init_array (unpacks DEX & starts checks)\");\n}\nlet apis = [\"inotify_rm_watch\", \"dl_iterate_phdr\", \"fork\", \"prctl\"];\nfor api in apis {\n  let syms = find_symbols(api);\n  for s in syms {\n    if s.name == api {\n      let xrefs = get_xrefs(s.address);\n      if xrefs.len() == 0 {\n        report(\"LIAPP Import: \" + api, s.address, \"MEDIUM\", \"PLT stub (called indirectly or via wrapper)\");\n      }\n      for x in xrefs {\n        report(\"LIAPP Calls \" + api, x.from, \"HIGH\", x.instruction);\n        if x.kind == \"Jump\" && x.from > 64 {\n          let win = disasm(x.from - 64, 64);\n          let wrap_start = -1;\n          let idx = 0;\n          while idx + 1 < win.len() {\n            let ins = win[idx];\n            let nxt = win[idx + 1];\n            let is_end = ins.mnemonic == \"b\" || ins.mnemonic == \"jmp\" || (ins.mnemonic == \"bx\" && ins.op_str == \"lr\") || (ins.mnemonic == \"ret\" && !nxt.op_str.contains(\"x30\") && !nxt.op_str.contains(\"lr\"));\n            if is_end {\n              wrap_start = nxt.address;\n            }\n            idx += 1;\n          }\n          if wrap_start > 0 {\n            let callers = get_xrefs(wrap_start);\n            for c in callers {\n              report(\"LIAPP Decision Site (\" + api + \")\", c.from, \"HIGH\", \"Calls wrapper \" + hex(wrap_start) + \" -> \" + c.instruction);\n            }\n          }\n        }\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
