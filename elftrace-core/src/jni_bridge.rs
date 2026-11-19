@@ -53,7 +53,9 @@ unsafe fn handle_disasm(
         return env.new_string("{\"data\":[]}").unwrap().into_inner();
     }
     let ctx = &*(handle as *const ElfContext);
-    let vaddr = address as u64;
+    let raw_vaddr = address as u64;
+    let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+    let vaddr = if e_machine == 40 { raw_vaddr & !1 } else { raw_vaddr };
 
     let offset = match ctx.vaddr_to_offset(vaddr) {
         Some(off) => off as usize,
@@ -65,8 +67,13 @@ unsafe fn handle_disasm(
     }
 
     let code_slice = &ctx.raw[offset..];
-    let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
-    let is_thumb = thumb == JNI_TRUE;
+    let is_thumb = if e_machine == 40 {
+        thumb == JNI_TRUE
+            || (raw_vaddr & 1) != 0
+            || crate::decompiler::find_function_range(ctx, vaddr).thumb
+    } else {
+        false
+    };
 
     let is_jni = ctx
         .syms_map

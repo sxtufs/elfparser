@@ -277,9 +277,17 @@ fn execute_rhai_script(
     engine.register_fn("hex", |val: i64| -> String { format!("0x{:x}", val as u64) });
     engine.register_fn("parse_addr", |s: &str| -> i64 {
         for part in s.split(',') {
-            let t = part.trim().trim_start_matches('#');
+            let t = part
+                .trim()
+                .trim_end_matches(']')
+                .trim()
+                .trim_start_matches('#');
             if let Some(hex_str) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
                 if let Ok(v) = u64::from_str_radix(hex_str, 16) {
+                    return v as i64;
+                }
+            } else if !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit()) {
+                if let Ok(v) = t.parse::<u64>() {
                     return v as i64;
                 }
             }
@@ -395,17 +403,21 @@ fn execute_rhai_script(
             let off = off as usize;
             if off < ctx_ref.raw.len() {
                 let e_machine = ctx_ref.get_info().map(|i| i.e_machine).unwrap_or(183);
-                let is_thumb = ctx_ref
-                    .syms_map
-                    .get(&vaddr)
-                    .map(|s| s.thumb)
-                    .unwrap_or(false);
-                if let Ok(code) = disassemble(&ctx_ref.raw[off..], vaddr, sz, e_machine, is_thumb) {
+                let is_thumb = if e_machine == 40 {
+                    (vaddr & 1) != 0 || crate::decompiler::find_function_range(ctx_ref, vaddr).thumb
+                } else {
+                    false
+                };
+                let clean_vaddr = if e_machine == 40 { vaddr & !1 } else { vaddr };
+                if let Ok(code) =
+                    disassemble(&ctx_ref.raw[off..], clean_vaddr, sz, e_machine, is_thumb)
+                {
                     for ins in code.data {
                         let mut m = Map::new();
                         m.insert("address".into(), Dynamic::from(ins.address as i64));
                         m.insert("mnemonic".into(), Dynamic::from(ins.mnemonic));
                         m.insert("op_str".into(), Dynamic::from(ins.op_str));
+                        m.insert("thumb".into(), Dynamic::from(is_thumb));
                         out.push(Dynamic::from(m));
                     }
                 }
@@ -527,8 +539,13 @@ pub fn apply_plugin_patch(
                     };
                 }
             };
-            let is_thumb = ctx.syms_map.get(&address).map(|s| s.thumb).unwrap_or(false);
-            apply_quick_patch(ctx, address, ptype, is_thumb)
+            let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+            let is_thumb = if e_machine == 40 {
+                (address & 1) != 0 || crate::decompiler::find_function_range(ctx, address).thumb
+            } else {
+                false
+            };
+            apply_quick_patch(ctx, address & !1, ptype, is_thumb)
         }
         "asm" | "hex" => {
             let parts: Vec<&str> = value
