@@ -463,6 +463,45 @@ class ELFTraceViewModel : ViewModel() {
             """.trimIndent(),
             """
             {
+              "id": "builtin-liapp",
+              "name": "LIAPP Protector",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects Lockin LIAPP native loader, anti-dump inotify watchers, and self-ptrace forks.",
+              "rules": [
+                {
+                  "name": "LIAPP Library String",
+                  "type": "string",
+                  "pattern": "libliapp.so",
+                  "severity": "HIGH",
+                  "description": "LIAPP native protector identifier"
+                },
+                {
+                  "name": "LIAPP Anti-Dump (inotify)",
+                  "type": "symbol",
+                  "pattern": "inotify_rm_watch",
+                  "severity": "HIGH",
+                  "description": "Watches /proc/pid/mem or APK files for memory dumping"
+                },
+                {
+                  "name": "LIAPP Library Scanner (dl_iterate_phdr)",
+                  "type": "symbol",
+                  "pattern": "dl_iterate_phdr",
+                  "severity": "MEDIUM",
+                  "description": "Enumerates loaded shared libraries (Frida/Xposed detection)"
+                },
+                {
+                  "name": "LIAPP Self-Ptrace Fork",
+                  "type": "symbol",
+                  "pattern": "fork",
+                  "severity": "MEDIUM",
+                  "description": "Spawns child process for anti-debug ptrace attachment"
+                }
+              ]
+            }
+            """.trimIndent(),
+            """
+            {
               "id": "builtin-packers",
               "name": "Packers & Protectors",
               "version": "1.0",

@@ -121,7 +121,7 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
         Err(_) => return refs,
     };
 
-    use object::{Object, ObjectSection, ObjectSymbol};
+    use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol};
 
     // Symbol bounds for naming callers (binary search)
     let mut sym_table: Vec<(u64, u64, String)> = Vec::new();
@@ -156,12 +156,36 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
         }
     };
 
-    // Scan executable sections directly
-    for section in obj_file.sections() {
-        let name = section.name().unwrap_or("");
-        if name == ".text" || name == ".plt" {
-            if let Ok(data) = section.data() {
-                let sec_vaddr = section.address();
+    // Collect executable code regions from PT_LOAD segments first (works even when
+    // protectors like LIAPP strip/corrupt section headers), falling back to .text/.plt sections.
+    let mut exec_regions: Vec<(u64, &[u8])> = Vec::new();
+    for segment in obj_file.segments() {
+        if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
+            if (p_flags & 1) != 0 {
+                if let Ok(data) = segment.data() {
+                    if !data.is_empty() {
+                        exec_regions.push((segment.address(), data));
+                    }
+                }
+            }
+        }
+    }
+    if exec_regions.is_empty() {
+        for section in obj_file.sections() {
+            let name = section.name().unwrap_or("");
+            if name == ".text" || name == ".plt" {
+                if let Ok(data) = section.data() {
+                    if !data.is_empty() {
+                        exec_regions.push((section.address(), data));
+                    }
+                }
+            }
+        }
+    }
+
+    for (sec_vaddr, data) in exec_regions {
+        {
+            {
 
                 if e_machine == 183 {
                     // Fast direct 4-byte ARM64 hardware decoding

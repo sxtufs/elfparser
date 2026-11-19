@@ -4,6 +4,184 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+struct DynamicTables<'a> {
+    dynamic: &'a [u8],
+    dynstr: &'a [u8],
+    dynsym: &'a [u8],
+    jmprel: &'a [u8],
+    rela_dyn: &'a [u8],
+    init_array: &'a [u8],
+    init_array_va: u64,
+    is_rela: bool,
+    exec_segments: Vec<(u64, &'a [u8])>,
+}
+
+fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
+    let mut out = DynamicTables {
+        dynamic: &[],
+        dynstr: &[],
+        dynsym: &[],
+        jmprel: &[],
+        rela_dyn: &[],
+        init_array: &[],
+        init_array_va: 0,
+        is_rela: is_64,
+        exec_segments: Vec::new(),
+    };
+
+    let (phoff, phentsize, phnum) = if is_64 {
+        if raw.len() < 64 {
+            return out;
+        }
+        (
+            u64::from_le_bytes(raw[32..40].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[54..56].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[56..58].try_into().unwrap()) as usize,
+        )
+    } else {
+        if raw.len() < 52 {
+            return out;
+        }
+        (
+            u32::from_le_bytes(raw[28..32].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[42..44].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[44..46].try_into().unwrap()) as usize,
+        )
+    };
+
+    let mut loads: Vec<(u64, usize, usize)> = Vec::new();
+    for i in 0..phnum {
+        let off = phoff.saturating_add(i.saturating_mul(phentsize));
+        if off + phentsize > raw.len() {
+            break;
+        }
+        let ph = &raw[off..off + phentsize];
+        let (p_type, p_flags, p_offset, p_vaddr, p_filesz) = if is_64 && phentsize >= 56 {
+            (
+                u32::from_le_bytes(ph[0..4].try_into().unwrap()),
+                u32::from_le_bytes(ph[4..8].try_into().unwrap()),
+                u64::from_le_bytes(ph[8..16].try_into().unwrap()) as usize,
+                u64::from_le_bytes(ph[16..24].try_into().unwrap()),
+                u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize,
+            )
+        } else if !is_64 && phentsize >= 32 {
+            (
+                u32::from_le_bytes(ph[0..4].try_into().unwrap()),
+                u32::from_le_bytes(ph[24..28].try_into().unwrap()),
+                u32::from_le_bytes(ph[4..8].try_into().unwrap()) as usize,
+                u32::from_le_bytes(ph[8..12].try_into().unwrap()) as u64,
+                u32::from_le_bytes(ph[16..20].try_into().unwrap()) as usize,
+            )
+        } else {
+            continue;
+        };
+
+        if p_type == 1 && p_filesz > 0 && p_offset < raw.len() {
+            let avail = p_filesz.min(raw.len() - p_offset);
+            loads.push((p_vaddr, p_offset, avail));
+            if (p_flags & 1) != 0 {
+                out.exec_segments.push((p_vaddr, &raw[p_offset..p_offset + avail]));
+            }
+        } else if p_type == 2 && p_filesz > 0 && p_offset < raw.len() {
+            let avail = p_filesz.min(raw.len() - p_offset);
+            out.dynamic = &raw[p_offset..p_offset + avail];
+        }
+    }
+
+    let va_to_off = |va: u64| -> Option<(usize, usize)> {
+        for &(seg_va, seg_off, seg_sz) in &loads {
+            if va >= seg_va && va < seg_va.saturating_add(seg_sz as u64) {
+                let delta = (va - seg_va) as usize;
+                return Some((seg_off + delta, seg_sz - delta));
+            }
+        }
+        None
+    };
+
+    let mut dt_strtab = 0u64;
+    let mut dt_strsz = 0usize;
+    let mut dt_symtab = 0u64;
+    let mut dt_jmprel = 0u64;
+    let mut dt_pltrelsz = 0usize;
+    let mut dt_pltrel = if is_64 { 7u64 } else { 17u64 };
+    let mut dt_rela = 0u64;
+    let mut dt_relasz = 0usize;
+    let mut dt_init_array = 0u64;
+    let mut dt_init_arraysz = 0usize;
+
+    let dyn_entry_sz = if is_64 { 16 } else { 8 };
+    let mut pos = 0usize;
+    while pos + dyn_entry_sz <= out.dynamic.len() {
+        let (tag, val) = if is_64 {
+            (
+                u64::from_le_bytes(out.dynamic[pos..pos + 8].try_into().unwrap()),
+                u64::from_le_bytes(out.dynamic[pos + 8..pos + 16].try_into().unwrap()),
+            )
+        } else {
+            (
+                u32::from_le_bytes(out.dynamic[pos..pos + 4].try_into().unwrap()) as u64,
+                u32::from_le_bytes(out.dynamic[pos + 4..pos + 8].try_into().unwrap()) as u64,
+            )
+        };
+        pos += dyn_entry_sz;
+        if tag == 0 {
+            break;
+        }
+        match tag {
+            2 => dt_pltrelsz = val as usize,
+            5 => dt_strtab = val,
+            6 => dt_symtab = val,
+            7 => dt_rela = val,
+            8 => dt_relasz = val as usize,
+            10 => dt_strsz = val as usize,
+            20 => dt_pltrel = val,
+            23 => dt_jmprel = val,
+            25 => dt_init_array = val,
+            27 => dt_init_arraysz = val as usize,
+            _ => {}
+        }
+    }
+
+    out.is_rela = dt_pltrel == 7;
+    if dt_strtab != 0 {
+        if let Some((off, max_sz)) = va_to_off(dt_strtab) {
+            let sz = if dt_strsz > 0 { dt_strsz.min(max_sz) } else { max_sz };
+            out.dynstr = &raw[off..off + sz];
+        }
+    }
+    if dt_symtab != 0 {
+        if let Some((off, max_sz)) = va_to_off(dt_symtab) {
+            let end_off = if dt_strtab > dt_symtab {
+                ((dt_strtab - dt_symtab) as usize).min(max_sz)
+            } else {
+                max_sz
+            };
+            out.dynsym = &raw[off..off + end_off];
+        }
+    }
+    if dt_jmprel != 0 && dt_pltrelsz > 0 {
+        if let Some((off, max_sz)) = va_to_off(dt_jmprel) {
+            let sz = dt_pltrelsz.min(max_sz);
+            out.jmprel = &raw[off..off + sz];
+        }
+    }
+    if dt_rela != 0 && dt_relasz > 0 {
+        if let Some((off, max_sz)) = va_to_off(dt_rela) {
+            let sz = dt_relasz.min(max_sz);
+            out.rela_dyn = &raw[off..off + sz];
+        }
+    }
+    if dt_init_array != 0 && dt_init_arraysz > 0 {
+        out.init_array_va = dt_init_array;
+        if let Some((off, max_sz)) = va_to_off(dt_init_array) {
+            let sz = dt_init_arraysz.min(max_sz);
+            out.init_array = &raw[off..off + sz];
+        }
+    }
+
+    out
+}
+
 pub struct ElfContext {
     pub path: String,
     pub raw: Vec<u8>,
@@ -102,27 +280,71 @@ impl ElfContext {
 
             // Resolve PLT stub names so imported functions (malloc, free, strlen, __android_log_print)
             // appear with real names in Disassembly, Decompiler, and Call Hierarchy!
+            // Falls back to PT_DYNAMIC + PT_LOAD when section headers are stripped/corrupted (e.g. LIAPP).
+            let is_64 = matches!(
+                obj_file.architecture(),
+                object::Architecture::Aarch64
+                    | object::Architecture::X86_64
+                    | object::Architecture::Riscv64
+            );
+            let dyn_tables = extract_dynamic_tables(&raw, is_64);
+
             let plt_section = obj_file.section_by_name(".plt");
             let rela_plt_section = obj_file
                 .section_by_name(".rela.plt")
                 .or_else(|| obj_file.section_by_name(".rel.plt"));
-            let dynstr_data = obj_file
+
+            let sec_dynstr = obj_file
                 .section_by_name(".dynstr")
                 .and_then(|s| s.data().ok())
                 .unwrap_or(&[]);
-            let dynsym_data = obj_file
+            let sec_dynsym = obj_file
                 .section_by_name(".dynsym")
                 .and_then(|s| s.data().ok())
                 .unwrap_or(&[]);
 
-            if let (Some(plt), Some(rela_plt)) = (plt_section, rela_plt_section) {
-                let plt_start = plt.address();
-                let is_64 = matches!(
-                    obj_file.architecture(),
-                    object::Architecture::Aarch64
-                        | object::Architecture::X86_64
-                        | object::Architecture::Riscv64
-                );
+            let dynstr_data = if sec_dynstr.len() > 1 {
+                sec_dynstr
+            } else {
+                dyn_tables.dynstr
+            };
+            let dynsym_data = if sec_dynsym.len() > dyn_tables.dynsym.len() && sec_dynsym.len() > 256 {
+                sec_dynsym
+            } else if !dyn_tables.dynsym.is_empty() {
+                dyn_tables.dynsym
+            } else {
+                sec_dynsym
+            };
+
+            let (rel_data, is_rela, plt_start, plt_regions): (&[u8], bool, u64, Vec<(u64, &[u8])>) =
+                if let (Some(plt), Some(rela_plt)) = (plt_section, rela_plt_section) {
+                    let p_bytes = plt.data().unwrap_or(&[]);
+                    let r_bytes = rela_plt.data().unwrap_or(&[]);
+                    if p_bytes.len() > 16 && r_bytes.len() > 8 {
+                        (
+                            r_bytes,
+                            rela_plt.name().unwrap_or("").contains("rela"),
+                            plt.address(),
+                            vec![(plt.address(), p_bytes)],
+                        )
+                    } else {
+                        (
+                            dyn_tables.jmprel,
+                            dyn_tables.is_rela,
+                            0,
+                            dyn_tables.exec_segments.clone(),
+                        )
+                    }
+                } else {
+                    (
+                        dyn_tables.jmprel,
+                        dyn_tables.is_rela,
+                        0,
+                        dyn_tables.exec_segments.clone(),
+                    )
+                };
+
+            if !rel_data.is_empty() && !dynstr_data.is_empty() && !dynsym_data.is_empty() {
                 let (header_size, stub_size) = match e_machine {
                     183 => (32u64, 16u64), // AArch64: 32B header, 16B per stub
                     62 => (16u64, 16u64),  // x86_64: 16B header, 16B per stub
@@ -151,15 +373,24 @@ impl ElfContext {
 
                 // Decode .plt stubs for AArch64 and ARM32 to map each GOT slot (r_offset)
                 // to its exact PLT stub address.
-                let mut aarch64_got_to_stub: HashMap<u64, u64> = HashMap::new();
+                let mut got_to_stub: HashMap<u64, u64> = HashMap::new();
                 if e_machine == 183 {
-                    if let Ok(plt_bytes) = plt.data() {
+                    for &(region_va, plt_bytes) in &plt_regions {
                         let mut off = 0usize;
-                        while off + 8 <= plt_bytes.len() {
+                        while off + 12 <= plt_bytes.len() {
                             let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
                             let w1 = u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
-                            if (w0 & 0x9F00_001F) == 0x9000_0010 && (w1 & 0xFFC0_03FF) == 0xF940_0211 {
-                                let pc = plt_start + off as u64;
+                            let w2 = u32::from_le_bytes(plt_bytes[off + 8..off + 12].try_into().unwrap());
+                            let w3 = if off + 16 <= plt_bytes.len() {
+                                u32::from_le_bytes(plt_bytes[off + 12..off + 16].try_into().unwrap())
+                            } else {
+                                0
+                            };
+                            if (w0 & 0x9F00_001F) == 0x9000_0010
+                                && (w1 & 0xFFC0_03FF) == 0xF940_0211
+                                && (w2 == 0xD61F_0220 || w3 == 0xD61F_0220)
+                            {
+                                let pc = region_va + off as u64;
                                 let immlo = ((w0 >> 29) & 0x3) as i64;
                                 let immhi = ((w0 >> 5) & 0x7_FFFF) as i64;
                                 let mut imm21 = (immhi << 2) | immlo;
@@ -169,20 +400,19 @@ impl ElfContext {
                                 let page = ((pc & !0xFFF) as i64).wrapping_add(imm21 << 12) as u64;
                                 let uimm12 = (((w1 >> 10) & 0xFFF) as u64) * 8;
                                 let got_addr = page.wrapping_add(uimm12);
-                                // If preceded by `bti c` (0xD503245F), stub starts 4 bytes earlier
                                 let stub_start = if off >= 4 {
                                     let prev = u32::from_le_bytes(plt_bytes[off - 4..off].try_into().unwrap());
                                     if prev == 0xD503_245F { pc - 4 } else { pc }
                                 } else {
                                     pc
                                 };
-                                aarch64_got_to_stub.entry(got_addr).or_insert(stub_start);
+                                got_to_stub.entry(got_addr).or_insert(stub_start);
                             }
                             off += 4;
                         }
                     }
                 } else if e_machine == 40 {
-                    if let Ok(plt_bytes) = plt.data() {
+                    for &(region_va, plt_bytes) in &plt_regions {
                         let mut off = 0usize;
                         while off + 12 <= plt_bytes.len() {
                             let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
@@ -192,59 +422,53 @@ impl ElfContext {
                                 && (w1 & 0xFFFF_F000) == 0xE28C_C000
                                 && (w2 & 0xFFFF_F000) == 0xE5BC_F000
                             {
-                                let pc = plt_start + off as u64;
+                                let pc = region_va + off as u64;
                                 let imm0 = (w0 & 0xFF).rotate_right(((w0 >> 8) & 0xF) * 2) as u64;
                                 let imm1 = (w1 & 0xFF).rotate_right(((w1 >> 8) & 0xF) * 2) as u64;
                                 let imm2 = (w2 & 0xFFF) as u64;
                                 let got_addr = (pc + 8).wrapping_add(imm0).wrapping_add(imm1).wrapping_add(imm2);
-                                aarch64_got_to_stub.entry(got_addr).or_insert(pc);
+                                got_to_stub.entry(got_addr).or_insert(pc);
                             }
                             off += 4;
                         }
                     }
                 }
 
-                if let Ok(rel_data) = rela_plt.data() {
-                    let is_rela = rela_plt.name().unwrap_or("").contains("rela");
-                    let entry_size = if is_64 {
-                        if is_rela {
-                            24
-                        } else {
-                            16
-                        }
+                let entry_size = if is_64 {
+                    if is_rela { 24 } else { 16 }
+                } else {
+                    if is_rela { 12 } else { 8 }
+                };
+
+                let count = rel_data.len() / entry_size;
+                for idx in 0..count {
+                    let entry = &rel_data[idx * entry_size..(idx + 1) * entry_size];
+                    let r_offset = if is_64 {
+                        u64::from_le_bytes(entry[0..8].try_into().unwrap_or([0; 8]))
                     } else {
-                        if is_rela {
-                            12
-                        } else {
-                            8
-                        }
+                        u32::from_le_bytes(entry[0..4].try_into().unwrap_or([0; 4])) as u64
+                    };
+                    let sym_idx = if is_64 {
+                        let r_info =
+                            u64::from_le_bytes(entry[8..16].try_into().unwrap_or([0; 8]));
+                        (r_info >> 32) as usize
+                    } else {
+                        let r_info =
+                            u32::from_le_bytes(entry[4..8].try_into().unwrap_or([0; 4]));
+                        (r_info >> 8) as usize
                     };
 
-                    let count = rel_data.len() / entry_size;
-                    for idx in 0..count {
-                        let entry = &rel_data[idx * entry_size..(idx + 1) * entry_size];
-                        let r_offset = if is_64 {
-                            u64::from_le_bytes(entry[0..8].try_into().unwrap_or([0; 8]))
-                        } else {
-                            u32::from_le_bytes(entry[0..4].try_into().unwrap_or([0; 4])) as u64
-                        };
-                        let sym_idx = if is_64 {
-                            let r_info =
-                                u64::from_le_bytes(entry[8..16].try_into().unwrap_or([0; 8]));
-                            (r_info >> 32) as usize
-                        } else {
-                            let r_info =
-                                u32::from_le_bytes(entry[4..8].try_into().unwrap_or([0; 4]));
-                            (r_info >> 8) as usize
-                        };
-
-                        if let Some(raw_name) = get_dynsym_name(sym_idx) {
-                            let clean_name = raw_name.split('@').next().unwrap_or(&raw_name);
-                            if !clean_name.is_empty() {
-                                let stub_addr = aarch64_got_to_stub
-                                    .get(&r_offset)
-                                    .copied()
-                                    .unwrap_or_else(|| plt_start + header_size + (idx as u64 * stub_size));
+                    if let Some(raw_name) = get_dynsym_name(sym_idx) {
+                        let clean_name = raw_name.split('@').next().unwrap_or(&raw_name);
+                        if !clean_name.is_empty() {
+                            let stub_addr = got_to_stub.get(&r_offset).copied().or_else(|| {
+                                if plt_start > 0 {
+                                    Some(plt_start + header_size + (idx as u64 * stub_size))
+                                } else {
+                                    None
+                                }
+                            });
+                            if let Some(stub_addr) = stub_addr {
                                 let demangled = demangle_name(clean_name);
                                 syms_map.entry(stub_addr).or_insert(SymsDTO {
                                     sym: clean_name.to_string(),
@@ -258,6 +482,50 @@ impl ElfContext {
                                 });
                             }
                         }
+                    }
+                }
+            }
+
+            // Inject .init_array constructors from PT_DYNAMIC (essential for LIAPP/packed ELFs)
+            let ptr_sz = if is_64 { 8 } else { 4 };
+            if !dyn_tables.init_array.is_empty() {
+                let mut rela_addends: HashMap<u64, u64> = HashMap::new();
+                if is_64 && !dyn_tables.rela_dyn.is_empty() {
+                    for chunk in dyn_tables.rela_dyn.chunks_exact(24) {
+                        let r_off = u64::from_le_bytes(chunk[0..8].try_into().unwrap());
+                        let r_add = i64::from_le_bytes(chunk[16..24].try_into().unwrap());
+                        if r_add > 0 {
+                            rela_addends.insert(r_off, r_add as u64);
+                        }
+                    }
+                }
+                let n_init = dyn_tables.init_array.len() / ptr_sz;
+                for idx in 0..n_init {
+                    let slot_va = dyn_tables.init_array_va + (idx * ptr_sz) as u64;
+                    let slot = &dyn_tables.init_array[idx * ptr_sz..(idx + 1) * ptr_sz];
+                    let mut raw_ptr = if is_64 {
+                        u64::from_le_bytes(slot.try_into().unwrap_or([0; 8]))
+                    } else {
+                        u32::from_le_bytes(slot.try_into().unwrap_or([0; 4])) as u64
+                    };
+                    if raw_ptr == 0 {
+                        if let Some(&addend) = rela_addends.get(&slot_va) {
+                            raw_ptr = addend;
+                        }
+                    }
+                    if raw_ptr != 0 && raw_ptr != u64::MAX {
+                        let is_thumb = !is_64 && (raw_ptr & 1) != 0;
+                        let clean_ptr = if is_64 { raw_ptr } else { raw_ptr & !1 };
+                        syms_map.entry(clean_ptr).or_insert(SymsDTO {
+                            sym: format!("init_array_{}", idx),
+                            value: clean_ptr,
+                            size: 0,
+                            thumb: is_thumb,
+                            demangled: None,
+                            jni_class: None,
+                            jni_method: None,
+                            json: None,
+                        });
                     }
                 }
             }
@@ -308,6 +576,16 @@ impl ElfContext {
                         dynamic_data = data.to_vec();
                     }
                 }
+            }
+        }
+
+        if dynstr_data.len() <= 1 || dynamic_data.len() <= 1 {
+            let dyn_tables = extract_dynamic_tables(&self.raw, is_64);
+            if dynstr_data.len() <= 1 && !dyn_tables.dynstr.is_empty() {
+                dynstr_data = dyn_tables.dynstr.to_vec();
+            }
+            if dynamic_data.len() <= 1 && !dyn_tables.dynamic.is_empty() {
+                dynamic_data = dyn_tables.dynamic.to_vec();
             }
         }
 
@@ -740,6 +1018,44 @@ impl ElfContext {
                                     items.push(SDataItem {
                                         paddr: sec_paddr + start as u64,
                                         vaddr: sec_vaddr + start as u64,
+                                        size: len,
+                                        string: s.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        i += 1;
+                    }
+                }
+            }
+        }
+
+        // Fallback for section-stripped / section-corrupted ELFs (e.g. LIAPP):
+        // scan PT_LOAD segments for NUL-terminated or >= 5-char printable ASCII strings.
+        if items.is_empty() {
+            for segment in obj_file.segments() {
+                if let Ok(data) = segment.data() {
+                    let seg_vaddr = segment.address();
+                    let (seg_paddr, _) = segment.file_range();
+                    let is_exec = matches!(
+                        segment.flags(),
+                        object::SegmentFlags::Elf { p_flags } if (p_flags & 1) != 0
+                    );
+                    let mut i = 0usize;
+                    while i < data.len() {
+                        if data[i].is_ascii_graphic() {
+                            let start = i;
+                            while i < data.len() && data[i] >= 0x20 && data[i] <= 0x7e {
+                                i += 1;
+                            }
+                            let len = i - start;
+                            let nul_term = data.get(i) == Some(&0);
+                            let min_len = if is_exec && !nul_term { 6 } else { 4 };
+                            if len >= min_len && (!is_exec || nul_term || len >= 6) {
+                                if let Ok(s) = std::str::from_utf8(&data[start..i]) {
+                                    items.push(SDataItem {
+                                        paddr: seg_paddr + start as u64,
+                                        vaddr: seg_vaddr + start as u64,
                                         size: len,
                                         string: s.to_string(),
                                     });

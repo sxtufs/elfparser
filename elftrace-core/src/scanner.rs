@@ -338,6 +338,45 @@ pub fn calculate_entropy_report(ctx: &ElfContext) -> EntropyReport {
                 });
             }
         }
+
+        // Fallback to PT_LOAD segments when section headers are stripped/corrupted (e.g. LIAPP)
+        if sections.is_empty() || sections.iter().all(|s| s.size <= 16) {
+            sections.clear();
+            use object::ObjectSegment;
+            for (idx, seg) in obj_file.segments().enumerate() {
+                if let Ok(data) = seg.data() {
+                    if data.is_empty() {
+                        continue;
+                    }
+                    let ent = calculate_entropy(data);
+                    let is_exec = matches!(
+                        seg.flags(),
+                        object::SegmentFlags::Elf { p_flags } if (p_flags & 1) != 0
+                    );
+                    let is_high = ent > 7.1;
+                    let status = if is_high {
+                        if is_exec {
+                            "Encrypted Code / Packed"
+                        } else {
+                            "Compressed / Encrypted Data"
+                        }
+                    } else if is_exec {
+                        "Standard Executable Code"
+                    } else {
+                        "Plain Data / Constants"
+                    };
+                    sections.push(SectionEntropy {
+                        name: format!("PT_LOAD[{}]", idx),
+                        address: seg.address(),
+                        size: data.len() as u64,
+                        entropy: (ent * 100.0).round() / 100.0,
+                        is_executable: is_exec,
+                        is_high_entropy: is_high,
+                        status: status.to_string(),
+                    });
+                }
+            }
+        }
     }
 
     let is_likely_packed = overall_ent > 7.1
