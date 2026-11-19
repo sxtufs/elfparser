@@ -475,46 +475,10 @@ class ELFTraceViewModel : ViewModel() {
             {
               "id": "builtin-packers",
               "name": "Packers & Protectors",
-              "version": "1.0",
+              "version": "1.1",
               "author": "ELFTrace",
-              "description": "Detects DexProtector, 360 Jiagu, Tencent Legu, Bangcle, and dynamic DEX loaders.",
-              "rules": [
-                {
-                  "name": "DexProtector Payload (DPLF)",
-                  "type": "byte_pattern",
-                  "pattern": "44 50 4C 46",
-                  "severity": "HIGH",
-                  "description": "DexProtector embedded DPLF packed-library magic"
-                },
-                {
-                  "name": "360 Jiagu Indicator",
-                  "type": "string",
-                  "pattern": "libjiagu",
-                  "severity": "HIGH",
-                  "description": "360 Jiagu packer library reference"
-                },
-                {
-                  "name": "Tencent Legu Indicator",
-                  "type": "string",
-                  "pattern": "libshell",
-                  "severity": "HIGH",
-                  "description": "Tencent Legu packer stub reference"
-                },
-                {
-                  "name": "Bangcle / SecNeo Indicator",
-                  "type": "string",
-                  "pattern": "libsecexe",
-                  "severity": "HIGH",
-                  "description": "Bangcle packer library reference"
-                },
-                {
-                  "name": "ART DefineClass / DexClassLoader",
-                  "type": "string",
-                  "pattern": "DexClassLoader",
-                  "severity": "MEDIUM",
-                  "description": "Dynamic DEX loading / unpacking indicator"
-                }
-              ]
+              "description": "Detects DexProtector (DPLF & modern native VM), 360 Jiagu, Tencent Legu, Bangcle, and dynamic DEX loaders.",
+              "script": "let dplf = find_bytes(\"44 50 4C 46\");\nfor addr in dplf {\n  report(\"DexProtector Payload (DPLF)\", addr, \"HIGH\", \"Embedded DPLF packed-library magic\");\n}\nlet str_sigs = [\n  [\"libjiagu\", \"360 Jiagu Indicator\", \"HIGH\", \"360 Jiagu packer library reference\"],\n  [\"libshell\", \"Tencent Legu Indicator\", \"HIGH\", \"Tencent Legu packer stub reference\"],\n  [\"libsecexe\", \"Bangcle / SecNeo Indicator\", \"HIGH\", \"Bangcle packer library reference\"],\n  [\"DexClassLoader\", \"ART DexClassLoader\", \"MEDIUM\", \"Dynamic DEX loading / unpacking indicator\"]\n];\nfor sig in str_sigs {\n  let hits = find_strings(sig[0]);\n  for h in hits {\n    report(sig[1], h.address, sig[2], h.value + \" (\" + sig[3] + \")\");\n  }\n}\nlet jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 24);\n  if insns.len() >= 3 && insns[0].mnemonic == \"adr\" && insns[2].mnemonic == \"br\" {\n    report(\"DexProtector Obfuscated JNI_OnLoad\", s.address, \"HIGH\", \"Indirect branch trampoline (\" + insns[0].op_str + \" -> br)\");\n  }\n}\nlet has_aux = find_symbols(\"getauxval\").len() > 0;\nlet has_fork = find_symbols(\"__register_atfork\").len() > 0;\nlet sys_syms = find_symbols(\"syscall\");\nif has_aux && has_fork && sys_syms.len() > 0 {\n  for s in sys_syms {\n    if s.name == \"syscall\" {\n      report(\"DexProtector / RASP Syscall Import\", s.address, \"HIGH\", \"Combined getauxval + __register_atfork + syscall anti-tamper profile\");\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report(\"Direct syscall() Call Site\", x.from, \"HIGH\", x.instruction);\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
