@@ -187,26 +187,37 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                         i += 4;
                     }
                 } else {
-                    // Fallback Capstone scan for non-ARM64 (x86, ARM32)
-                    let insns =
-                        match disassemble(data, sec_vaddr, data.len() as u64, e_machine, false) {
+                    // Fallback Capstone scan for non-ARM64 (x86, ARM32/Thumb)
+                    let modes: &[bool] = if e_machine == 40 { &[true, false] } else { &[false] };
+                    let mut seen_from = std::collections::HashSet::new();
+                    for &is_thumb in modes {
+                        let insns = match disassemble(
+                            data,
+                            sec_vaddr,
+                            data.len() as u64,
+                            e_machine,
+                            is_thumb,
+                        ) {
                             Ok(c) => c.data,
                             Err(_) => continue,
                         };
-                    for ins in insns {
-                        let mnem = ins.mnemonic.as_str();
-                        let ops = ins.op_str.as_str();
-                        let from_addr = ins.address;
-                        if mnem == "bl" || mnem == "blx" || mnem == "call" {
-                            if let Some(to_addr) = parse_imm_addr(ops) {
-                                if to_addr == target_vaddr {
-                                    refs.push(XRefItem {
-                                        from_address: from_addr,
-                                        to_address: to_addr,
-                                        kind: "Call".to_string(),
-                                        instruction: format!("{:<7} {}", mnem, ops),
-                                        caller_func: find_caller(from_addr),
-                                    });
+                        for ins in insns {
+                            let mnem = ins.mnemonic.as_str();
+                            let ops = ins.op_str.as_str();
+                            let from_addr = ins.address;
+                            if mnem == "bl" || mnem == "blx" || mnem == "call" {
+                                if let Some(to_addr) = parse_imm_addr(ops) {
+                                    if (to_addr & !1) == (target_vaddr & !1)
+                                        && seen_from.insert(from_addr)
+                                    {
+                                        refs.push(XRefItem {
+                                            from_address: from_addr,
+                                            to_address: to_addr,
+                                            kind: "Call".to_string(),
+                                            instruction: format!("{:<7} {}", mnem, ops),
+                                            caller_func: find_caller(from_addr),
+                                        });
+                                    }
                                 }
                             }
                         }
