@@ -12,6 +12,7 @@ struct DynamicTables<'a> {
     rela_dyn: &'a [u8],
     init_array: &'a [u8],
     init_array_va: u64,
+    pltgot_va: u64,
     is_rela: bool,
     exec_segments: Vec<(u64, &'a [u8])>,
 }
@@ -25,6 +26,7 @@ fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
         rela_dyn: &[],
         init_array: &[],
         init_array_va: 0,
+        pltgot_va: 0,
         is_rela: is_64,
         exec_segments: Vec::new(),
     };
@@ -129,6 +131,7 @@ fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
         }
         match tag {
             2 => dt_pltrelsz = val as usize,
+            3 => out.pltgot_va = val,
             5 => dt_strtab = val,
             6 => dt_symtab = val,
             7 => dt_rela = val,
@@ -430,6 +433,59 @@ impl ElfContext {
                                 got_to_stub.entry(got_addr).or_insert(pc);
                             }
                             off += 4;
+                        }
+                    }
+                } else if e_machine == 62 {
+                    for &(region_va, plt_bytes) in &plt_regions {
+                        let mut off = 0usize;
+                        while off + 12 <= plt_bytes.len() {
+                            if plt_bytes[off] == 0xFF
+                                && plt_bytes[off + 1] == 0x25
+                                && plt_bytes[off + 6] == 0x68
+                                && plt_bytes[off + 11] == 0xE9
+                            {
+                                let pc = region_va + off as u64;
+                                let disp = i32::from_le_bytes(
+                                    plt_bytes[off + 2..off + 6].try_into().unwrap(),
+                                ) as i64;
+                                let got_addr = (pc + 6).wrapping_add(disp as u64);
+                                let stub_start = if off >= 4
+                                    && plt_bytes[off - 4..off] == [0xF3, 0x0F, 0x1E, 0xFA]
+                                {
+                                    pc - 4
+                                } else {
+                                    pc
+                                };
+                                got_to_stub.entry(got_addr).or_insert(stub_start);
+                                off += 16;
+                                continue;
+                            }
+                            off += 1;
+                        }
+                    }
+                } else if e_machine == 3 {
+                    for &(region_va, plt_bytes) in &plt_regions {
+                        let mut off = 0usize;
+                        while off + 12 <= plt_bytes.len() {
+                            if plt_bytes[off] == 0xFF
+                                && (plt_bytes[off + 1] == 0xA3 || plt_bytes[off + 1] == 0x25)
+                                && plt_bytes[off + 6] == 0x68
+                                && plt_bytes[off + 11] == 0xE9
+                            {
+                                let pc = region_va + off as u64;
+                                let disp = u32::from_le_bytes(
+                                    plt_bytes[off + 2..off + 6].try_into().unwrap(),
+                                ) as u64;
+                                let got_addr = if plt_bytes[off + 1] == 0xA3 {
+                                    dyn_tables.pltgot_va.wrapping_add(disp)
+                                } else {
+                                    disp
+                                };
+                                got_to_stub.entry(got_addr).or_insert(pc);
+                                off += 16;
+                                continue;
+                            }
+                            off += 1;
                         }
                     }
                 }
