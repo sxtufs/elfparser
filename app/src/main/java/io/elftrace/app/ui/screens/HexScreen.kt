@@ -2,9 +2,8 @@ package io.elftrace.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -35,7 +34,7 @@ import androidx.compose.ui.window.Dialog
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HexScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
@@ -233,13 +232,9 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     if (isSelected) colors.primary.copy(alpha = 0.14f) else Color.Transparent,
                                     RoundedCornerShape(4.dp)
                                 )
-                                .combinedClickable(
-                                    onClick = { selectedRow = if (isSelected) null else row },
-                                    onLongClick = {
-                                        val addrHex = "0x${"%08X".format(row.address)}"
-                                        clipboardManager.setText(AnnotatedString(addrHex))
-                                    }
-                                )
+                                .clickable {
+                                    selectedRow = if (isSelected) null else row
+                                }
                                 .padding(vertical = 2.dp, horizontal = 2.dp),
                             addressContent = {
                                 Text(
@@ -503,7 +498,7 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                         val calcValue = remember(gotoAddressInput, dialogMode) {
                             if (dialogMode == "calc") evalHexExpr(gotoAddressInput) else null
                         }
-                        if (dialogMode == "calc") {
+                        if (dialogMode == "calc" && calcValue != null) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = colors.card,
@@ -514,47 +509,39 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    if (calcValue == null) {
-                                        Text(
-                                            "Enter hex (0x...), decimal, or A + B / A - B",
-                                            color = colors.textSecondary,
-                                            fontSize = 11.sp
-                                        )
-                                    } else {
-                                        val loads = elfInfo?.segments?.filter { it.p_type == "PT_LOAD" }.orEmpty()
-                                        val fileOff = loads.firstOrNull {
-                                            calcValue >= it.vaddr && calcValue < it.vaddr + it.filesz
-                                        }?.let { it.offset + (calcValue - it.vaddr) }
-                                        val vmaFromOff = loads.firstOrNull {
-                                            calcValue >= it.offset && calcValue < it.offset + it.filesz
-                                        }?.let { it.vaddr + (calcValue - it.offset) }
+                                    val loads = elfInfo?.segments?.filter { it.p_type == "PT_LOAD" }.orEmpty()
+                                    val fileOff = loads.firstOrNull {
+                                        calcValue >= it.vaddr && calcValue < it.vaddr + it.filesz
+                                    }?.let { it.offset + (calcValue - it.vaddr) }
+                                    val vmaFromOff = loads.firstOrNull {
+                                        calcValue >= it.offset && calcValue < it.offset + it.filesz
+                                    }?.let { it.vaddr + (calcValue - it.offset) }
 
-                                        Text(
-                                            "Hex:  0x${calcValue.toString(16).uppercase()}",
-                                            color = colors.primary,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            "Dec:  $calcValue",
-                                            color = colors.textPrimary,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.5.sp
-                                        )
-                                        Text(
-                                            "VMA -> File Off:  ${fileOff?.let { "0x${it.toString(16).uppercase()}" } ?: "N/A"}",
-                                            color = colors.address,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.sp
-                                        )
-                                        Text(
-                                            "File Off -> VMA:  ${vmaFromOff?.let { "0x${it.toString(16).uppercase()}" } ?: "N/A"}",
-                                            color = colors.hexBytes,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.sp
-                                        )
-                                    }
+                                    Text(
+                                        "Hex:  0x${calcValue.toString(16).uppercase()}",
+                                        color = colors.primary,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        "Dec:  $calcValue",
+                                        color = colors.textPrimary,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.5.sp
+                                    )
+                                    Text(
+                                        "VMA -> File Off:  ${fileOff?.let { "0x${it.toString(16).uppercase()}" } ?: "N/A"}",
+                                        color = colors.address,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp
+                                    )
+                                    Text(
+                                        "File Off -> VMA:  ${vmaFromOff?.let { "0x${it.toString(16).uppercase()}" } ?: "N/A"}",
+                                        color = colors.hexBytes,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp
+                                    )
                                 }
                             }
                         }

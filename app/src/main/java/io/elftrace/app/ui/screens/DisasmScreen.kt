@@ -1,10 +1,8 @@
 package io.elftrace.app.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,7 +34,7 @@ import io.elftrace.app.core.models.XRefItem
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisasmScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
@@ -149,29 +147,24 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // Virtualized Disassembly LazyColumn with Momentum Fling & Stable Node Keys
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            flingBehavior = rememberMomentumFlingBehavior(),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            items(
-                items = instructions,
-                key = { it.address },
-                contentType = { "instruction" }
-            ) { ins ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { selectedInsn = ins },
-                            onLongClick = {
-                                val addrHex = "0x${"%08X".format(ins.address)}"
-                                clipboardManager.setText(AnnotatedString(addrHex))
-                            }
-                        )
-                        .padding(horizontal = 4.dp, vertical = 3.dp)
-                ) {
+        // Virtualized Disassembly LazyColumn with Momentum Fling & Native Text Selection
+        SelectionContainer(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                flingBehavior = rememberMomentumFlingBehavior(),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(
+                    items = instructions,
+                    key = { it.address },
+                    contentType = { "instruction" }
+                ) { ins ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedInsn = ins }
+                            .padding(horizontal = 4.dp, vertical = 3.dp)
+                    ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -209,16 +202,17 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         )
                     }
 
-                    // In-Line Annotation (Strings, JNI API calls, Syscalls) - cleanly visible on mobile screens!
-                    if (!ins.comment.isNullOrEmpty()) {
-                        Row(modifier = Modifier.padding(start = 86.dp, top = 1.dp)) {
-                            Text(
-                                text = ins.comment,
-                                color = Color(0xFFF59E0B), // Vibrant Amber Glow
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        // In-Line Annotation (Strings, JNI API calls, Syscalls) - cleanly visible on mobile screens!
+                        if (!ins.comment.isNullOrEmpty()) {
+                            Row(modifier = Modifier.padding(start = 86.dp, top = 1.dp)) {
+                                Text(
+                                    text = ins.comment,
+                                    color = Color(0xFFF59E0B), // Vibrant Amber Glow
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
