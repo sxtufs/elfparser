@@ -1,8 +1,10 @@
 package io.elftrace.app.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,7 +36,7 @@ import io.elftrace.app.core.models.XRefItem
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DisasmScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
@@ -161,7 +163,13 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { selectedInsn = ins }
+                        .combinedClickable(
+                            onClick = { selectedInsn = ins },
+                            onLongClick = {
+                                val addrHex = "0x${"%08X".format(ins.address)}"
+                                clipboardManager.setText(AnnotatedString(addrHex))
+                            }
+                        )
                         .padding(horizontal = 4.dp, vertical = 3.dp)
                 ) {
                     Row(
