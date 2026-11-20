@@ -286,6 +286,21 @@ impl<'a> CodeGenerator<'a> {
             }
         }
 
+        // Addresses that will actually have a `loc_` label emitted. This MUST mirror
+        // the label-emission condition in the loop below. A `goto loc_<addr>` is
+        // only valid if <addr> is in this set; otherwise it references an undefined
+        // label (the self-compile gate's `finalize0` failure: a tail-call to a PLT
+        // stub not present as a reachable block).
+        let mut emitted_label_addrs: HashSet<u64> = HashSet::new();
+        for (b_idx, block) in func.blocks.iter().enumerate() {
+            if b_idx > 0
+                && reachable.contains(&b_idx)
+                && jump_targets.contains(&block.start_address)
+            {
+                emitted_label_addrs.insert(block.start_address);
+            }
+        }
+
         for (b_idx, block) in func.blocks.iter().enumerate() {
             if !reachable.contains(&b_idx) {
                 continue;
@@ -584,19 +599,29 @@ impl<'a> CodeGenerator<'a> {
                         }
                     }
                     IrStmt::Branch { cond, target } => {
-                        if let Some(c) = cond {
+                        if emitted_label_addrs.contains(target) {
+                            if let Some(c) = cond {
+                                out.push_str(&format!(
+                                    "    if ({}) goto loc_{:08x};\n",
+                                    self.format_expr(
+                                        c,
+                                        &param_reg_map,
+                                        func.base_stack_offset,
+                                        func.inferred_params.len()
+                                    ),
+                                    target
+                                ));
+                            } else {
+                                out.push_str(&format!("    goto loc_{:08x};\n", target));
+                            }
+                        } else {
+                            // Branch target has no emitted label (external / PLT tail-call / 
+                            // unreachable block). Emit a comment so the C compiles; a
+                            // `goto loc_<missing>` would be an undefined-label error.
                             out.push_str(&format!(
-                                "    if ({}) goto loc_{:08x};\n",
-                                self.format_expr(
-                                    c,
-                                    &param_reg_map,
-                                    func.base_stack_offset,
-                                    func.inferred_params.len()
-                                ),
+                                "    // branch to unmapped address 0x{:08x} (tail-call / external)\n",
                                 target
                             ));
-                        } else {
-                            out.push_str(&format!("    goto loc_{:08x};\n", target));
                         }
                     }
                     IrStmt::IndirectBranch { target } => {
@@ -644,7 +669,20 @@ impl<'a> CodeGenerator<'a> {
                         break;
                     }
                     IrStmt::Asm(s) => {
-                        out.push_str(&format!("    __asm__(\"{}\");\n", s));
+                        if is_unencoded_branch(s) {
+                            // A branch the lifter could not lower to a `Branch` IR stmt
+                            // (no recovered condition, or an out-of-range / external target).
+                            // Emitting `__asm__(\"b.ne 0x...\")` makes the cross-assembler
+                            // compute a displacement from the asm site, which overflows
+                            // the AArch64 immediate range. Emit a comment instead so the
+                            // pseudocode compiles (self-compile gate: `disasm0`).
+                            out.push_str(&format!(
+                                "    // unlowered branch: {} (control flow not reconstructed)\n",
+                                s
+                            ));
+                        } else {
+                            out.push_str(&format!("    __asm__(\"{}\");\n", s));
+                        }
                     }
                     IrStmt::Comment(s) => {
                         out.push_str(&format!("    // {}\n", s));
@@ -979,6 +1017,35 @@ impl<'a> CodeGenerator<'a> {
         out.push_str("\n};\n");
         out
     }
+}
+
+/// Returns true if an `Asm` statement string is a branch instruction targeting a
+/// numeric address that the cross-assembler cannot encode from the asm site.
+/// Such branches must be emitted as comments, not `__asm__`, to keep the
+/// generated pseudocode compilable (see the self-compile gate).
+fn is_unencoded_branch(asm: &str) -> bool {
+    let s = asm.trim();
+    let mut parts = s.splitn(2, char::is_whitespace);
+    let mnem = parts.next().unwrap_or("").to_lowercase();
+    let ops = parts.next().unwrap_or("").trim();
+
+    // Recognise branch mnemonics: b, bl, blx, b.<cond>, cbz, cbnz, tbz, tbnz.
+    let is_branch_mnem = mnem == "b"
+        || mnem == "bl"
+        || mnem == "blx"
+        || mnem.starts_with("b.")
+        || mnem == "cbz"
+        || mnem == "cbnz"
+        || mnem == "tbz"
+        || mnem == "tbnz";
+    if !is_branch_mnem {
+        return false;
+    }
+
+    // The branch target is numeric if any operand token is a hex literal.
+    // (Register-indirect branches like `br x0` have no numeric target.)
+    ops.split(|c: char| c == ',' || c.is_whitespace())
+        .any(|tok| tok.starts_with("0x") || tok.starts_with("0X"))
 }
 
 fn child_needs_paren(child: &IrExpr, parent_op: BinaryOp, is_right: bool) -> bool {

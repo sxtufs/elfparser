@@ -1099,30 +1099,19 @@ fn assemble_patch_addr(ctx: &ElfContext) -> Option<u64> {
 ///   2. The fix that would resolve it
 ///   3. Why `test_self_compile_gate_known_failures` will flip red the moment it's fixed
 const KNOWN_FAILURES: &[(&str, &str)] = &[
-    // finalize0: emits a tail-call to a PLT-resolved symbol not present in syms_map,
-    // producing `goto loc_<unmapped>;`.
-    // Fix: include .plt in syms_map (extend xref scan), or emit the branch as an
-    // `Asm` statement instead of a `Goto`.
-    // Will flip red when: decompile_to_c(finalize0) produces compilable C.
-    (
-        "finalize0",
-        "tail-call to PLT stub emitted as goto to unmapped address",
-    ),
-    // disasm0: large function (>2000 bytes) with non-cmp branch conditions.
-    // The structurer emits an inline `__asm__` block that exceeds the compiler's
-    // immediate-operand size limit for conditional branches.
-    // Fix: for out-of-range conditional branches, emit `if (cond) { __asm__("b <target>"); }`
-    // as separate statements, or degrade the whole function to goto-based output.
-    // Will flip red when: decompile_to_c(disasm0) produces compilable C.
-    (
-        "disasm0",
-        "inline asm branch exceeds immediate-operand range",
-    ),
-    // save0 was previously listed here ("inline asm branch exceeds immediate-operand
-    // range"). It now compiles cleanly after the zero-copy handle_save rewrite, which
-    // removed the iterator-based `Vec<i8>` collection and simplified the emitted C
-    // enough to fall under the inline-asm branch range limit. Removed from the ledger.
-
+    // The ledger is now empty. Historically it tracked:
+    //
+    //   save0     — fixed by the zero-copy handle_save rewrite.
+    //   finalize0 — fixed by codegen no longer emitting `goto loc_<unmapped>` for
+    //               branches whose target has no emitted label; it now emits a
+    //               comment (`// branch to unmapped address ...`).
+    //   disasm0   — fixed by codegen emitting unlowered numeric-target branch
+    //               instructions as comments instead of `__asm__("b.ne 0x...")`,
+    //               which exceeded the AArch64 branch immediate range.
+    //
+    // Add an entry here (with the failing construct, the proposed fix, and the
+    // reason it will flip red) if a future change introduces a non-compiling
+    // self-decompilation symbol.
 ];
 
 #[test]
