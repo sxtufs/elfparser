@@ -167,6 +167,13 @@ pub fn emit_structured_c(
         &mut emitted_labels,
     );
 
+    // Post-pass: drop any `loc_XXXXXXXX:` label that no emitted `goto loc_XXXXXXXX;`
+    // references. The structurer can label a block whose only referrer was a
+    // branch that got absorbed into an if/while (or eliminated as dead code),
+    // leaving a defined-but-unused label. That trips -Werror=unused-label in the
+    // self-compile gate. Removing an unreferenced label is semantically inert.
+    out = prune_unused_labels(out);
+
     // Ensure function returns
     if !has_explicit_return(nodes) {
         if func.ret_type != IrType::Void && !func.ret_reg.is_empty() {
@@ -726,4 +733,54 @@ fn collect_all_jump_targets(nodes: &[StructuredNode], targets: &mut HashSet<u64>
             _ => {}
         }
     }
+}
+
+/// Remove `loc_XXXXXXXX:` label lines that are not referenced by any emitted
+/// `goto loc_XXXXXXXX;` statement.
+///
+/// Labels are collected in a first pass (`collect_all_jump_targets`) from the
+/// structured node tree, but the structurer can absorb or eliminate the branch
+/// that referenced a label while the label site itself survives. An unreferenced
+/// C label is semantically inert but trips `-Werror=unused-label`, so we prune it.
+pub fn prune_unused_labels(body: String) -> String {
+    // 1. Collect every address that is the target of an emitted goto.
+    let mut referenced: HashSet<u64> = HashSet::new();
+    let needle = "goto loc_";
+    let mut search_from = 0usize;
+    while let Some(rel) = body[search_from..].find(needle) {
+        let start = search_from + rel + needle.len();
+        // Parse the 8+ hex digits that follow, up to a non-hex char.
+        let rest = &body[start..];
+        let hex_end = rest
+            .find(|c: char| !c.is_ascii_hexdigit())
+            .unwrap_or(rest.len());
+        if hex_end > 0 {
+            if let Ok(addr) = u64::from_str_radix(&rest[..hex_end], 16) {
+                referenced.insert(addr);
+            }
+        }
+        search_from = start;
+    }
+
+    // 2. Rebuild the body, dropping unreferenced label lines.
+    let mut result = String::with_capacity(body.len());
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if let Some(hexpart) = trimmed.strip_prefix("loc_") {
+            // A label line looks like `loc_XXXXXXXX:` (possibly leading whitespace).
+            if let Some(colon_idx) = hexpart.find(':') {
+                let addr_str = &hexpart[..colon_idx];
+                if !addr_str.is_empty() && addr_str.chars().all(|c| c.is_ascii_hexdigit()) {
+                    if let Ok(addr) = u64::from_str_radix(addr_str, 16) {
+                        if !referenced.contains(&addr) {
+                            // Drop this label line entirely.
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        result.push_str(line);
+    }
+    result
 }

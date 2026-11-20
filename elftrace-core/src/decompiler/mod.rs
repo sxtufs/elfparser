@@ -80,7 +80,12 @@ pub fn decompile_to_c(ctx: &ElfContext, address: u64) -> String {
         fn_range.size,
         fn_range.thumb,
     ) {
-        Ok(func) => codegen.generate_c_pseudocode(&func),
+        Ok(func) => {
+            // Drop defined-but-unused `loc_` labels so the emitted C compiles
+            // under -Werror=unused-label (self-compile gate).
+            let body = codegen.generate_c_pseudocode(&func);
+            self::structuring::emit::prune_unused_labels(body)
+        }
         Err(err) => format!("// [Decompilation Error] {}\n", err),
     }
 }
