@@ -209,10 +209,11 @@ fn extract_elf_segments(raw: &[u8], is_64: bool) -> Vec<ElfSegmentDTO> {
 
     for i in 0..phnum {
         let off = phoff.saturating_add(i.saturating_mul(phentsize));
-        if off + phentsize > raw.len() {
-            break;
-        }
-        let ph = &raw[off..off + phentsize];
+        let end = match off.checked_add(phentsize) {
+            Some(e) if e <= raw.len() => e,
+            _ => break,
+        };
+        let ph = &raw[off..end];
         let (p_type, p_flags, p_offset, p_vaddr, p_filesz, p_memsz) = if is_64 && phentsize >= 56 {
             (
                 u32::from_le_bytes(ph[0..4].try_into().unwrap()),

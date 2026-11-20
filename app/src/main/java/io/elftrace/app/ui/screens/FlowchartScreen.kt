@@ -569,11 +569,13 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                                     for (insn in node.block.instructions) {
                                         Row(modifier = Modifier.fillMaxWidth()) {
                                             Text(
-                                                text = insn.addr.removePrefix("0x0000"),
+                                                text = insn.addr,
                                                 color = colors.textSecondary,
                                                 fontFamily = FontFamily.Monospace,
                                                 fontSize = 10.sp,
-                                                modifier = Modifier.width(42.dp)
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.width(72.dp)
                                             )
                                             Text(
                                                 text = insn.mnemonic,
