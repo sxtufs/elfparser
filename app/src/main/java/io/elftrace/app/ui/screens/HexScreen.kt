@@ -372,10 +372,11 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        val typedBytes = editHexInput.replace(" ", "").replace(",", "").trim().length / 2
                         OutlinedTextField(
                             value = editHexInput,
                             onValueChange = { editHexInput = it },
-                            label = { Text("Hex Bytes (${row.bytes.size} bytes)", fontSize = 12.sp) },
+                            label = { Text("Hex ($typedBytes ${if (typedBytes == 1) "byte" else "bytes"})", fontSize = 12.sp) },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
                             modifier = Modifier.fillMaxWidth()
