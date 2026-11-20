@@ -11,6 +11,33 @@ pub unsafe extern "C" fn JNI_OnLoad(_vm: JavaVM, _reserved: *mut std::ffi::c_voi
 }
 
 // ==========================================
+// Panic Guard
+// ==========================================
+//
+// The ELF parser and disassembler contain `unwrap()`s on bounds that are
+// normally checked, but a malformed or adversarial ELF can still reach a panic.
+// With `panic = "unwind"` (see Cargo.toml) we catch it here and return a valid
+// JSON error string instead of aborting the entire process.
+//
+// Usage: wrap the body of a `Java_*` export that returns a `jstring`.
+unsafe fn guard_jstring<F>(env: &JNIEnv, fallback_json: &str, f: F) -> jstring
+where
+    F: FnOnce() -> jstring,
+{
+    // AssertUnwindSafe: the closures only touch the read-only ElfContext and the
+    // JNIEnv. The single-threaded native dispatcher guarantees no concurrent
+    // mutation, so a panic leaving partially-observed state is not a soundness
+    // concern here.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(js) => js,
+        Err(_) => match env.new_string(fallback_json) {
+            Ok(s) => s.into_inner(),
+            Err(_) => std::ptr::null_mut(),
+        },
+    }
+}
+
+// ==========================================
 // Native Handlers
 // ==========================================
 
@@ -158,9 +185,16 @@ unsafe fn handle_save(env: &JNIEnv, handle: jlong) -> jbyteArray {
         return env.new_byte_array(0).unwrap();
     }
     let ctx = &*(handle as *const ElfContext);
-    let bytes_signed: Vec<i8> = ctx.raw.iter().map(|&b| b as i8).collect();
-    let j_arr = env.new_byte_array(bytes_signed.len() as i32).unwrap();
-    env.set_byte_array_region(j_arr, 0, &bytes_signed).unwrap();
+    let len = ctx.raw.len();
+    let j_arr = env.new_byte_array(len as i32).unwrap();
+    if len > 0 {
+        // Zero-copy reinterpretation: the JNI API wants &[i8], but the bytes are
+        // already in memory. Avoids duplicating the whole file (which can be
+        // hundreds of MB for a large .so).
+        let signed_slice: &[i8] =
+            std::slice::from_raw_parts(ctx.raw.as_ptr() as *const i8, len);
+        env.set_byte_array_region(j_arr, 0, signed_slice).unwrap();
+    }
     j_arr
 }
 
@@ -190,7 +224,9 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_info0(
     handle: jlong,
     _flag: jboolean,
 ) -> jstring {
-    handle_info(&env, handle)
+    guard_jstring(&env, "{\"error\":\"panic while parsing ELF info\"}", || {
+        handle_info(&env, handle)
+    })
 }
 
 #[no_mangle]
@@ -202,7 +238,9 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_disasm0(
     size: jlong,
     thumb: jboolean,
 ) -> jstring {
-    handle_disasm(&env, handle, address, size, thumb)
+    guard_jstring(&env, "{\"error\":\"panic while disassembling\",\"data\":[]}", || {
+        handle_disasm(&env, handle, address, size, thumb)
+    })
 }
 
 #[no_mangle]
@@ -213,7 +251,9 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_dec0(
     handle: jlong,
     address: jlong,
 ) -> jstring {
-    handle_dec(&env, mode, handle, address)
+    guard_jstring(&env, "// [Error] panic during decompilation\n", || {
+        handle_dec(&env, mode, handle, address)
+    })
 }
 
 #[no_mangle]
@@ -222,7 +262,9 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_strings0(
     _class: JClass,
     handle: jlong,
 ) -> jstring {
-    handle_strings(&env, handle)
+    guard_jstring(&env, "{\"error\":\"panic while extracting strings\",\"data\":[]}", || {
+        handle_strings(&env, handle)
+    })
 }
 
 #[no_mangle]
@@ -308,15 +350,16 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getXrefs(
     let ctx = &*(handle as *const ElfContext);
     let target_vaddr = address as u64;
 
-    let refs = crate::xref::find_callers_to(ctx, target_vaddr);
-    let resp = crate::xref::XRefResponse {
-        target_address: target_vaddr,
-        refs,
-    };
-
-    let json = serde_json::to_string(&resp)
-        .unwrap_or_else(|_| "{\"target_address\":0,\"refs\":[]}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"target_address\":0,\"refs\":[]}", || {
+        let refs = crate::xref::find_callers_to(ctx, target_vaddr);
+        let resp = crate::xref::XRefResponse {
+            target_address: target_vaddr,
+            refs,
+        };
+        let json = serde_json::to_string(&resp)
+            .unwrap_or_else(|_| "{\"target_address\":0,\"refs\":[]}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -337,9 +380,11 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getHierarchy(
     let ctx = &*(handle as *const ElfContext);
     let target_vaddr = address as u64;
 
-    let hierarchy = crate::xref::get_hierarchy(ctx, target_vaddr);
-    let json = serde_json::to_string(&hierarchy).unwrap_or_else(|_| "{}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"function_address\":0,\"function_name\":\"\",\"callers\":[],\"callees\":[]}", || {
+        let hierarchy = crate::xref::get_hierarchy(ctx, target_vaddr);
+        let json = serde_json::to_string(&hierarchy).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -418,10 +463,12 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_scanSecurity(
             .into_inner();
     }
     let ctx = &*(handle as *const ElfContext);
-    let report = crate::scanner::scan_security(ctx);
-    let json = serde_json::to_string(&report)
-        .unwrap_or_else(|_| "{\"total_findings\":0,\"findings\":[]}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"total_findings\":0,\"findings\":[]}", || {
+        let report = crate::scanner::scan_security(ctx);
+        let json = serde_json::to_string(&report)
+            .unwrap_or_else(|_| "{\"total_findings\":0,\"findings\":[]}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -434,9 +481,11 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getEntropyReport(
         return env.new_string("{\"overall_entropy\":0.0,\"overall_verdict\":\"Error\",\"is_likely_packed\":false,\"sections\":[]}").unwrap().into_inner();
     }
     let ctx = &*(handle as *const ElfContext);
-    let report = crate::scanner::calculate_entropy_report(ctx);
-    let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"overall_entropy\":0.0,\"overall_verdict\":\"Error\",\"is_likely_packed\":false,\"sections\":[]}", || {
+        let report = crate::scanner::calculate_entropy_report(ctx);
+        let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -527,8 +576,10 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_runPlugin(
                 .into_inner();
         }
     };
-    let out = crate::plugins::run_plugin_json(ctx, &json_str);
-    env.new_string(out).unwrap().into_inner()
+    guard_jstring(&env, "{\"plugin_id\":\"\",\"plugin_name\":\"\",\"total_findings\":0,\"findings\":[],\"error\":\"panic while running plugin\"}", || {
+        let out = crate::plugins::run_plugin_json(ctx, &json_str);
+        env.new_string(out).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]

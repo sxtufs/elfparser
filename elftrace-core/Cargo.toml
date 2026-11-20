@@ -28,7 +28,8 @@ lto = "thin"
 # Single codegen unit: better optimization, slower compile. CI has time.
 codegen-units = 1
 
-# Abort on panic instead of unwinding. Two benefits:
-#   1. Removes unwinding tables (~500 KB savings)
-#   2. Prevents a Rust panic from unwinding across the JNI boundary
-panic = "abort"
+# Unwind on panic so the JNI bridge can catch panics with catch_unwind and
+# convert them into JSON error strings instead of aborting the whole app.
+# Trade-off: keeps unwinding tables (~500 KB). Robustness against malformed
+# /adversarial ELF input is worth it for an on-device analysis tool.
+panic = "unwind"

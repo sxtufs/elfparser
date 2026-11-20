@@ -270,7 +270,11 @@ fn execute_rhai_script(
     script_src: &str,
 ) -> Result<Vec<PluginFinding>, String> {
     let mut engine = Engine::new();
+    // Bound total work and recursion so a pathological or malicious plugin script
+    // cannot hang or stack-overflow the single native thread (DoS).
     engine.set_max_operations(200_000);
+    engine.set_max_expr_depths(64, 32);
+    engine.set_max_call_levels(64);
 
     let arch_owned = arch_name.to_string();
     engine.register_fn("arch", move || -> String { arch_owned.clone() });

@@ -9,6 +9,7 @@ import io.elftrace.app.core.models.*
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -231,10 +232,12 @@ class ELFTraceViewModel : ViewModel() {
         }
     }
 
-    fun getXrefsFor(address: Long): List<XRefItem> {
-        val b = _bridge.value ?: return emptyList()
-        return b.getXrefs(address)
-    }
+    /// Suspending variant that always runs on the single native thread.
+    /// Never call JNIBridge native methods directly from the UI thread.
+    suspend fun getXrefsFor(address: Long): List<XRefItem> =
+        withContext(nativeDispatcher) {
+            _bridge.value?.getXrefs(address) ?: emptyList()
+        }
 
     fun loadXrefsFor(address: Long, onResult: (List<XRefItem>) -> Unit) {
         viewModelScope.launch(nativeDispatcher) {
@@ -247,10 +250,11 @@ class ELFTraceViewModel : ViewModel() {
         }
     }
 
-    fun getHierarchy(address: Long): CallHierarchy {
-        val b = _bridge.value ?: return CallHierarchy()
-        return b.getHierarchy(address)
-    }
+    /// Suspending variant that always runs on the single native thread.
+    suspend fun getHierarchy(address: Long): CallHierarchy =
+        withContext(nativeDispatcher) {
+            _bridge.value?.getHierarchy(address) ?: CallHierarchy()
+        }
 
     fun loadHierarchy(address: Long, onResult: (CallHierarchy) -> Unit) {
         viewModelScope.launch(nativeDispatcher) {

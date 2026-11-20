@@ -92,6 +92,8 @@ jobs:
           SIZE=$(stat -c%s "$SO")
           echo "Bytes: $SIZE ($((SIZE/1024/1024)) MB)"
           # Catches a missing-strip regression (unstripped is much larger).
+          # NOTE: the release profile intentionally uses panic="unwind" (not "abort")
+          # so the JNI bridge can catch panics; that adds ~500 KB of unwind tables.
           if [ "$SIZE" -gt 12582912 ]; then
             echo "ERROR: .so > 12 MB — strip profile may not be active"
             exit 1
