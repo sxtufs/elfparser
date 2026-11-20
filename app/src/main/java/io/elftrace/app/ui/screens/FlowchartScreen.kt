@@ -269,7 +269,7 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
     val graph = remember(flowchartText) { parseCfgText(flowchartText) }
     val density = LocalDensity.current
 
-    val nodeWidthDp = 250.dp
+    val nodeWidthDp = 290.dp
     val nodeWidthPx = with(density) { nodeWidthDp.toPx() }
     val hGapPx = with(density) { 44.dp.toPx() }
     val vGapPx = with(density) { 64.dp.toPx() }
