@@ -1118,10 +1118,10 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
         "disasm0",
         "inline asm branch exceeds immediate-operand range",
     ),
-    // save0: large function with non-cmp branch conditions producing out-of-range inline asm branches.
-    // Fix: emit out-of-range conditional branches as if (cond) goto <target> instead of inline assembly.
-    // Will flip red when: decompile_to_c(save0) produces compilable C.
-    ("save0", "inline asm branch exceeds immediate-operand range"),
+    // save0 was previously listed here ("inline asm branch exceeds immediate-operand
+    // range"). It now compiles cleanly after the zero-copy handle_save rewrite, which
+    // removed the iterator-based `Vec<i8>` collection and simplified the emitted C
+    // enough to fall under the inline-asm branch range limit. Removed from the ledger.
 
 ];
 
@@ -1657,7 +1657,7 @@ fn test_batch_e_cpp_demangle_fallback() {
 /// End-to-end: `assemblePatch` decompiled output must not contain any of the
 /// three compile-blocking patterns (`v0.2d`, bare `xN()` calls, C++ demangle).
 #[test]
-fn test_batch_e_assemblePatch_compiles_clean() {
+fn test_batch_e_assemble_patch_compiles_clean() {
     use elftrace::decompiler::decompile_to_c;
 
     let so = match std::env::var("ELFTRACE_SELF_SO").ok().or_else(|| {
