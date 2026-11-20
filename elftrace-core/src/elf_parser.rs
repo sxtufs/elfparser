@@ -1,4 +1,4 @@
-use crate::model::{ElfInfo, SData, SDataItem, SymsDTO};
+use crate::model::{ElfInfo, ElfSectionDTO, ElfSegmentDTO, SData, SDataItem, SymsDTO};
 use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::HashMap;
 use std::fs;
@@ -182,6 +182,88 @@ fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
         }
     }
 
+    out
+}
+
+fn extract_elf_segments(raw: &[u8], is_64: bool) -> Vec<ElfSegmentDTO> {
+    let mut out = Vec::new();
+    let (phoff, phentsize, phnum) = if is_64 {
+        if raw.len() < 64 {
+            return out;
+        }
+        (
+            u64::from_le_bytes(raw[32..40].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[54..56].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[56..58].try_into().unwrap()) as usize,
+        )
+    } else {
+        if raw.len() < 52 {
+            return out;
+        }
+        (
+            u32::from_le_bytes(raw[28..32].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[42..44].try_into().unwrap()) as usize,
+            u16::from_le_bytes(raw[44..46].try_into().unwrap()) as usize,
+        )
+    };
+
+    for i in 0..phnum {
+        let off = phoff.saturating_add(i.saturating_mul(phentsize));
+        if off + phentsize > raw.len() {
+            break;
+        }
+        let ph = &raw[off..off + phentsize];
+        let (p_type, p_flags, p_offset, p_vaddr, p_filesz, p_memsz) = if is_64 && phentsize >= 56 {
+            (
+                u32::from_le_bytes(ph[0..4].try_into().unwrap()),
+                u32::from_le_bytes(ph[4..8].try_into().unwrap()),
+                u64::from_le_bytes(ph[8..16].try_into().unwrap()),
+                u64::from_le_bytes(ph[16..24].try_into().unwrap()),
+                u64::from_le_bytes(ph[32..40].try_into().unwrap()),
+                u64::from_le_bytes(ph[40..48].try_into().unwrap()),
+            )
+        } else if !is_64 && phentsize >= 32 {
+            (
+                u32::from_le_bytes(ph[0..4].try_into().unwrap()),
+                u32::from_le_bytes(ph[24..28].try_into().unwrap()),
+                u32::from_le_bytes(ph[4..8].try_into().unwrap()) as u64,
+                u32::from_le_bytes(ph[8..12].try_into().unwrap()) as u64,
+                u32::from_le_bytes(ph[16..20].try_into().unwrap()) as u64,
+                u32::from_le_bytes(ph[20..24].try_into().unwrap()) as u64,
+            )
+        } else {
+            continue;
+        };
+
+        let type_name = match p_type {
+            0 => "PT_NULL".to_string(),
+            1 => "PT_LOAD".to_string(),
+            2 => "PT_DYNAMIC".to_string(),
+            3 => "PT_INTERP".to_string(),
+            4 => "PT_NOTE".to_string(),
+            6 => "PT_PHDR".to_string(),
+            7 => "PT_TLS".to_string(),
+            0x6474_e550 => "GNU_EH_FRAME".to_string(),
+            0x6474_e551 => "GNU_STACK".to_string(),
+            0x6474_e552 => "GNU_RELRO".to_string(),
+            0x7000_0001 => "ARM_EXIDX".to_string(),
+            other => format!("0x{:x}", other),
+        };
+        let flags = format!(
+            "{}{}{}",
+            if (p_flags & 4) != 0 { "R" } else { "-" },
+            if (p_flags & 2) != 0 { "W" } else { "-" },
+            if (p_flags & 1) != 0 { "X" } else { "-" }
+        );
+        out.push(ElfSegmentDTO {
+            p_type: type_name,
+            flags,
+            vaddr: p_vaddr,
+            offset: p_offset,
+            filesz: p_filesz,
+            memsz: p_memsz,
+        });
+    }
     out
 }
 
@@ -730,6 +812,32 @@ impl ElfContext {
         let mut syms: Vec<SymsDTO> = self.syms_map.values().cloned().collect();
         syms.sort_by_key(|s| s.value);
 
+        let segments = extract_elf_segments(&self.raw, is_64);
+        let mut sections = Vec::new();
+        for sec in obj_file.sections() {
+            let name = sec.name().unwrap_or("").to_string();
+            let (offset, _) = sec.file_range().unwrap_or((0, 0));
+            let flags = if let object::SectionFlags::Elf { sh_flags } = sec.flags() {
+                format!(
+                    "{}{}{}",
+                    if (sh_flags & 0x2) != 0 { "A" } else { "-" },
+                    if (sh_flags & 0x1) != 0 { "W" } else { "-" },
+                    if (sh_flags & 0x4) != 0 { "X" } else { "-" }
+                )
+            } else {
+                "---".to_string()
+            };
+            let sh_type = format!("{:?}", sec.kind());
+            sections.push(ElfSectionDTO {
+                name,
+                sh_type,
+                flags,
+                vaddr: sec.address(),
+                offset,
+                size: sec.size(),
+            });
+        }
+
         Ok(ElfInfo {
             e_machine,
             entry,
@@ -739,6 +847,8 @@ impl ElfContext {
             libraries,
             syms,
             yara: Vec::new(),
+            segments,
+            sections,
         })
     }
 

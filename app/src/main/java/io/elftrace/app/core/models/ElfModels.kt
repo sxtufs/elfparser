@@ -2,6 +2,24 @@ package io.elftrace.app.core.models
 
 import com.google.gson.annotations.SerializedName
 
+data class ElfSegmentDTO(
+    val p_type: String = "",
+    val flags: String = "",
+    val vaddr: Long = 0,
+    val offset: Long = 0,
+    val filesz: Long = 0,
+    val memsz: Long = 0
+)
+
+data class ElfSectionDTO(
+    val name: String = "",
+    val sh_type: String = "",
+    val flags: String = "",
+    val vaddr: Long = 0,
+    val offset: Long = 0,
+    val size: Long = 0
+)
+
 data class ElfInfo(
     val e_machine: Int = 0,
     val entry: Long = 0,
@@ -10,7 +28,9 @@ data class ElfInfo(
     val interpreter: String? = null,
     val libraries: List<String> = emptyList(),
     val syms: List<SymsDTO> = emptyList(),
-    val yara: List<YaraDTO> = emptyList()
+    val yara: List<YaraDTO> = emptyList(),
+    val segments: List<ElfSegmentDTO> = emptyList(),
+    val sections: List<ElfSectionDTO> = emptyList()
 )
 
 data class SymsDTO(

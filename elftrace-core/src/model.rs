@@ -23,6 +23,26 @@ pub struct YaraDTO {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElfSegmentDTO {
+    pub p_type: String,
+    pub flags: String,
+    pub vaddr: u64,
+    pub offset: u64,
+    pub filesz: u64,
+    pub memsz: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElfSectionDTO {
+    pub name: String,
+    pub sh_type: String,
+    pub flags: String,
+    pub vaddr: u64,
+    pub offset: u64,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElfInfo {
     pub e_machine: u32,
     pub entry: u64,
@@ -33,6 +53,10 @@ pub struct ElfInfo {
     pub libraries: Vec<String>,
     pub syms: Vec<SymsDTO>,
     pub yara: Vec<YaraDTO>,
+    #[serde(default)]
+    pub segments: Vec<ElfSegmentDTO>,
+    #[serde(default)]
+    pub sections: Vec<ElfSectionDTO>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

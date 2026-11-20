@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.elftrace.app.ui.theme.*
@@ -57,6 +58,8 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     var isScanningApk by remember { mutableStateOf(false) }
     var isExtractingSo by remember { mutableStateOf(false) }
     var symFilter by remember { mutableStateOf("all") } // "all", "funcs", "jni"
+    var showHeadersDialog by remember { mutableStateOf(false) }
+    var headersTab by remember { mutableStateOf(0) } // 0 = Segments, 1 = Sections
 
     val il2cppPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -277,14 +280,24 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             color = colors.primary,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
-                            modifier = Modifier.weight(1f)
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
                         )
-                        OutlinedButton(
-                            onClick = { il2cppPicker.launch(arrayOf("application/json", "*/*")) },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            modifier = Modifier.height(28.dp)
-                        ) {
-                            Text("Il2Cpp JSON", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { showHeadersDialog = true },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Headers", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            OutlinedButton(
+                                onClick = { il2cppPicker.launch(arrayOf("application/json", "*/*")) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Il2Cpp JSON", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -504,6 +517,150 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { showApkPicker = false }) {
                                 Text("Cancel", color = colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ELF Headers & Segments Inspector Dialog
+        if (showHeadersDialog && elfInfo != null) {
+            val info = elfInfo!!
+            Dialog(onDismissRequest = { showHeadersDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(
+                            text = "ELF Headers & Segments",
+                            color = colors.primary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = headersTab == 0,
+                                onClick = { headersTab = 0 },
+                                label = { Text("Segments (${info.segments.size})", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = headersTab == 1,
+                                onClick = { headersTab = 1 },
+                                label = { Text("Sections (${info.sections.size})", fontSize = 11.sp) }
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                            flingBehavior = rememberMomentumFlingBehavior(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (headersTab == 0) {
+                                itemsIndexed(info.segments) { _, seg ->
+                                    val isExec = seg.flags.contains("X")
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = colors.card),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable(enabled = seg.vaddr > 0L || seg.offset > 0L || (isExec && info.entry > 0L)) {
+                                                val target = when {
+                                                    seg.vaddr > 0L -> seg.vaddr
+                                                    isExec && info.entry > 0L -> info.entry
+                                                    else -> seg.offset
+                                                }
+                                                showHeadersDialog = false
+                                                if (target > 0L) {
+                                                    viewModel.selectFunction(target, seg.p_type)
+                                                    viewModel.codeSubTab.value = if (isExec) 0 else 3
+                                                } else {
+                                                    viewModel.loadHexDump(0L, 2048)
+                                                    viewModel.codeSubTab.value = 3
+                                                }
+                                                viewModel.navigateTo(Screen.Code)
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(seg.p_type, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                Text(
+                                                    seg.flags,
+                                                    color = if (isExec) AmberAccent else colors.address,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Text(
+                                                "VA: 0x${seg.vaddr.toString(16)}  Off: 0x${seg.offset.toString(16)}  Sz: 0x${seg.filesz.toString(16)}",
+                                                color = colors.textSecondary,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                itemsIndexed(info.sections) { _, sec ->
+                                    val isExec = sec.flags.contains("X")
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = colors.card),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable(enabled = sec.vaddr > 0L) {
+                                                showHeadersDialog = false
+                                                viewModel.selectFunction(sec.vaddr, sec.name.ifEmpty { "section" })
+                                                viewModel.codeSubTab.value = if (isExec) 0 else 3
+                                                viewModel.navigateTo(Screen.Code)
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    sec.name.ifEmpty { "<unnamed>" },
+                                                    color = colors.textPrimary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    sec.flags,
+                                                    color = if (isExec) AmberAccent else colors.address,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Text(
+                                                "VA: 0x${sec.vaddr.toString(16)}  Off: 0x${sec.offset.toString(16)}  Sz: 0x${sec.size.toString(16)}",
+                                                color = colors.textSecondary,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showHeadersDialog = false }) {
+                                Text("Close", color = colors.textSecondary)
                             }
                         }
                     }
