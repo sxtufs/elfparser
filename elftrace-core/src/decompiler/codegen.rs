@@ -1043,8 +1043,11 @@ fn is_unencoded_branch(asm: &str) -> bool {
     }
 
     // The branch target is numeric if any operand token is a hex literal.
+    // Capstone renders immediates with a leading `#` (e.g. `b.eq #0x6cb48c`),
+    // so strip a leading `#` before checking for a `0x` prefix.
     // (Register-indirect branches like `br x0` have no numeric target.)
     ops.split(|c: char| c == ',' || c.is_whitespace())
+        .map(|tok| tok.trim_start_matches('#'))
         .any(|tok| tok.starts_with("0x") || tok.starts_with("0X"))
 }
 

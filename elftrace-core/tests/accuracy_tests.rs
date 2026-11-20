@@ -1792,31 +1792,42 @@ fn test_batch_g_sub_register_aliasing() {
         name: "subreg_test".to_string(),
         start_address: 0x1000,
         size: 8,
-        blocks: vec![IrBlock {
-            id: 0,
-            start_address: 0x1000,
-            end_address: 0x1008,
-            stmts: vec![
-                // w8 = *(uint8_t*)x1
-                IrStmt::Assign {
-                    dst: IrExpr::reg("w8", IrType::Int32),
-                    src: IrExpr::Load {
-                        ptr: Box::new(IrExpr::reg("x1", IrType::Int64)),
-                        ty: IrType::Int8,
+        blocks: vec![
+            IrBlock {
+                id: 0,
+                start_address: 0x1000,
+                end_address: 0x1008,
+                stmts: vec![
+                    // w8 = *(uint8_t*)x1
+                    IrStmt::Assign {
+                        dst: IrExpr::reg("w8", IrType::Int32),
+                        src: IrExpr::Load {
+                            ptr: Box::new(IrExpr::reg("x1", IrType::Int64)),
+                            ty: IrType::Int8,
+                        },
                     },
-                },
-                // if (w8 == 0) goto 0x2000
-                IrStmt::Branch {
-                    cond: Some(IrExpr::Binary(
-                        BinaryOp::Eq,
-                        Box::new(IrExpr::reg("w8", IrType::Int32)),
-                        Box::new(IrExpr::Const(0)),
-                        IrType::Int8,
-                    )),
-                    target: 0x2000,
-                },
-            ],
-        }],
+                    // if (w8 == 0) goto 0x2000  (target is a real block, so the
+                    // branch is legitimately emitted as `if (...) goto loc_...`)
+                    IrStmt::Branch {
+                        cond: Some(IrExpr::Binary(
+                            BinaryOp::Eq,
+                            Box::new(IrExpr::reg("w8", IrType::Int32)),
+                            Box::new(IrExpr::Const(0)),
+                            IrType::Int8,
+                        )),
+                        target: 0x2000,
+                    },
+                ],
+            },
+            // Second block: the branch target. Makes `0x2000` a real, reachable
+            // label so the conditional branch (which reads w8) is emitted.
+            IrBlock {
+                id: 1,
+                start_address: 0x2000,
+                end_address: 0x2008,
+                stmts: vec![IrStmt::Return(None)],
+            },
+        ],
         ret_type: IrType::Void,
         ret_reg: "x0".to_string(),
         base_stack_offset: 0,
