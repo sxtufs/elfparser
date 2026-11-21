@@ -90,32 +90,12 @@ class ELFTraceViewModel : ViewModel() {
 
     /**
      * Result of an export operation.
-     * [Public]   — written to shared Download/ (MANAGE_EXTERNAL_STORAGE granted).
-     * [AppScoped]— written to app-specific external storage because the
-     *              all-files permission is not granted; the UI should offer to
-     *              open Settings so the next export can use shared Download/.
-     * [Failed]   — could not write anywhere.
+     * [Public] — written into the shared Download/ collection.
+     * [Failed] — could not write.
      */
     sealed class SaveOutcome {
         data class Public(val path: String) : SaveOutcome()
-        data class AppScoped(val path: String) : SaveOutcome()
         object Failed : SaveOutcome()
-    }
-
-    /** True when the app holds MANAGE_EXTERNAL_STORAGE (API 30+) or the OS predates it. */
-    fun hasAllFilesAccess(): Boolean =
-        android.os.Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()
-
-    /**
-     * Settings intent that lets the user grant MANAGE_EXTERNAL_STORAGE, or null
-     * when the OS predates the permission (API < 30).
-     */
-    fun allFilesAccessIntent(context: Context): android.content.Intent? {
-        if (android.os.Build.VERSION.SDK_INT < 30) return null
-        return android.content.Intent(
-            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-            android.net.Uri.parse("package:${context.packageName}")
-        )
     }
 
     fun savePatchedBinary(context: Context, onResult: (SaveOutcome) -> Unit) {
@@ -132,34 +112,58 @@ class ELFTraceViewModel : ViewModel() {
             val origName = currentFileName.value.ifEmpty { "libtarget.so" }.removeSuffix(".so")
             val patchedFileName = "${origName}_patched.so"
 
-            // Write to shared Download/ when the all-files permission is granted;
-            // otherwise fall back to app-specific external storage (permission-free).
-            val usePublic = hasAllFilesAccess()
+            // Always export to the real public Download/ folder — no app-scoped
+            // fallback and no runtime permission. On API 29+ a MediaStore insert
+            // into the Downloads collection needs zero permissions. On API < 29
+            // (minSdk 24) we use the legacy public dir + WRITE_EXTERNAL_STORAGE.
             val outcome: SaveOutcome = try {
-                if (usePublic) {
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    writeViaMediaStore(context, patchedFileName, bytes)
+                } else {
                     val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                     val f = File(outDir, patchedFileName)
                     FileOutputStream(f).use { it.write(bytes) }
                     SaveOutcome.Public(f.absolutePath)
-                } else {
-                    val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-                    val f = File(extDir, patchedFileName)
-                    FileOutputStream(f).use { it.write(bytes) }
-                    SaveOutcome.AppScoped(f.absolutePath)
                 }
             } catch (_: Exception) {
-                // Shared dir write failed even though the permission looked granted;
-                // fall back to cache so the user still gets the bytes.
-                try {
-                    val fallback = File(context.cacheDir, patchedFileName)
-                    FileOutputStream(fallback).use { it.write(bytes) }
-                    SaveOutcome.AppScoped(fallback.absolutePath)
-                } catch (_: Exception) {
-                    SaveOutcome.Failed
-                }
+                SaveOutcome.Failed
             }
             launch(Dispatchers.Main) { onResult(outcome) }
         }
+    }
+
+    /**
+     * Insert the bytes into the shared Download/ collection via MediaStore.
+     * Requires no runtime permission on API 29+. If a file with the same name
+     * already exists (owned by this app), it is replaced so repeated exports
+     * don't accumulate duplicates.
+     */
+    private fun writeViaMediaStore(context: Context, displayName: String, bytes: ByteArray): SaveOutcome {
+        val resolver = context.contentResolver
+        val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+
+        // Remove a previous export we own with the same display name.
+        try {
+            resolver.delete(
+                collection,
+                "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?",
+                arrayOf(displayName)
+            )
+        } catch (_: Exception) {
+        }
+
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, displayName)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+            put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, values) ?: return SaveOutcome.Failed
+        resolver.openOutputStream(uri)?.use { os -> os.write(bytes) } ?: return SaveOutcome.Failed
+        values.clear()
+        values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+        return SaveOutcome.Public("Download/$displayName")
     }
 
     fun resolveIl2CppMetadata(path: String, onComplete: (Int) -> Unit) {
