@@ -183,6 +183,31 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
         }
     }
 
+    // --- False-positive filtering (Q2) -------------------------------------
+    // The branch scanners below decode EVERY aligned word of every executable
+    // segment, including literal pools and padding embedded in .text. A data
+    // word that happens to look like `bl <target>` is not a real caller.
+    //
+    // Gate 1: the target must actually live in an executable region. XREFing
+    //         into .rodata/.data has no real branch callers.
+    let target_in_exec = exec_regions
+        .iter()
+        .any(|(base, d)| target_vaddr >= *base && target_vaddr < base.saturating_add(d.len() as u64));
+    if !target_in_exec {
+        return refs;
+    }
+
+    // Gate 2: prefer candidates that land inside a *sized* symbol when the
+    // binary still has a usable symbol table. In stripped binaries sym_table is
+    // effectively empty, so we keep best-effort behaviour (no filter) there.
+    let have_symbols = !sym_table.is_empty();
+    let plausible_caller = |addr: u64| -> bool {
+        if !have_symbols {
+            return true; // stripped: cannot verify, keep best-effort
+        }
+        find_caller(addr).is_some()
+    };
+
     for (sec_vaddr, data) in exec_regions {
         {
             {
@@ -194,17 +219,20 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                         let word = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
                         let from_addr = sec_vaddr + i as u64;
 
-                        if let Some((to_addr, kind, mnem)) =
-                            decode_arm64_branch_insn(word, from_addr)
-                        {
-                            if to_addr == target_vaddr {
-                                refs.push(XRefItem {
-                                    from_address: from_addr,
-                                    to_address: to_addr,
-                                    kind: kind.to_string(),
-                                    instruction: format!("{:<7} #0x{:x}", mnem, to_addr),
-                                    caller_func: find_caller(from_addr),
-                                });
+                        // Skip obvious padding/zero words — never valid branches.
+                        if word != 0 {
+                            if let Some((to_addr, kind, mnem)) =
+                                decode_arm64_branch_insn(word, from_addr)
+                            {
+                                if to_addr == target_vaddr && plausible_caller(from_addr) {
+                                    refs.push(XRefItem {
+                                        from_address: from_addr,
+                                        to_address: to_addr,
+                                        kind: kind.to_string(),
+                                        instruction: format!("{:<7} #0x{:x}", mnem, to_addr),
+                                        caller_func: find_caller(from_addr),
+                                    });
+                                }
                             }
                         }
 
@@ -243,7 +271,10 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                             } else {
                                 ((from_addr + 4) & !3).wrapping_add((imm & !3) as u64)
                             };
-                            if (to_addr & !1) == target_clean && seen_from.insert(from_addr) {
+                            if (to_addr & !1) == target_clean
+                                && plausible_caller(from_addr)
+                                && seen_from.insert(from_addr)
+                            {
                                 let mnem = if is_bl { "bl" } else { "blx" };
                                 refs.push(XRefItem {
                                     from_address: from_addr,
@@ -276,7 +307,10 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                                 0
                             };
                             let to_addr = (from_addr + 8).wrapping_add(((imm24 << 2) | h) as u64);
-                            if (to_addr & !1) == target_clean && seen_from.insert(from_addr) {
+                            if (to_addr & !1) == target_clean
+                                && plausible_caller(from_addr)
+                                && seen_from.insert(from_addr)
+                            {
                                 let mnem = if is_arm_bl { "bl" } else { "blx" };
                                 refs.push(XRefItem {
                                     from_address: from_addr,
@@ -300,7 +334,7 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                         let mnem = ins.mnemonic.as_str();
                         let ops = ins.op_str.as_str();
                         let from_addr = ins.address;
-                        if mnem == "call" {
+                        if mnem == "call" && plausible_caller(from_addr) {
                             if let Some(to_addr) = parse_imm_addr(ops) {
                                 if to_addr == target_vaddr {
                                     refs.push(XRefItem {
