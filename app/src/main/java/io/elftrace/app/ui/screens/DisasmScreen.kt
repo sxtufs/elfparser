@@ -466,11 +466,28 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                         OutlinedButton(
                             onClick = {
-                                viewModel.savePatchedBinary(context) { savedPath ->
-                                    if (savedPath != null) {
-                                        Toast.makeText(context, "Saved to $savedPath", Toast.LENGTH_LONG).show()
-                                    } else {
-                                        Toast.makeText(context, "Failed to export binary", Toast.LENGTH_SHORT).show()
+                                viewModel.savePatchedBinary(context) { outcome ->
+                                    when (outcome) {
+                                        is io.elftrace.app.viewmodel.ELFTraceViewModel.SaveOutcome.Public ->
+                                            Toast.makeText(context, "Saved to ${outcome.path}", Toast.LENGTH_LONG).show()
+                                        is io.elftrace.app.viewmodel.ELFTraceViewModel.SaveOutcome.AppScoped -> {
+                                            // No MANAGE_EXTERNAL_STORAGE: saved to the app-scoped
+                                            // dir. Offer to grant it so future exports go to
+                                            // the shared Download/ folder.
+                                            Toast.makeText(
+                                                context,
+                                                "Saved to app folder. Grant storage access to save to Download/",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            viewModel.allFilesAccessIntent(context)?.let { intent ->
+                                                try {
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {
+                                                }
+                                            }
+                                        }
+                                        io.elftrace.app.viewmodel.ELFTraceViewModel.SaveOutcome.Failed ->
+                                            Toast.makeText(context, "Failed to export binary", Toast.LENGTH_SHORT).show()
                                     }
                                     selectedInsn = null
                                 }

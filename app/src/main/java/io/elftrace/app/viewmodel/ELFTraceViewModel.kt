@@ -88,50 +88,77 @@ class ELFTraceViewModel : ViewModel() {
         }
     }
 
-    fun savePatchedBinary(context: Context, onResult: (String?) -> Unit) {
+    /**
+     * Result of an export operation.
+     * [Public]   — written to shared Download/ (MANAGE_EXTERNAL_STORAGE granted).
+     * [AppScoped]— written to app-specific external storage because the
+     *              all-files permission is not granted; the UI should offer to
+     *              open Settings so the next export can use shared Download/.
+     * [Failed]   — could not write anywhere.
+     */
+    sealed class SaveOutcome {
+        data class Public(val path: String) : SaveOutcome()
+        data class AppScoped(val path: String) : SaveOutcome()
+        object Failed : SaveOutcome()
+    }
+
+    /** True when the app holds MANAGE_EXTERNAL_STORAGE (API 30+) or the OS predates it. */
+    fun hasAllFilesAccess(): Boolean =
+        android.os.Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()
+
+    /**
+     * Settings intent that lets the user grant MANAGE_EXTERNAL_STORAGE, or null
+     * when the OS predates the permission (API < 30).
+     */
+    fun allFilesAccessIntent(context: Context): android.content.Intent? {
+        if (android.os.Build.VERSION.SDK_INT < 30) return null
+        return android.content.Intent(
+            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            android.net.Uri.parse("package:${context.packageName}")
+        )
+    }
+
+    fun savePatchedBinary(context: Context, onResult: (SaveOutcome) -> Unit) {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
-                launch(Dispatchers.Main) { onResult(null) }
+                launch(Dispatchers.Main) { onResult(SaveOutcome.Failed) }
                 return@launch
             }
             val bytes = b.saveBinary()
             if (bytes.isEmpty()) {
-                launch(Dispatchers.Main) { onResult(null) }
+                launch(Dispatchers.Main) { onResult(SaveOutcome.Failed) }
                 return@launch
             }
             val origName = currentFileName.value.ifEmpty { "libtarget.so" }.removeSuffix(".so")
             val patchedFileName = "${origName}_patched.so"
 
-            // Public Downloads requires MANAGE_EXTERNAL_STORAGE (granted at
-            // runtime via Settings on API 30+). If it is not granted, writing
-            // there throws. Probe the permission first and only attempt the
-            // public dir when we actually have it; otherwise use app-specific
-            // external storage, which needs no permission.
-            val canUsePublicDownloads = android.os.Build.VERSION.SDK_INT < 30 ||
-                Environment.isExternalStorageManager()
-
-            val outFile: File? = try {
-                if (canUsePublicDownloads) {
+            // Write to shared Download/ when the all-files permission is granted;
+            // otherwise fall back to app-specific external storage (permission-free).
+            val usePublic = hasAllFilesAccess()
+            val outcome: SaveOutcome = try {
+                if (usePublic) {
                     val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                     val f = File(outDir, patchedFileName)
                     FileOutputStream(f).use { it.write(bytes) }
-                    f
+                    SaveOutcome.Public(f.absolutePath)
                 } else {
                     val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
                     val f = File(extDir, patchedFileName)
                     FileOutputStream(f).use { it.write(bytes) }
-                    f
+                    SaveOutcome.AppScoped(f.absolutePath)
                 }
             } catch (_: Exception) {
+                // Shared dir write failed even though the permission looked granted;
+                // fall back to cache so the user still gets the bytes.
                 try {
                     val fallback = File(context.cacheDir, patchedFileName)
                     FileOutputStream(fallback).use { it.write(bytes) }
-                    fallback
+                    SaveOutcome.AppScoped(fallback.absolutePath)
                 } catch (_: Exception) {
-                    null
+                    SaveOutcome.Failed
                 }
             }
-            launch(Dispatchers.Main) { onResult(outFile?.absolutePath) }
+            launch(Dispatchers.Main) { onResult(outcome) }
         }
     }
 
