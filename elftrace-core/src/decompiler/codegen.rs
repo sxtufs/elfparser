@@ -594,7 +594,18 @@ impl<'a> CodeGenerator<'a> {
                         let is_libc_cast = is_libc_name && !is_libc_mem; // partial -> cast
                         let call_expr = if is_libc_mem {
                             format!("((int64_t)(uintptr_t){}({}))", call_name, formatted_args)
-                        } else if is_pthread || is_libc_cast {
+                        } else if is_libc_cast {
+                            // Launder the function pointer through `uintptr_t` so
+                            // the compiler does not see a cast between incompatible
+                            // function types (or a call through the real `memcpy`
+                            // prototype). Both -Wcast-function-type and the
+                            // incompatible-type call warning are silenced while the
+                            // emitted C stays valid.
+                            format!(
+                                "((int64_t(*)({}))(uintptr_t){})({})",
+                                proto_args, call_name, formatted_args
+                            )
+                        } else if is_pthread {
                             format!(
                                 "((int64_t(*)({})){})({})",
                                 proto_args, call_name, formatted_args
