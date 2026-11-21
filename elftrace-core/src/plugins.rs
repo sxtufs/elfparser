@@ -770,22 +770,7 @@ fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
 }
 
 fn find_enclosing_symbol(ctx: &ElfContext, vaddr: u64) -> Option<String> {
-    if let Some(sym) = ctx.syms_map.get(&vaddr) {
-        return Some(sym.demangled.as_deref().unwrap_or(&sym.sym).to_string());
-    }
-    let mut best: Option<(u64, &str)> = None;
-    for (&addr, sym) in &ctx.syms_map {
-        if addr != 0 && addr <= vaddr {
-            let end = if sym.size > 0 {
-                addr + sym.size
-            } else {
-                addr + 0x1000
-            };
-            if vaddr < end && best.map(|(b_addr, _)| addr > b_addr).unwrap_or(true) {
-                let name = sym.demangled.as_deref().unwrap_or(&sym.sym);
-                best = Some((addr, name));
-            }
-        }
-    }
-    best.map(|(_, name)| name.to_string())
+    // Delegates to the cached, binary-searched symbol index on ElfContext.
+    // Previously this was an O(n) linear scan per finding.
+    ctx.enclosing_symbol(vaddr)
 }

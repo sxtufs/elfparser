@@ -277,6 +277,10 @@ pub struct ElfContext {
     /// trigger 4+ of these per function selection. OnceLock makes it a one-time
     /// cost. The value is immutable after the first successful build.
     info_cache: std::sync::OnceLock<ElfInfo>,
+    /// Sorted (start, end, name) symbol bounds for O(log n) enclosing-symbol
+    /// lookups. Built lazily on first use; previously `plugins::find_enclosing_symbol`
+    /// did a full O(n) linear scan per finding.
+    symbol_index: std::sync::OnceLock<Vec<(u64, u64, String)>>,
 }
 
 impl ElfContext {
@@ -295,6 +299,7 @@ impl ElfContext {
             raw: Vec::new(),
             syms_map: HashMap::new(),
             info_cache: std::sync::OnceLock::new(),
+            symbol_index: std::sync::OnceLock::new(),
         }
     }
 
@@ -687,6 +692,7 @@ impl ElfContext {
             raw,
             syms_map,
             info_cache: std::sync::OnceLock::new(),
+            symbol_index: std::sync::OnceLock::new(),
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)
@@ -866,6 +872,52 @@ impl ElfContext {
         // value landed first; both are identical in content.
         let _ = self.info_cache.set(info.clone());
         Ok(info)
+    }
+
+    /// Return the name of the symbol whose address range encloses `vaddr`.
+    /// Uses an exact-match fast path, then a binary search over a lazily-built
+    /// sorted (start, end, name) table. This replaces the previous O(n) linear
+    /// scan that `plugins::find_enclosing_symbol` did for every finding.
+    pub fn enclosing_symbol(&self, vaddr: u64) -> Option<String> {
+        if let Some(sym) = self.syms_map.get(&vaddr) {
+            return Some(sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()));
+        }
+        let index = self.symbol_index.get_or_init(|| {
+            let mut v: Vec<(u64, u64, String)> = self
+                .syms_map
+                .iter()
+                .filter(|(addr, _)| **addr != 0)
+                .map(|(&addr, sym)| {
+                    let end = if sym.size > 0 {
+                        addr.saturating_add(sym.size)
+                    } else {
+                        addr.saturating_add(0x1000)
+                    };
+                    (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
+                })
+                .collect();
+            v.sort_by_key(|e| e.0);
+            v
+        });
+        // Find the greatest start <= vaddr, then verify vaddr < its end.
+        match index.binary_search_by(|e| {
+            if e.0 <= vaddr {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        }) {
+            Ok(_) => None, // exact start handled above; should not reach here
+            Err(0) => None,
+            Err(pos) => {
+                let (_, end, name) = &index[pos - 1];
+                if vaddr < *end {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     pub fn vaddr_to_offset(&self, vaddr: u64) -> Option<u64> {

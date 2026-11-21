@@ -548,18 +548,23 @@ impl<'a> CodeGenerator<'a> {
                             .as_deref()
                             .map(is_pthread_fn)
                             .unwrap_or(false);
-                        let formatted_args = args
-                            .iter()
-                            .enumerate()
-                            .map(|(i, a)| {
-                                let inner = self.format_expr(
-                                    a,
-                                    &param_reg_map,
-                                    func.base_stack_offset,
-                                    func.inferred_params.len(),
-                                );
+                        // For libc memory/string calls, pad up to the canonical
+                        // argument count. The lifter can lose argument registers
+                        // for imported calls (e.g. a bare PLT tail-call), which
+                        // previously emitted `memcpy()` with zero args — a hard
+                        // compile error in the self-compile gate. Padding with
+                        // correctly-typed zeros keeps the emitted C valid.
+                        let libc_name = name.as_deref().unwrap_or("");
+                        let libc_required = if is_libc_mem {
+                            libc_arg_count(libc_name)
+                        } else {
+                            0
+                        };
+                        let arg_total = args.len().max(libc_required);
+                        let formatted_args = (0..arg_total)
+                            .map(|i| {
                                 let cast = if is_libc_mem {
-                                    libc_arg_cast(name.as_deref().unwrap_or(""), i)
+                                    libc_arg_cast(libc_name, i)
                                 } else if is_pthread {
                                     // No wrapper - value flows directly into the
                                     // int64_t prototype arg below.
@@ -567,7 +572,18 @@ impl<'a> CodeGenerator<'a> {
                                 } else {
                                     "(uint64_t)(uintptr_t)"
                                 };
-                                format!("{}{}", cast, inner)
+                                if let Some(a) = args.get(i) {
+                                    let inner = self.format_expr(
+                                        a,
+                                        &param_reg_map,
+                                        func.base_stack_offset,
+                                        func.inferred_params.len(),
+                                    );
+                                    format!("{}{}", cast, inner)
+                                } else {
+                                    // Missing recovered arg: emit a typed zero.
+                                    format!("{}0", cast)
+                                }
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
@@ -1246,6 +1262,22 @@ fn is_libc_memory_fn(name: &str) -> bool {
             | "__strcpy_chk"
             | "__strncpy_chk"
     )
+}
+
+/// Canonical minimum argument count for a libc memory/string function.
+/// Used to pad calls where the lifter failed to recover all argument
+/// registers (which otherwise emits e.g. `memcpy()` — a hard compile error).
+fn libc_arg_count(name: &str) -> usize {
+    match name {
+        "memcpy" | "memmove" | "memcmp" | "strncpy" | "strncat" | "strncmp" => 3,
+        "memset" | "memchr" | "strcpy" | "strcat" | "strcmp" | "strchr" | "strrchr"
+        | "strstr" | "strdup" => 2,
+        "strlen" => 1,
+        "__memcpy_chk" | "__memmove_chk" => 4,
+        "__memset_chk" | "__strncpy_chk" => 4,
+        "__strcpy_chk" => 3,
+        _ => 1,
+    }
 }
 
 /// Return the C cast prefix for argument N of a libc memory function.

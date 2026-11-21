@@ -1,4 +1,4 @@
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring, JNI_TRUE, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM};
 
@@ -92,13 +92,30 @@ unsafe fn handle_disasm(
     }
 
     let code_slice = &ctx.raw[offset..];
+    // Resolve the enclosing function once: we need its `thumb` flag and its
+    // extent. Computing it once avoids a second O(n) symbol scan and lets us
+    // clamp the requested size so disassembly cannot overrun into the next
+    // function (the caller passes a fixed 128/256-byte default).
+    let fn_range = crate::decompiler::find_function_range(ctx, vaddr);
     let is_thumb = if e_machine == 40 {
-        thumb == JNI_TRUE
-            || (raw_vaddr & 1) != 0
-            || crate::decompiler::find_function_range(ctx, vaddr).thumb
+        thumb == JNI_TRUE || (raw_vaddr & 1) != 0 || fn_range.thumb
     } else {
         false
     };
+    // Clamp: never disassemble more than the remaining file, nor past the end
+    // of the resolved function (with a small floor for symbols lacking size).
+    let max_available = (ctx.raw.len() - offset) as u64;
+    let requested = if size > 0 { size as u64 } else { 256 };
+    let fn_remaining = if fn_range.size > 0 {
+        fn_range
+            .start
+            .saturating_add(fn_range.size)
+            .saturating_sub(vaddr)
+            .max(4)
+    } else {
+        requested
+    };
+    let clamped_size = requested.min(fn_remaining).min(max_available);
 
     let is_jni = ctx
         .syms_map
@@ -116,7 +133,7 @@ unsafe fn handle_disasm(
     match crate::disasm::disassemble_with_resolver(
         code_slice,
         vaddr,
-        size as u64,
+        clamped_size,
         e_machine,
         is_thumb,
         Some(&symbol_resolver),
