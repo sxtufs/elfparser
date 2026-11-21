@@ -611,14 +611,14 @@ impl<'a> CodeGenerator<'a> {
                                     ),
                                     call_name,
                                     args.len(),
-                                    libc_arg_count(call_name)
+                                    libc_arg_count(&call_name)
                                 ));
                             } else {
                                 out.push_str(&format!(
                                     "    // call to {}() omitted: only {} of {} args recovered\n",
                                     call_name,
                                     args.len(),
-                                    libc_arg_count(call_name)
+                                    libc_arg_count(&call_name)
                                 ));
                             }
                         } else {
