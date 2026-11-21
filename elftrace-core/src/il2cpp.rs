@@ -41,23 +41,41 @@ pub fn load_script_json(ctx: &mut ElfContext, json_path: &str) -> Result<usize, 
         if m.address != 0 && !m.name.is_empty() {
             let clean_addr = m.address & !1;
             let (cls, meth) = parse_cs_method(&m.name);
-            ctx.syms_map.insert(
-                clean_addr,
-                SymsDTO {
-                    sym: m.name.clone(),
-                    value: clean_addr,
-                    size: 0,
-                    thumb: (m.address & 1) != 0,
-                    demangled: Some(m.name.clone()),
-                    jni_class: cls,
-                    jni_method: meth,
-                    json: if !m.signature.is_empty() {
-                        Some(m.signature)
-                    } else {
-                        None
-                    },
-                },
-            );
+            // Merge rather than overwrite: a real .dynsym / PLT entry may already
+            // live at this address (e.g. a JNI export). We only enrich an entry
+            // that is missing a demangled name; never clobber the original symbol.
+            use std::collections::hash_map::Entry;
+            match ctx.syms_map.entry(clean_addr) {
+                Entry::Occupied(mut e) => {
+                    let existing = e.get_mut();
+                    if existing.demangled.is_none() {
+                        existing.demangled = Some(m.name.clone());
+                    }
+                    if existing.jni_method.is_none() {
+                        existing.jni_method = meth;
+                        existing.jni_class = cls;
+                    }
+                    if existing.json.is_none() && !m.signature.is_empty() {
+                        existing.json = Some(m.signature);
+                    }
+                }
+                Entry::Vacant(v) => {
+                    v.insert(SymsDTO {
+                        sym: m.name.clone(),
+                        value: clean_addr,
+                        size: 0,
+                        thumb: (m.address & 1) != 0,
+                        demangled: Some(m.name.clone()),
+                        jni_class: cls,
+                        jni_method: meth,
+                        json: if !m.signature.is_empty() {
+                            Some(m.signature)
+                        } else {
+                            None
+                        },
+                    });
+                }
+            }
         }
     }
 

@@ -272,6 +272,11 @@ pub struct ElfContext {
     pub path: String,
     pub raw: Vec<u8>,
     pub syms_map: HashMap<u64, SymsDTO>,
+    /// Memoized result of `get_info()`. `get_info` re-parses the whole ELF and
+    /// rebuilds the symbol/section/segment tables on every call; the UI used to
+    /// trigger 4+ of these per function selection. OnceLock makes it a one-time
+    /// cost. The value is immutable after the first successful build.
+    info_cache: std::sync::OnceLock<ElfInfo>,
 }
 
 impl ElfContext {
@@ -289,6 +294,7 @@ impl ElfContext {
             path: String::from("<stub>"),
             raw: Vec::new(),
             syms_map: HashMap::new(),
+            info_cache: std::sync::OnceLock::new(),
         }
     }
 
@@ -680,12 +686,17 @@ impl ElfContext {
             path: path.to_string(),
             raw,
             syms_map,
+            info_cache: std::sync::OnceLock::new(),
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)
     }
 
     pub fn get_info(&self) -> Result<ElfInfo, String> {
+        // Fast path: return the memoized result instead of re-parsing the ELF.
+        if let Some(cached) = self.info_cache.get() {
+            return Ok(cached.clone());
+        }
         let obj_file =
             object::File::parse(&*self.raw).map_err(|e| format!("Failed to parse ELF: {}", e))?;
 
@@ -839,7 +850,7 @@ impl ElfContext {
             });
         }
 
-        Ok(ElfInfo {
+        let info = ElfInfo {
             e_machine,
             entry,
             is_64,
@@ -850,7 +861,11 @@ impl ElfContext {
             yara: Vec::new(),
             segments,
             sections,
-        })
+        };
+        // Cache the successful build. If another thread raced us, keep whichever
+        // value landed first; both are identical in content.
+        let _ = self.info_cache.set(info.clone());
+        Ok(info)
     }
 
     pub fn vaddr_to_offset(&self, vaddr: u64) -> Option<u64> {

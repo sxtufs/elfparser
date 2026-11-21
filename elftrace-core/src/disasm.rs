@@ -88,10 +88,14 @@ pub fn disassemble_with_resolver(
             .map_err(|e| format!("Failed to create default Capstone: {}", e))?,
     };
 
-    let max_len = if size > 0 && (size as usize) <= code_bytes.len() {
-        size as usize
+    // Clamp the requested size to what we actually have. If the caller asks for
+    // more than is available, disassemble everything remaining (up to a hard
+    // cap) rather than silently truncating to a small fixed size.
+    const HARD_CAP: usize = 1 << 20; // 1 MiB of code is plenty for one view
+    let max_len = if size > 0 {
+        (size as usize).min(code_bytes.len()).min(HARD_CAP)
     } else {
-        std::cmp::min(code_bytes.len(), 8192)
+        code_bytes.len().min(HARD_CAP)
     };
 
     let slice = &code_bytes[..max_len];

@@ -57,15 +57,13 @@ unsafe fn handle_info(env: &JNIEnv, handle: jlong) -> jstring {
         return env.new_string("{}").unwrap().into_inner();
     }
     let ctx = &*(handle as *const ElfContext);
-    match ctx.get_info() {
-        Ok(info) => {
-            let json = serde_json::to_string(&info).unwrap_or_else(|_| "{}".to_string());
-            env.new_string(json).unwrap().into_inner()
-        }
-        Err(err) => {
-            let err_json = format!("{{\"error\": \"{}\"}}", err);
-            env.new_string(err_json).unwrap().into_inner()
-        }
+    let json = match ctx.get_info() {
+        Ok(info) => serde_json::to_string(&info).unwrap_or_else(|_| "{}".to_string()),
+        Err(err) => serde_json::json!({ "error": err }).to_string(),
+    };
+    match env.new_string(json) {
+        Ok(s) => s.into_inner(),
+        Err(_) => std::ptr::null_mut(),
     }
 }
 
@@ -186,14 +184,23 @@ unsafe fn handle_save(env: &JNIEnv, handle: jlong) -> jbyteArray {
     }
     let ctx = &*(handle as *const ElfContext);
     let len = ctx.raw.len();
-    let j_arr = env.new_byte_array(len as i32).unwrap();
+    // JNI array length is a signed 32-bit jsize; refuse to overflow on >2GB files.
+    if len > i32::MAX as usize {
+        return std::ptr::null_mut();
+    }
+    let j_arr = match env.new_byte_array(len as i32) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
     if len > 0 {
         // Zero-copy reinterpretation: the JNI API wants &[i8], but the bytes are
         // already in memory. Avoids duplicating the whole file (which can be
         // hundreds of MB for a large .so).
         let signed_slice: &[i8] =
             std::slice::from_raw_parts(ctx.raw.as_ptr() as *const i8, len);
-        env.set_byte_array_region(j_arr, 0, signed_slice).unwrap();
+        if env.set_byte_array_region(j_arr, 0, signed_slice).is_err() {
+            return std::ptr::null_mut();
+        }
     }
     j_arr
 }
@@ -220,7 +227,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_init0(
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_info0(
     env: JNIEnv,
-    _obj: JObject,
+    _class: JClass,
     handle: jlong,
     _flag: jboolean,
 ) -> jstring {
@@ -299,29 +306,25 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_readBytes0(
         return env.new_byte_array(0).unwrap();
     }
     let ctx = &*(handle as *const ElfContext);
-    let offset = ctx
-        .vaddr_to_offset(address as u64)
-        .map(|o| o as usize)
-        .or_else(|| {
-            let direct = address as usize;
-            if direct < ctx.raw.len() {
-                Some(direct)
-            } else {
-                None
-            }
-        });
-
-    let offset = match offset {
-        Some(off) => off,
+    // Only resolve through the program headers. The previous code silently fell
+    // back to treating an unmapped vaddr as a raw file offset, which returns
+    // bytes from a completely different location with no error. In a reversing
+    // tool that silent-wrong-data behaviour is worse than an empty result.
+    let offset = match ctx.vaddr_to_offset(address as u64) {
+        Some(off) => off as usize,
         None => return env.new_byte_array(0).unwrap(),
     };
 
     let len = (length as usize).min(ctx.raw.len().saturating_sub(offset));
     let slice = &ctx.raw[offset..offset + len];
-    let byte_arr = env.new_byte_array(slice.len() as i32).unwrap();
+    let byte_arr = match env.new_byte_array(slice.len() as i32) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
     let signed_slice: &[i8] = std::slice::from_raw_parts(slice.as_ptr() as *const i8, slice.len());
-    env.set_byte_array_region(byte_arr, 0, signed_slice)
-        .unwrap();
+    if env.set_byte_array_region(byte_arr, 0, signed_slice).is_err() {
+        return std::ptr::null_mut();
+    }
     byte_arr
 }
 
@@ -402,7 +405,6 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_quickPatch(
             .unwrap()
             .into_inner();
     }
-    let ctx = &mut *(handle as *mut ElfContext);
     let ptype = match patch_type {
         1 => crate::patcher::QuickPatchType::Nop,
         2 => crate::patcher::QuickPatchType::ReturnTrue,
@@ -416,9 +418,12 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_quickPatch(
         }
     };
     let is_thumb = thumb == JNI_TRUE;
-    let res = crate::patcher::apply_quick_patch(ctx, address as u64, ptype, is_thumb);
-    let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"success\":false,\"error\":\"panic while patching\"}", || {
+        let ctx = &mut *(handle as *mut ElfContext);
+        let res = crate::patcher::apply_quick_patch(ctx, address as u64, ptype, is_thumb);
+        let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -435,7 +440,6 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_assemblePatch(
             .unwrap()
             .into_inner();
     }
-    let ctx = &mut *(handle as *mut ElfContext);
     let text: String = match env.get_string(text_str) {
         Ok(s) => s.into(),
         Err(_) => {
@@ -445,9 +449,12 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_assemblePatch(
                 .into_inner()
         }
     };
-    let res = crate::patcher::assemble_and_patch(ctx, address as u64, &text);
-    let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-    env.new_string(json).unwrap().into_inner()
+    guard_jstring(&env, "{\"success\":false,\"error\":\"panic while patching\"}", || {
+        let ctx = &mut *(handle as *mut ElfContext);
+        let res = crate::patcher::assemble_and_patch(ctx, address as u64, &text);
+        let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(json).unwrap().into_inner()
+    })
 }
 
 #[no_mangle]
@@ -597,7 +604,6 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_applyPluginPatch(
             .unwrap()
             .into_inner();
     }
-    let ctx = &mut *(handle as *mut ElfContext);
     let mode: String = match env.get_string(mode_str) {
         Ok(s) => s.into(),
         Err(_) => {
@@ -616,7 +622,10 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_applyPluginPatch(
                 .into_inner();
         }
     };
-    let res = crate::plugins::apply_plugin_patch(ctx, address as u64, &mode, &value);
-    let out = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-    env.new_string(out).unwrap().into_inner()
+    guard_jstring(&env, "{\"success\":false,\"error\":\"panic while applying plugin patch\"}", || {
+        let ctx = &mut *(handle as *mut ElfContext);
+        let res = crate::plugins::apply_plugin_patch(ctx, address as u64, &mode, &value);
+        let out = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(out).unwrap().into_inner()
+    })
 }

@@ -275,6 +275,11 @@ fn execute_rhai_script(
     engine.set_max_operations(200_000);
     engine.set_max_expr_depths(64, 32);
     engine.set_max_call_levels(64);
+    // Bound string/array growth too: the op budget alone still allows a script
+    // to build huge arrays/strings within few operations and DoS the native thread.
+    engine.set_max_string_size(64 * 1024);
+    engine.set_max_array_size(4_096);
+    engine.set_max_map_size(4_096);
 
     let arch_owned = arch_name.to_string();
     engine.register_fn("arch", move || -> String { arch_owned.clone() });

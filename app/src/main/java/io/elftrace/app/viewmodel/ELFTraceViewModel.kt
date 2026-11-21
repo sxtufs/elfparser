@@ -101,20 +101,37 @@ class ELFTraceViewModel : ViewModel() {
             }
             val origName = currentFileName.value.ifEmpty { "libtarget.so" }.removeSuffix(".so")
             val patchedFileName = "${origName}_patched.so"
-            try {
-                val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val outFile = File(outDir, patchedFileName)
-                FileOutputStream(outFile).use { it.write(bytes) }
-                launch(Dispatchers.Main) { onResult(outFile.absolutePath) }
+
+            // Public Downloads requires MANAGE_EXTERNAL_STORAGE (granted at
+            // runtime via Settings on API 30+). If it is not granted, writing
+            // there throws. Probe the permission first and only attempt the
+            // public dir when we actually have it; otherwise use app-specific
+            // external storage, which needs no permission.
+            val canUsePublicDownloads = android.os.Build.VERSION.SDK_INT < 30 ||
+                Environment.isExternalStorageManager()
+
+            val outFile: File? = try {
+                if (canUsePublicDownloads) {
+                    val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val f = File(outDir, patchedFileName)
+                    FileOutputStream(f).use { it.write(bytes) }
+                    f
+                } else {
+                    val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+                    val f = File(extDir, patchedFileName)
+                    FileOutputStream(f).use { it.write(bytes) }
+                    f
+                }
             } catch (_: Exception) {
                 try {
                     val fallback = File(context.cacheDir, patchedFileName)
                     FileOutputStream(fallback).use { it.write(bytes) }
-                    launch(Dispatchers.Main) { onResult(fallback.absolutePath) }
+                    fallback
                 } catch (_: Exception) {
-                    launch(Dispatchers.Main) { onResult(null) }
+                    null
                 }
             }
+            launch(Dispatchers.Main) { onResult(outFile?.absolutePath) }
         }
     }
 
@@ -169,6 +186,19 @@ class ELFTraceViewModel : ViewModel() {
 
     fun navigateTo(screen: Screen) {
         _currentScreen.value = screen
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Release the native ElfContext deterministically instead of waiting
+        // for the GC to run a (removed) finalizer. This runs on the main thread
+        // but is the only remaining reference, so no native call can be in
+        // flight on the dispatcher once the ViewModel is being cleared.
+        try {
+            _bridge.value?.close()
+        } catch (_: Throwable) {
+        }
+        _bridge.value = null
     }
 
     fun loadElf(path: String, fileName: String = "") {

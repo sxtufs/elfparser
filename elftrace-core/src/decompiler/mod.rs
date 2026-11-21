@@ -26,7 +26,13 @@ pub fn find_function_range(ctx: &ElfContext, address: u64) -> FunctionRange {
     // 1. Exact match first
     if let Some(sym) = ctx.syms_map.get(&address) {
         if !sym.sym.starts_with('$') {
-            let size = if sym.size > 0 { sym.size } else { 128 };
+            let size = if sym.size > 0 {
+                sym.size
+            } else {
+                // Size-0 symbol: scan forward for the first terminator so we
+                // don't decode past the end into the next function.
+                scan_function_extent(ctx, address, sym.thumb, 256)
+            };
             return FunctionRange {
                 name: sym.sym.clone(),
                 start: address,
@@ -52,11 +58,53 @@ pub fn find_function_range(ctx: &ElfContext, address: u64) -> FunctionRange {
         }
     }
 
+    // 3. Unknown symbol: bounded scan for a terminator instead of a blind 256B.
+    let size = scan_function_extent(ctx, address, false, 256);
     FunctionRange {
         name: format!("sub_{:08x}", address),
         start: address,
-        size: 256,
+        size,
         thumb: false,
+    }
+}
+
+/// Best-effort bounded linear scan for a function terminator (ret / bx lr /
+/// pop {pc}). Returns `fallback` bytes if no terminator is found or the
+/// address is not resolvable. Keeps size-0 / unknown symbols from decoding
+/// into the next function.
+fn scan_function_extent(ctx: &ElfContext, address: u64, thumb: bool, fallback: u64) -> u64 {
+    const MAX_SCAN: u64 = 4096;
+    let start_off = match ctx.vaddr_to_offset(address) {
+        Some(o) => o as usize,
+        None => return fallback.min(MAX_SCAN),
+    };
+    if start_off >= ctx.raw.len() {
+        return fallback.min(MAX_SCAN);
+    }
+    let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+    let slice = &ctx.raw[start_off..];
+    let limit = (MAX_SCAN as usize).min(slice.len());
+    match disassemble(slice, address, limit as u64, e_machine, thumb) {
+        Ok(code) => {
+            for ins in code.data {
+                let op = ins.mnemonic.as_str();
+                let ops = ins.op_str.as_str();
+                let is_ret = op == "ret"
+                    || op == "leave"
+                    || (op == "bx" && ops == "lr")
+                    || (op == "pop" && ops.contains("pc"))
+                    || (op == "ldr" && ops.contains("pc"))
+                    || (op == "jmp" && !ops.starts_with('r'));
+                if is_ret {
+                    let end = ins.address + ins.bytes.len() as u64;
+                    if end > address {
+                        return (end - address).max(4);
+                    }
+                }
+            }
+            fallback.min(MAX_SCAN)
+        }
+        Err(_) => fallback.min(MAX_SCAN),
     }
 }
 

@@ -79,20 +79,30 @@ pub fn scan_security(ctx: &ElfContext) -> ScanReport {
         ),
     ];
 
-    for (pat, cat, name, sev, desc) in patterns {
-        for (off, window) in raw.windows(pat.len()).enumerate() {
-            if window == pat {
-                let off_u64 = off as u64;
-                let vaddr = offset_to_vaddr(ctx, off_u64).unwrap_or(0);
-                findings.push(SecurityFinding {
-                    category: cat.to_string(),
-                    name: name.to_string(),
-                    address: vaddr,
-                    offset: off_u64,
-                    matched_value: format!("{:02X?}", &pat[..8]),
-                    severity: sev.to_string(),
-                    description: desc.to_string(),
-                });
+    // Single pass over the file: every signature here is the same fixed length
+    // (16 bytes). The old code did one full `windows()` scan per pattern (4
+    // passes over the whole binary); this does one pass and checks all patterns
+    // at each offset. For a large .so that cuts the work ~4x.
+    if !patterns.is_empty() {
+        let sig_len = patterns[0].0.len();
+        if sig_len > 0 && raw.len() >= sig_len {
+            for off in 0..=(raw.len() - sig_len) {
+                let window = &raw[off..off + sig_len];
+                for (pat, cat, name, sev, desc) in patterns.iter() {
+                    if window == *pat {
+                        let off_u64 = off as u64;
+                        let vaddr = offset_to_vaddr(ctx, off_u64).unwrap_or(0);
+                        findings.push(SecurityFinding {
+                            category: cat.to_string(),
+                            name: name.to_string(),
+                            address: vaddr,
+                            offset: off_u64,
+                            matched_value: format!("{:02X?}", &pat[..8]),
+                            severity: sev.to_string(),
+                            description: desc.to_string(),
+                        });
+                    }
+                }
             }
         }
     }

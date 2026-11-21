@@ -97,6 +97,18 @@ pub fn apply_quick_patch(
         }
     };
 
+    // Reject misaligned / non-executable targets before writing a single byte.
+    if let Err(msg) = validate_patch_target(ctx, address, offset, &patch_bytes) {
+        return PatchResult {
+            address,
+            original_bytes: vec![],
+            patched_bytes: patch_bytes,
+            patch_type: type_name.to_string(),
+            success: false,
+            error: Some(msg),
+        };
+    }
+
     let patch_len = patch_bytes.len();
     if offset + patch_len > ctx.raw.len() {
         return PatchResult {
@@ -151,6 +163,17 @@ pub fn assemble_and_patch(ctx: &mut ElfContext, address: u64, text: &str) -> Pat
         }
     };
 
+    if let Err(msg) = validate_patch_target(ctx, address, offset, &patch_bytes) {
+        return PatchResult {
+            address,
+            original_bytes: vec![],
+            patched_bytes: patch_bytes,
+            patch_type: "Assemble".to_string(),
+            success: false,
+            error: Some(msg),
+        };
+    }
+
     let patch_len = patch_bytes.len();
     if offset + patch_len > ctx.raw.len() {
         return PatchResult {
@@ -174,6 +197,44 @@ pub fn assemble_and_patch(ctx: &mut ElfContext, address: u64, text: &str) -> Pat
         success: true,
         error: None,
     }
+}
+
+/// Reject writes that would misalign ARM instructions or land outside an
+/// executable segment. A misaligned 4-byte write silently corrupts the
+/// instruction stream, so we fail fast with a clear error instead.
+fn validate_patch_target(
+    ctx: &ElfContext,
+    vaddr: u64,
+    file_offset: usize,
+    patch_bytes: &[u8],
+) -> Result<(), String> {
+    let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+    let align = match e_machine {
+        183 => 4usize, // AArch64: fixed 32-bit instructions
+        40 => 2,       // ARM/Thumb: 2-byte minimum
+        62 | 3 => 1,   // x86/x64: byte-addressable
+        _ => 1,
+    };
+    if align > 1 && file_offset % align != 0 {
+        return Err(format!(
+            "Misaligned patch: address 0x{:08x} (file offset 0x{:x}) is not {}-byte aligned",
+            vaddr, file_offset, align
+        ));
+    }
+    if !ctx.is_executable_address(vaddr) {
+        return Err(format!(
+            "Target 0x{:08x} is not in an executable segment",
+            vaddr
+        ));
+    }
+    if align > 1 && patch_bytes.len() % align != 0 {
+        return Err(format!(
+            "Patch length {} is not a multiple of {} (would split an instruction)",
+            patch_bytes.len(),
+            align
+        ));
+    }
+    Ok(())
 }
 
 pub fn assemble_instruction(text: &str, address: u64) -> Result<Vec<u8>, String> {

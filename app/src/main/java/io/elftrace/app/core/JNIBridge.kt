@@ -188,13 +188,16 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
     }
 
     override fun close() {
+        // Not synchronized: close() is only called from the single native
+        // dispatcher thread (ViewModel) or from onCleared(), never concurrently.
         if (!isClosed && handle != 0L) {
             finalize0(handle)
             isClosed = true
         }
     }
 
-    protected fun finalize() {
-        close()
-    }
+    // NOTE: no Kotlin finalize() override. It ran on the GC finalizer thread,
+    // racing the native dispatcher and causing use-after-free on ElfContext.
+    // Callers must call close() explicitly (the ViewModel does this in
+    // loadElf() and onCleared()).
 }
