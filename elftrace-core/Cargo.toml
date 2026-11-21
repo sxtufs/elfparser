@@ -22,8 +22,10 @@ rhai = "1.19"
 # Keeps .dynsym (exported JNI symbols) — required for Android JNI loading.
 strip = "symbols"
 
-# Thin LTO: cross-crate inlining. Fast compile, most of the size/optimization benefit.
-lto = "thin"
+# Fat LTO: full cross-crate inlining + dead-code elimination. Slower to link
+# (build-time only) but yields smaller code AND better i-cache behaviour, so
+# runtime is speed-neutral-to-faster. Strictly a win for a CPU-bound tool.
+lto = "fat"
 
 # Single codegen unit: better optimization, slower compile. CI has time.
 codegen-units = 1
