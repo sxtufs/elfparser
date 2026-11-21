@@ -14,6 +14,10 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
+        // Ship only the default locale's resources. AndroidX/Compose bundle
+        // many translations the app never uses; this strips them.
+        resourceConfigurations += listOf("en")
+
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
         }
