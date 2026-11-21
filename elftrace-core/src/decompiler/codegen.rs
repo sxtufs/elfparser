@@ -540,10 +540,15 @@ impl<'a> CodeGenerator<'a> {
                         // -Werror=nonnull (e.g. `memcpy((void*)0, (void*)0, 0)`),
                         // so we fall back to a generic function-pointer cast that
                         // has no libc prototype constraints.
-                        let is_libc_mem = name
+                        let is_libc_name = name
                             .as_deref()
-                            .map(|n| is_libc_memory_fn(n) && args.len() == libc_arg_count(n))
+                            .map(is_libc_memory_fn)
                             .unwrap_or(false);
+                        let is_libc_mem = is_libc_name
+                            && name
+                                .as_deref()
+                                .map(|n| args.len() == libc_arg_count(n))
+                                .unwrap_or(false);
                         // pthread_* family: canonical prototypes take pointer types
                         // (pthread_t*, const pthread_attr_t*, void*(*)(void*), void*)
                         // that don't match `(uint64_t)(uintptr_t)` wraps. Emit a
@@ -581,9 +586,15 @@ impl<'a> CodeGenerator<'a> {
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
+                        // Incomplete-arity libc calls must NOT be emitted as a
+                        // bare `memcpy(...)`: the real prototype (nonnull, fixed
+                        // arity) would reject it under -Werror. Route them through
+                        // a function-pointer cast instead, which carries no libc
+                        // prototype constraints.
+                        let is_libc_cast = is_libc_name && !is_libc_mem; // partial -> cast
                         let call_expr = if is_libc_mem {
                             format!("((int64_t)(uintptr_t){}({}))", call_name, formatted_args)
-                        } else if is_pthread {
+                        } else if is_pthread || is_libc_cast {
                             format!(
                                 "((int64_t(*)({})){})({})",
                                 proto_args, call_name, formatted_args
