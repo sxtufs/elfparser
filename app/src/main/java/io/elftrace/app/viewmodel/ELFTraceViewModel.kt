@@ -1011,6 +1011,66 @@ class ELFTraceViewModel : ViewModel() {
               "description": "Rhai script that traces callers of ptrace/kill/exit and suggests NOP patches.",
               "script": "let targets = [\"ptrace\", \"prctl\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
             }
+            """.trimIndent(),
+            """
+            {
+              "id": "builtin-play-integrity",
+              "name": "Play Integrity / Pairip (native markers)",
+              "version": "1.0",
+              "author": "ELFTrace",
+              "description": "Detects native-side Play Integrity markers in this .so. Separates Google Automatic Integrity Protection (Pairip) from the developer Play Integrity API. NOTE: Standard-vs-Classic request style (nonce vs requestHash) is a runtime/DEX distinction and cannot be proven from the native ELF alone.",
+              "rules": [
+                {
+                  "name": "AIP / Pairip native marker",
+                  "type": "string",
+                  "pattern": "pairip",
+                  "severity": "HIGH",
+                  "description": "Google Automatic Integrity Protection (Pairip) — NOT the Play Integrity API. Distinct from com.google.android.play.core.integrity."
+                },
+                {
+                  "name": "AIP Pairip core lib path",
+                  "type": "string",
+                  "pattern": "libpairipcore",
+                  "severity": "HIGH",
+                  "description": "Reference to the Pairip integrity core library (Automatic Integrity Protection)."
+                },
+                {
+                  "name": "Play Integrity API namespace",
+                  "type": "string",
+                  "pattern": "com/google/android/play/core/integrity",
+                  "severity": "MEDIUM",
+                  "description": "Play Integrity API library namespace present in the native blob (embedded DEX/path reference)."
+                },
+                {
+                  "name": "Play Integrity Classic hint (nonce)",
+                  "type": "string",
+                  "pattern": "setNonce",
+                  "severity": "INFO",
+                  "description": "Classic request hint: setNonce() reference. Static hint only — obfuscation can hide it."
+                },
+                {
+                  "name": "Play Integrity Standard hint (requestHash)",
+                  "type": "string",
+                  "pattern": "requestHash",
+                  "severity": "INFO",
+                  "description": "Standard request hint: requestHash reference. Static hint only — obfuscation can hide it."
+                },
+                {
+                  "name": "StandardIntegrityManager",
+                  "type": "string",
+                  "pattern": "StandardIntegrityManager",
+                  "severity": "INFO",
+                  "description": "Standard request path class reference (likely Standard). Static hint only."
+                },
+                {
+                  "name": "IntegrityManager (classic)",
+                  "type": "string",
+                  "pattern": "requestIntegrityToken",
+                  "severity": "INFO",
+                  "description": "Classic request path method reference (likely Classic). Static hint only."
+                }
+              ]
+            }
             """.trimIndent()
         )
         return builtInJsons.mapNotNull { raw ->
