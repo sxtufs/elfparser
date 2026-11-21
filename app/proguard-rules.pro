@@ -10,14 +10,20 @@
 }
 
 # 2. JSON Data Models Protection (Gson Deserialization)
-# Field names must match JSON keys from the native Rust engine exactly, so we
-# keep field names but allow R8 to obfuscate/merge the model CLASS names.
-# `allowobfuscation` lets R8 rename the classes while `-keepclassmembers`
-# preserves the field names Gson looks up reflectively.
--keepclassmembers,allowobfuscation class io.elftrace.app.core.models.** { <fields>; }
-# If Gson deserialization breaks on device (null/empty fields), fall back to
-# the broad keep below:
-#   -keep class io.elftrace.app.core.models.** { *; }
+# Gson maps JSON keys -> field names by reflection, so field names and the
+# no-arg constructor MUST be preserved. The class NAMES may be obfuscated:
+# every model is referenced via `SomeClass::class.java` (a compile-time
+# reference), so R8 renames the class and its references together.
+#
+# NOTE: deliberately NOT using `allowobfuscation` here. That variant lets R8
+# merge/remove model classes, which previously produced default-valued fields
+# (Gson resolved a merged/inlined type). Keeping members without the
+# allowobfuscation flag preserves class identity while still renaming it.
+-keepclassmembers class io.elftrace.app.core.models.** {
+    <fields>;
+    <init>(...);
+}
+-keepattributes *Annotation*
 
 # 3. Gson Configuration
 -keepattributes Signature
