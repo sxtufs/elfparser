@@ -586,48 +586,68 @@ impl<'a> CodeGenerator<'a> {
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        // Incomplete-arity libc calls must NOT be emitted as a
-                        // bare `memcpy(...)`: the real prototype (nonnull, fixed
-                        // arity) would reject it under -Werror. Route them through
-                        // a function-pointer cast instead, which carries no libc
-                        // prototype constraints.
-                        let is_libc_cast = is_libc_name && !is_libc_mem; // partial -> cast
-                        let call_expr = if is_libc_mem {
-                            format!("((int64_t)(uintptr_t){}({}))", call_name, formatted_args)
-                        } else if is_libc_cast {
-                            // Launder the function pointer through `uintptr_t` so
-                            // the compiler does not see a cast between incompatible
-                            // function types (or a call through the real `memcpy`
-                            // prototype). Both -Wcast-function-type and the
-                            // incompatible-type call warning are silenced while the
-                            // emitted C stays valid.
-                            format!(
-                                "((int64_t(*)({}))(uintptr_t){})({})",
-                                proto_args, call_name, formatted_args
-                            )
-                        } else if is_pthread {
-                            format!(
-                                "((int64_t(*)({})){})({})",
-                                proto_args, call_name, formatted_args
-                            )
+                        // A libc memory/string call whose argument registers were
+                        // not fully recovered cannot be emitted as real C: the
+                        // canonical prototype rejects the wrong arity, and NO cast
+                        // trick silences gcc's "called through a non-compatible
+                        // type" check once the real symbol is involved. Since this
+                        // output is never executed (the self-compile gate only
+                        // requires it to compile), emit a comment naming the
+                        // under-specified call — the same convention used above for
+                        // branches to unmapped addresses.
+                        let is_libc_cast = is_libc_name && !is_libc_mem; // partial arity
+                        if is_libc_cast {
+                            // Assign the destination (if any) to 0 so the local is
+                            // never left possibly-uninitialized, then record the
+                            // under-specified call as a comment.
+                            if let Some(dst) = ret_dst {
+                                out.push_str(&format!(
+                                    "    {} = 0; // call to {}() omitted: only {} of {} args recovered\n",
+                                    self.format_expr(
+                                        dst,
+                                        &param_reg_map,
+                                        func.base_stack_offset,
+                                        func.inferred_params.len()
+                                    ),
+                                    call_name,
+                                    args.len(),
+                                    libc_arg_count(call_name)
+                                ));
+                            } else {
+                                out.push_str(&format!(
+                                    "    // call to {}() omitted: only {} of {} args recovered\n",
+                                    call_name,
+                                    args.len(),
+                                    libc_arg_count(call_name)
+                                ));
+                            }
                         } else {
-                            format!("{}({})", call_name, formatted_args)
-                        };
-                        if let Some(dst) = ret_dst {
-                            out.push_str(&format!(
-                                "    {} = {};\n",
-                                self.format_expr(
-                                    dst,
-                                    &param_reg_map,
-                                    func.base_stack_offset,
-                                    func.inferred_params.len()
-                                ),
-                                call_expr
-                            ));
-                        } else if is_libc_mem {
-                            out.push_str(&format!("    {}({});\n", call_name, formatted_args));
-                        } else {
-                            out.push_str(&format!("    {};\n", call_expr));
+                            let call_expr = if is_libc_mem {
+                                format!("((int64_t)(uintptr_t){}({}))", call_name, formatted_args)
+                            } else if is_pthread {
+                                format!(
+                                    "((int64_t(*)({})){})({})",
+                                    proto_args, call_name, formatted_args
+                                )
+                            } else {
+                                format!("{}({})", call_name, formatted_args)
+                            };
+                            if let Some(dst) = ret_dst {
+                                out.push_str(&format!(
+                                    "    {} = {};\n",
+                                    self.format_expr(
+                                        dst,
+                                        &param_reg_map,
+                                        func.base_stack_offset,
+                                        func.inferred_params.len()
+                                    ),
+                                    call_expr
+                                ));
+                            } else if is_libc_mem {
+                                out.push_str(&format!("    {}({});\n", call_name, formatted_args));
+                            } else {
+                                out.push_str(&format!("    {};\n", call_expr));
+                            }
                         }
                     }
                     IrStmt::Branch { cond, target } => {
