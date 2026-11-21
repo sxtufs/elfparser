@@ -10,13 +10,14 @@
 }
 
 # 2. JSON Data Models Protection (Gson Deserialization)
-# Field names must match JSON keys from native Rust engine exactly.
-# `-keep class ... { *; }` already covers fields+methods, so the separate
-# -keepclassmembers block was redundant and has been removed.
--keep class io.elftrace.app.core.models.** { *; }
-# NARROWER ALTERNATIVE (test on device before enabling): lets R8 obfuscate /
-# merge the model classes while still preserving field names for Gson:
-#   -keepclassmembers,allowobfuscation class io.elftrace.app.core.models.** { <fields>; }
+# Field names must match JSON keys from the native Rust engine exactly, so we
+# keep field names but allow R8 to obfuscate/merge the model CLASS names.
+# `allowobfuscation` lets R8 rename the classes while `-keepclassmembers`
+# preserves the field names Gson looks up reflectively.
+-keepclassmembers,allowobfuscation class io.elftrace.app.core.models.** { <fields>; }
+# If Gson deserialization breaks on device (null/empty fields), fall back to
+# the broad keep below:
+#   -keep class io.elftrace.app.core.models.** { *; }
 
 # 3. Gson Configuration
 -keepattributes Signature
