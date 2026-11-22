@@ -384,9 +384,11 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
 
     private val gson = com.google.gson.Gson()
 
-    // Must be declared before _plugins: defaultBuiltInPlugins() (the _plugins
-    // initializer) writes into this flow on load failure, and Kotlin initializes
-    // properties top-to-bottom. Declaring it after _plugins caused an NPE.
+    // Both must be declared before _plugins: defaultBuiltInPlugins() (the
+    // _plugins initializer) writes to the accumulator and publishes into the
+    // flow on load failure. Kotlin initializes properties top-to-bottom;
+    // declaring the flow after _plugins caused an NPE.
+    private val builtInLoadErrorsAccumulator = mutableListOf<String>()
     private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(emptyList())
     val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
 
