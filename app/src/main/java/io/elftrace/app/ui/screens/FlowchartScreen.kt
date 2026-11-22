@@ -298,10 +298,12 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
         val node = layouts[blockId] ?: return
         if (viewportSize.width == 0 || viewportSize.height == 0) return
         val cx = node.x + node.width / 2f
-        val cy = node.y + node.height / 2f
         pan = Offset(
+            // Center horizontally on the node.
             x = viewportSize.width / 2f - cx * scale,
-            y = viewportSize.height / 3f - cy * scale
+            // Anchor the node's top edge near the viewport top (small margin)
+            // instead of centering at 1/3 height, which left a large empty gap.
+            y = 16f - node.y * scale
         )
         selectedBlockId = blockId
     }
