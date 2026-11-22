@@ -388,11 +388,15 @@ class ELFTraceViewModel : ViewModel() {
     // a malformed built-in JSON was silently dropped by mapNotNull{ try/catch }.
     private val builtInLoadErrorsAccumulator = mutableListOf<String>()
 
+    // Declared BEFORE _plugins: defaultBuiltInPlugins() (the _plugins initializer)
+    // writes into this flow on load failure, so it must already be constructed.
+    // Kotlin initializes properties top-to-bottom; referencing it below _plugins
+    // caused a NullPointerException at ViewModel construction.
+    private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(emptyList())
+    val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
+
     private val _plugins = MutableStateFlow<List<LoadedPlugin>>(defaultBuiltInPlugins())
     val plugins: StateFlow<List<LoadedPlugin>> = _plugins.asStateFlow()
-
-    private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(builtInLoadErrorsAccumulator.toList())
-    val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
 
     private val _isRunningPlugins = MutableStateFlow(false)
     val isRunningPlugins: StateFlow<Boolean> = _isRunningPlugins.asStateFlow()
