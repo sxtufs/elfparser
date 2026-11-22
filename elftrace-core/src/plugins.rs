@@ -844,3 +844,94 @@ fn find_enclosing_symbol(ctx: &ElfContext, vaddr: u64) -> Option<String> {
     // Previously this was an O(n) linear scan per finding.
     ctx.enclosing_symbol(vaddr)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contains_is_case_insensitive_by_default() {
+        assert!(rule_matches("Friday", "frida", false, "contains"));
+        assert!(rule_matches("FRIDA", "frida", false, "contains"));
+    }
+
+    #[test]
+    fn friday_not_matched_when_case_sensitive() {
+        // Regression: the Frida rule must not flag the word "Friday".
+        assert!(!rule_matches("Friday", "frida", true, "contains"));
+        // Real frida artifacts are lowercase and must still match.
+        assert!(rule_matches("frida", "frida", true, "contains"));
+        assert!(rule_matches("/data/local/tmp/frida-server", "frida", true, "contains"));
+    }
+
+    #[test]
+    fn word_boundary_rejects_embedded_substring() {
+        // "connect" must not match "disconnect" / "reconnect" / "connectivity".
+        assert!(!rule_matches("disconnect", "connect", true, "word_boundary"));
+        assert!(!rule_matches("reconnect", "connect", true, "word_boundary"));
+        assert!(!rule_matches("connectivity", "connect", true, "word_boundary"));
+        // Standalone symbol/string must match.
+        assert!(rule_matches("connect", "connect", true, "word_boundary"));
+        assert!(rule_matches("posix_connect", "connect", true, "word_boundary"));
+        assert!(rule_matches("connect()", "connect", true, "word_boundary"));
+    }
+
+    #[test]
+    fn word_boundary_handles_edges() {
+        assert!(word_boundary_contains("connect", "connect"));
+        assert!(word_boundary_contains(" connect ", "connect"));
+        assert!(word_boundary_contains("a.connect.b", "connect"));
+        assert!(!word_boundary_contains("xconnect", "connect"));
+        assert!(!word_boundary_contains("connectx", "connect"));
+        assert!(!word_boundary_contains("", "connect"));
+        assert!(!word_boundary_contains("abc", ""));
+    }
+
+    #[test]
+    fn word_boundary_is_case_aware_after_lowering() {
+        // Default (case-insensitive) word_boundary: "Connect" matches "connect".
+        assert!(rule_matches("Connect", "connect", false, "word_boundary"));
+        // Case-sensitive: "Connect" must not match lowercase needle.
+        assert!(!rule_matches("Connect", "connect", true, "word_boundary"));
+    }
+
+    #[test]
+    fn exact_mode() {
+        assert!(rule_matches("frida", "frida", true, "exact"));
+        assert!(!rule_matches("frida-server", "frida", true, "exact"));
+        assert!(rule_matches("FRIDA", "frida", false, "exact"));
+    }
+
+    #[test]
+    fn empty_needle_never_matches() {
+        assert!(!rule_matches("anything", "", false, "contains"));
+        assert!(!rule_matches("anything", "", false, "exact"));
+        assert!(!rule_matches("anything", "", false, "word_boundary"));
+    }
+
+    #[test]
+    fn parse_ida_pattern_roundtrip() {
+        let p = parse_ida_pattern("01 00 ?? D4").unwrap();
+        assert_eq!(p.len(), 4);
+        assert_eq!(p[0], Some(0x01));
+        assert_eq!(p[2], None);
+        assert!(parse_ida_pattern("zz").is_err());
+    }
+
+    #[test]
+    fn plugin_rule_deserializes_match_options() {
+        // Ensures the JSON schema accepts case_sensitive + match_mode and that
+        // defaults apply when omitted (backward compatibility).
+        let with_opts: PluginRule = serde_json::from_str(
+            r#"{"name":"r","type":"string","pattern":"connect","case_sensitive":true,"match_mode":"word_boundary"}"#,
+        )
+        .unwrap();
+        assert!(with_opts.case_sensitive);
+        assert_eq!(with_opts.match_mode, "word_boundary");
+
+        let defaults: PluginRule =
+            serde_json::from_str(r#"{"name":"r","type":"string","pattern":"frida"}"#).unwrap();
+        assert!(!defaults.case_sensitive);
+        assert_eq!(defaults.match_mode, "contains");
+    }
+}
