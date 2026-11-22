@@ -50,7 +50,7 @@ impl InstructionLifter for X86_32Lifter {
             || mnem == "ret"
             || mnem == "leave";
 
-        // 1. Prologue / Epilogue / Frame Filter
+        // Prologue / epilogue / frame handling
         if !self.prologue_done {
             if mnem == "push"
                 && (ops.contains("ebp")

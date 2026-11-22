@@ -674,7 +674,7 @@ private fun HexRowLayout(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // 1. Address / OFFSET Column
+        // Address / offset column.
         Box(
             modifier = Modifier.weight(0.24f),
             contentAlignment = Alignment.CenterStart
@@ -682,7 +682,7 @@ private fun HexRowLayout(
             addressContent()
         }
 
-        // 2. HEX Column
+        // Hex column.
         Box(
             modifier = Modifier.weight(0.52f),
             contentAlignment = Alignment.Center
@@ -690,7 +690,7 @@ private fun HexRowLayout(
             hexContent()
         }
 
-        // 3. ASCII Column
+        // ASCII column.
         Box(
             modifier = Modifier.weight(0.24f),
             contentAlignment = Alignment.CenterEnd

@@ -58,7 +58,7 @@ impl InstructionLifter for Arm64Lifter {
             || mnem.starts_with("tb")
             || mnem == "ret";
 
-        // 1. Prologue / Epilogue / Frame Filter (Scoped to prologue region only)
+        // Prologue / epilogue / frame handling (prologue region only)
         if !self.prologue_done {
             if (mnem == "sub" || mnem == "add") && ops.starts_with("sp, sp") {
                 return Vec::new();

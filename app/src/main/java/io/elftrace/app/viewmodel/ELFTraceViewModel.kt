@@ -30,10 +30,9 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     // our own reference for asset loading.
     private val appContext: Application = app
 
-    /// Single-threaded dispatcher for ALL native (JNI) calls. The native
-    /// `ElfContext` — and especially the Unicorn engine inside it — is not
-    /// thread-safe. Running every native call on exactly one thread eliminates
-    /// data races, concurrent `&`/`&mut` aliasing, and the segfaults they cause.
+    /// Single-threaded dispatcher for all native (JNI) calls. `ElfContext` and
+    /// its Unicorn engine are not thread-safe; one thread avoids data races and
+    /// concurrent `&`/`&mut` aliasing.
     private val nativeDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     private val _bridge = MutableStateFlow<JNIBridge?>(null)
@@ -383,21 +382,11 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ==========================================
-    // Plugins (JSON Signature & Patch Recipes)
-    // ==========================================
-
     private val gson = com.google.gson.Gson()
 
-    // Accumulates built-in plugin load failures. Declared BEFORE _plugins so it
-    // is initialized first (defaultBuiltInPlugins() writes into it). Previously
-    // a malformed built-in JSON was silently dropped by mapNotNull{ try/catch }.
-    private val builtInLoadErrorsAccumulator = mutableListOf<String>()
-
-    // Declared BEFORE _plugins: defaultBuiltInPlugins() (the _plugins initializer)
-    // writes into this flow on load failure, so it must already be constructed.
-    // Kotlin initializes properties top-to-bottom; referencing it below _plugins
-    // caused a NullPointerException at ViewModel construction.
+    // Must be declared before _plugins: defaultBuiltInPlugins() (the _plugins
+    // initializer) writes into this flow on load failure, and Kotlin initializes
+    // properties top-to-bottom. Declaring it after _plugins caused an NPE.
     private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(emptyList())
     val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
 

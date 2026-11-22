@@ -1,15 +1,13 @@
-# ==============================================================================
-# ELFTrace ProGuard & R8 Optimization Rules
-# ==============================================================================
+# ELFTrace ProGuard & R8 rules.
 
-# 1. Native JNI Bridge Protection
-# JNI method names in libelftrace.so map to exact Java class and method names
+# Native JNI bridge: JNI method names in libelftrace.so map to exact Java class
+# and method names, so they must not be renamed.
 -keep class io.elftrace.app.core.JNIBridge { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
-# 2. JSON Data Models Protection (Gson Deserialization)
+# JSON data models (Gson deserialization).
 # Gson maps JSON keys -> field names by reflection, so field names and the
 # no-arg constructor MUST be preserved. The class NAMES may be obfuscated:
 # every model is referenced via `SomeClass::class.java` (a compile-time
@@ -25,9 +23,8 @@
 }
 -keepattributes *Annotation*
 
-# 3. Gson Configuration
+# Gson configuration.
 -keepattributes Signature
--keepattributes *Annotation*
 # `EnclosingMethod` is only needed for reflection that inspects enclosing
 # methods; not used here. Dropped to shrink the attribute table.
 # -keepattributes EnclosingMethod
@@ -37,20 +34,21 @@
 #   -keep class com.google.gson.** { *; }
 -dontwarn com.google.gson.**
 
-# 4. ViewModels
+# ViewModels.
 # The `by viewModels()` delegate resolves the type at compile time, so the
 # class name does not need to be preserved. The no-arg constructor is already
-# kept by rule 5. The blanket keep below is therefore usually unnecessary —
+# kept by the ViewModel keepclassmembers rule below. The blanket keep is
+# therefore usually unnecessary —
 # ENABLE THIS ONLY IF a device test shows ViewModel instantiation failing:
 #   -keep class io.elftrace.app.viewmodel.** { *; }
 
-# 5. Jetpack Compose & Kotlin Coroutines
+# Jetpack Compose & Kotlin coroutines.
 -dontwarn kotlinx.coroutines.**
 -keepclassmembers class * extends androidx.lifecycle.ViewModel {
     <init>(...);
 }
 
-# 6. Optimization and Obfuscation
+# Optimization and obfuscation.
 -repackageclasses 'io.elftrace.app.internal'
 -allowaccessmodification
 -dontusemixedcaseclassnames

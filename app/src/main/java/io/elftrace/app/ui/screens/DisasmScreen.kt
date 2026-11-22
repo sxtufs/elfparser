@@ -261,7 +261,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         )
                     }
 
-                    // 1. Jump to Target (Restyled to match Find Cross-References)
+                    // Jump to branch target
                     if (branchTarget != null) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
@@ -294,7 +294,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     )
                     Spacer(Modifier.height(6.dp))
 
-                    // 2. Quick Patch Buttons (Pill shape, same unified text color across all 4)
+                    // Quick patch buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -377,7 +377,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // 3. Find Cross-References Pill Button
+                    // Find cross-references
                     OutlinedButton(
                         onClick = {
                             val target = branchTarget ?: ins.address
@@ -405,7 +405,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 4. Utility Action Grid (2x2 - eliminates text truncation)
+                    // Utility actions (2x2 grid avoids label truncation)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -490,7 +490,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // 1. Go to Address Dialog
+        // Go-to-address dialog
         if (showGotoDialog) {
             AlertDialog(onDismissRequest = { showGotoDialog = false }) {
                 Surface(
@@ -548,7 +548,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // 2. XREFs Dialog
+        // Cross-reference dialog
         if (showXrefDialog) {
             val count = xrefsList.size
             val countText = when (count) {
@@ -765,7 +765,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // 3. Frida Hook Script Dialog (Eliminates excessive top & bottom gaps)
+        // Frida hook script dialog
         if (showFridaDialog) {
             AlertDialog(onDismissRequest = { showFridaDialog = false }) {
                 Surface(
@@ -822,7 +822,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // 4. Rename Function Dialog
+        // Rename function dialog
         if (showRenameDialog) {
             AlertDialog(onDismissRequest = { showRenameDialog = false }) {
                 Surface(
@@ -880,7 +880,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // 5. Assemble / Edit Instruction Dialog
+        // Assemble / edit instruction dialog
         if (showAssembleDialog) {
             AlertDialog(onDismissRequest = { showAssembleDialog = false }) {
                 Surface(

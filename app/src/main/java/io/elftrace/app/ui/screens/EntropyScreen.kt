@@ -167,7 +167,6 @@ private fun SectionEntropyCard(sec: SectionEntropy, colors: ELFTraceColors, onCl
 
             Spacer(Modifier.height(6.dp))
 
-            // Linear Entropy Bar
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier

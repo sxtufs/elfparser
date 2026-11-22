@@ -169,7 +169,6 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()

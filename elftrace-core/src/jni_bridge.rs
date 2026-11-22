@@ -10,9 +10,7 @@ pub unsafe extern "C" fn JNI_OnLoad(_vm: JavaVM, _reserved: *mut std::ffi::c_voi
     JNI_VERSION_1_6
 }
 
-// ==========================================
-// Panic Guard
-// ==========================================
+// Panic guard.
 //
 // The ELF parser and disassembler contain `unwrap()`s on bounds that are
 // normally checked, but a malformed or adversarial ELF can still reach a panic.
@@ -37,9 +35,7 @@ where
     }
 }
 
-// ==========================================
-// Native Handlers
-// ==========================================
+// Native handlers.
 
 unsafe fn handle_init(env: &JNIEnv, path_str: JString) -> jlong {
     let path: String = match env.get_string(path_str) {
@@ -228,9 +224,7 @@ unsafe fn handle_finalize(handle: jlong) {
     }
 }
 
-// ==========================================
-// JNI Exports for Modern Package: com.diself.app
-// ==========================================
+// JNI exports for io.elftrace.app.core.JNIBridge.
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_init0(

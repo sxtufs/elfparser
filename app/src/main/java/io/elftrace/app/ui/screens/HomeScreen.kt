@@ -201,7 +201,6 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        // Open File Card
         Card(
             colors = CardDefaults.cardColors(containerColor = colors.card),
             shape = RoundedCornerShape(12.dp),
@@ -261,7 +260,6 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
         if (elfInfo != null) {
             val info = elfInfo!!
 
-            // Metadata summary card
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 shape = RoundedCornerShape(12.dp),

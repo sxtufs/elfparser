@@ -60,7 +60,6 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = colors.bg,
                     bottomBar = {
-                        // Floating Rounded-Card Bottom Navigation Bar
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -144,7 +143,6 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Code -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    // Standardized Floating Rounded-Card Top Navigation Bar
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = codeTab,
                                         tabs = listOf("Disasm", "Decompile", "Flowchart", "Hex"),
@@ -162,7 +160,6 @@ class MainActivity : ComponentActivity() {
 
                             Screen.Analysis -> {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    // Standardized Floating Rounded-Card Top Navigation Bar
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = analysisTab.coerceIn(0, 1),
                                         tabs = listOf("Strings", "Entropy"),

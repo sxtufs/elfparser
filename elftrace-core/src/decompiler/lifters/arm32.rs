@@ -83,7 +83,7 @@ impl InstructionLifter for Arm32Lifter {
             || mnem == "ret"
             || mnem == "leave";
 
-        // 1. Prologue / Epilogue / Frame Filter
+        // Prologue / epilogue / frame handling
         if !self.prologue_done {
             if (mnem == "sub" || mnem == "add") && ops.starts_with("sp, sp") {
                 return Vec::new();

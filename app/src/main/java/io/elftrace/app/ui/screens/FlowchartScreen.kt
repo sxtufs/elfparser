@@ -319,7 +319,6 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -535,7 +534,6 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                                 .clickable { selectedBlockId = if (isSelected) null else id }
                         ) {
                             Column {
-                                // Block Header
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -561,7 +559,6 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
                                     )
                                 }
 
-                                // Instructions
                                 Column(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)
