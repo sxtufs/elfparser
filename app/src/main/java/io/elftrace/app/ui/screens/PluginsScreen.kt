@@ -321,20 +321,12 @@ private fun PluginCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = plugin.manifest.name,
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "v${plugin.manifest.version}",
-                            color = colors.textSecondary,
-                            fontSize = 11.sp
-                        )
-                    }
+                    Text(
+                        text = plugin.manifest.name,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
                     if (plugin.manifest.description.isNotEmpty()) {
                         Text(
                             text = plugin.manifest.description,

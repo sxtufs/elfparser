@@ -249,10 +249,9 @@ pub fn generate_flowchart_text(ctx: &ElfContext, address: u64) -> String {
 
     if !ctx.is_executable_address(fn_range.start) {
         return format!(
-            "// CONTROL FLOW GRAPH NOT AVAILABLE FOR DATA SYMBOL\n\
-             // Symbol '{}' is stored in non-executable section ({}).\n\
-             // It is a read-only data structure / string, not machine code.\n\
-             // View its definition in the [Decompile] or [Hex] tab.\n",
+            "// Control Flow Graph unavailable: '{}' is data, not code.\n\
+             // It lives in the non-executable section ({}).\n\
+             // Open the [Decompile] or [Hex] tab to inspect it.\n",
             fn_range.name,
             ctx.get_section_name_for_vaddr(fn_range.start)
                 .unwrap_or_else(|| "data".to_string())
