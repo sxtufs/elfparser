@@ -17,8 +17,9 @@
       "type": "string",
       "pattern": "frida",
       "case_sensitive": true,
+      "match_mode": "word_boundary",
       "severity": "HIGH",
-      "description": "Frida detection string (case-sensitive to avoid matching 'Friday')"
+      "description": "Frida detection string (case-sensitive, word-boundary to avoid 'friday' and embedded substrings)"
     },
     {
       "name": "Frida Agent Artifact",

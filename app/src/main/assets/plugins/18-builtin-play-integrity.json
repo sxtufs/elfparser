@@ -6,11 +6,11 @@
   "description": "Detects Google Play Integrity API and Pairip (AIP) native markers. Pairip indicates native VM code protection; the API alone only attests app/environment integrity.",
   "rules": [
     {
-      "name": "AIP / Pairip native marker",
+      "name": "AIP / Pairip core library",
       "type": "string",
-      "pattern": "pairip",
+      "pattern": "libpairipcore",
       "severity": "HIGH",
-      "description": "Google Automatic Integrity Protection (Pairip) native VM / core library (libpairipcore.so). NOT the developer Play Integrity API (com.google.android.play.core.integrity)."
+      "description": "Google Automatic Integrity Protection (Pairip) native VM / core library. NOT the developer Play Integrity API (com.google.android.play.core.integrity)."
     },
     {
       "name": "Play Integrity API namespace",
