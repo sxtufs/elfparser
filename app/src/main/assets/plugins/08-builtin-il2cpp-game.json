@@ -1,0 +1,58 @@
+{
+  "id": "builtin-il2cpp-game",
+  "name": "Unity Il2Cpp & Game Engine",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Detects Unity Il2Cpp runtime exports and Unreal Engine (UE4/UE5) symbols.",
+  "rules": [
+    {
+      "name": "il2cpp_init",
+      "type": "symbol",
+      "pattern": "il2cpp_init",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp runtime initialization"
+    },
+    {
+      "name": "il2cpp_runtime_invoke",
+      "type": "symbol",
+      "pattern": "il2cpp_runtime_invoke",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp managed method invoker"
+    },
+    {
+      "name": "il2cpp_string_new",
+      "type": "symbol",
+      "pattern": "il2cpp_string_new",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp string allocator"
+    },
+    {
+      "name": "il2cpp_domain_get",
+      "type": "symbol",
+      "pattern": "il2cpp_domain_get",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp domain access (common modding hook)"
+    },
+    {
+      "name": "il2cpp_class_from_name",
+      "type": "symbol",
+      "pattern": "il2cpp_class_from_name",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp class resolution by name (modding hook)"
+    },
+    {
+      "name": "il2cpp_resolve_icall",
+      "type": "symbol",
+      "pattern": "il2cpp_resolve_icall",
+      "severity": "INFO",
+      "description": "Unity Il2Cpp internal-call resolution path"
+    },
+    {
+      "name": "Unreal GWorld / GUObjectArray",
+      "type": "string",
+      "pattern": "GUObjectArray",
+      "severity": "INFO",
+      "description": "Unreal Engine global object array indicator"
+    }
+  ]
+}

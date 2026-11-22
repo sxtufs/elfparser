@@ -1,0 +1,8 @@
+{
+  "id": "builtin-rhai-jni-table",
+  "name": "Rhai: JNI Method Table",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Scans .data/.data.rel.ro for hidden RegisterNatives (name, sig, fnPtr) triplets.",
+  "script": "let methods = find_jni_methods();\nfor m in methods {\n  report(\"JNI: \" + m.name, m.address, \"HIGH\", m.signature);\n}"
+}

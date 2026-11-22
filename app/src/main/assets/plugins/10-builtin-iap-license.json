@@ -1,0 +1,41 @@
+{
+  "id": "builtin-iap-license",
+  "name": "License, IAP & Premium Checks",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Locates common entitlement, subscription, and license verification symbols.",
+  "rules": [
+    {
+      "name": "isPremium / isPro",
+      "type": "symbol",
+      "pattern": "isPremium",
+      "severity": "HIGH",
+      "description": "Premium entitlement check",
+      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+    },
+    {
+      "name": "isSubscribed",
+      "type": "symbol",
+      "pattern": "isSubscribed",
+      "severity": "HIGH",
+      "description": "Subscription status check",
+      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+    },
+    {
+      "name": "checkLicense",
+      "type": "symbol",
+      "pattern": "checkLicense",
+      "severity": "HIGH",
+      "description": "License verification routine",
+      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+    },
+    {
+      "name": "verifyPurchase",
+      "type": "symbol",
+      "pattern": "verifyPurchase",
+      "severity": "HIGH",
+      "description": "In-app purchase verification",
+      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+    }
+  ]
+}

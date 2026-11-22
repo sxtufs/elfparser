@@ -1,0 +1,138 @@
+{
+  "id": "builtin-integrity-tamper",
+  "name": "Integrity, Signature & Emulator",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Detects APK signature checks, /proc/self/maps memory integrity, and emulator/hook checks.",
+  "rules": [
+    {
+      "name": "checkSignature",
+      "type": "symbol",
+      "pattern": "checkSignature",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Potential APK/binary signature check routine (inspect before patching)"
+    },
+    {
+      "name": "verifySignature",
+      "type": "symbol",
+      "pattern": "verifySignature",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Potential APK/binary signature verification routine (inspect before patching)"
+    },
+    {
+      "name": "Tamper Check Symbol",
+      "type": "symbol",
+      "pattern": "Tamper",
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Potential anti-tamper check function (inspect before patching)"
+    },
+    {
+      "name": "/proc/self/maps Scan",
+      "type": "string",
+      "pattern": "/proc/self/maps",
+      "severity": "MEDIUM",
+      "description": "Memory map inspection (Frida/Xposed/hook detection)"
+    },
+    {
+      "name": "classes.dex Integrity",
+      "type": "string",
+      "pattern": "classes.dex",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "INFO",
+      "description": "DEX file reference (common; not proof of an integrity check)"
+    },
+    {
+      "name": "JNI getPackageManager",
+      "type": "string",
+      "pattern": "getPackageManager",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Native JNI reference to PackageManager (often benign; check context)"
+    },
+    {
+      "name": "JNI getPackageInfo",
+      "type": "string",
+      "pattern": "getPackageInfo",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Native JNI reference to getPackageInfo (often benign; check context)"
+    },
+    {
+      "name": "JNI Signature toByteArray",
+      "type": "string",
+      "pattern": "toByteArray",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "INFO",
+      "description": "toByteArray reference (ubiquitous; not proof of signature hashing)"
+    },
+    {
+      "name": "JNI MessageDigest",
+      "type": "string",
+      "pattern": "MessageDigest",
+      "case_sensitive": true,
+      "match_mode": "word_boundary",
+      "severity": "INFO",
+      "description": "MessageDigest reference (common; hashing, not necessarily signature)"
+    },
+    {
+      "name": "CRC32 Routine",
+      "type": "symbol",
+      "pattern": "crc32",
+      "match_mode": "word_boundary",
+      "severity": "INFO",
+      "description": "CRC32 routine (common; possible integrity check)"
+    },
+    {
+      "name": "Xposed / Substrate Indicator",
+      "type": "string",
+      "pattern": "xposed",
+      "severity": "MEDIUM",
+      "description": "Xposed framework detection string"
+    },
+    {
+      "name": "QEMU / Emulator Check",
+      "type": "string",
+      "pattern": "ro.kernel.qemu",
+      "severity": "LOW",
+      "description": "Android emulator property check"
+    },
+    {
+      "name": "SafetyNet Attest Symbol",
+      "type": "symbol",
+      "pattern": "SafetyNet",
+      "severity": "MEDIUM",
+      "description": "SafetyNet attestation API reference"
+    },
+    {
+      "name": "Play Integrity Symbol",
+      "type": "symbol",
+      "pattern": "IntegrityToken",
+      "severity": "MEDIUM",
+      "description": "Play Integrity token request reference"
+    },
+    {
+      "name": "attest Symbol",
+      "type": "symbol",
+      "pattern": "attest",
+      "match_mode": "word_boundary",
+      "severity": "MEDIUM",
+      "description": "Attestation routine (SafetyNet/Play Integrity native path)"
+    },
+    {
+      "name": "__system_property_get",
+      "type": "symbol",
+      "pattern": "__system_property_get",
+      "severity": "LOW",
+      "description": "Property read (root/emulator property checks)"
+    }
+  ]
+}

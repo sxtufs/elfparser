@@ -1,0 +1,51 @@
+{
+  "id": "builtin-play-integrity",
+  "name": "Play Integrity & Pairip",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Detects Google Play Integrity API and Pairip (AIP) native markers. Pairip indicates native VM code protection; the API alone only attests app/environment integrity.",
+  "rules": [
+    {
+      "name": "AIP / Pairip native marker",
+      "type": "string",
+      "pattern": "pairip",
+      "severity": "HIGH",
+      "description": "Google Automatic Integrity Protection (Pairip) native VM / core library (libpairipcore.so). NOT the developer Play Integrity API (com.google.android.play.core.integrity)."
+    },
+    {
+      "name": "Play Integrity API namespace",
+      "type": "string",
+      "pattern": "com/google/android/play/core/integrity",
+      "severity": "MEDIUM",
+      "description": "Play Integrity API library namespace present in the native blob (embedded DEX/path reference)."
+    },
+    {
+      "name": "Play Integrity Classic hint (nonce)",
+      "type": "string",
+      "pattern": "setNonce",
+      "severity": "INFO",
+      "description": "Classic request hint: setNonce() reference. Static hint only — obfuscation can hide it."
+    },
+    {
+      "name": "Play Integrity Standard hint (requestHash)",
+      "type": "string",
+      "pattern": "requestHash",
+      "severity": "INFO",
+      "description": "Standard request hint: requestHash reference. Static hint only — obfuscation can hide it."
+    },
+    {
+      "name": "StandardIntegrityManager",
+      "type": "string",
+      "pattern": "StandardIntegrityManager",
+      "severity": "INFO",
+      "description": "Standard request path class reference (likely Standard). Static hint only."
+    },
+    {
+      "name": "IntegrityManager (classic)",
+      "type": "string",
+      "pattern": "requestIntegrityToken",
+      "severity": "INFO",
+      "description": "Classic request path method reference (likely Classic). Static hint only."
+    }
+  ]
+}
