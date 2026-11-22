@@ -158,9 +158,18 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         }
                     },
                     onRemove = { viewModel.removePlugin(plugin.manifest.id) },
-                    onJumpToAddress = { addr, sym ->
+                    onJumpToAddress = { addr, sym, ruleType ->
+                        val isData = ruleType == "string" || ruleType == "str" ||
+                            ruleType == "byte_pattern" || ruleType == "bytes"
                         viewModel.selectFunction(addr, sym ?: "0x${addr.toString(16)}")
-                        viewModel.codeSubTab.value = 0
+                        if (isData) {
+                            // String/byte findings are data in .rodata; disassembling
+                            // them yields garbage, so position the Hex view at the hit.
+                            viewModel.loadHexDump(addr)
+                            viewModel.codeSubTab.value = 3
+                        } else {
+                            viewModel.codeSubTab.value = 0
+                        }
                         viewModel.navigateTo(Screen.Code)
                     },
                     onApplyPatch = { finding ->
@@ -291,7 +300,7 @@ private fun PluginCard(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onRemove: () -> Unit,
-    onJumpToAddress: (Long, String?) -> Unit,
+    onJumpToAddress: (Long, String?, String) -> Unit,
     onApplyPatch: (PluginFinding) -> Unit
 ) {
     val colors = LocalELFTraceColors.current
@@ -416,7 +425,7 @@ private fun PluginCard(
                         report.findings.forEach { finding ->
                             PluginFindingRow(
                                 finding = finding,
-                                onJump = { onJumpToAddress(finding.address, finding.symbol_name) },
+                                onJump = { onJumpToAddress(finding.address, finding.symbol_name, finding.rule_type) },
                                 onPatch = { onApplyPatch(finding) }
                             )
                         }
