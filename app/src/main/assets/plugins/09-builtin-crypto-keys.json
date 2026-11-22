@@ -9,15 +9,15 @@
       "name": "PEM Public Key",
       "type": "string",
       "pattern": "-----BEGIN PUBLIC KEY-----",
-      "severity": "HIGH",
-      "description": "Embedded PEM public key"
+      "severity": "MEDIUM",
+      "description": "Embedded PEM public key (public data; indicates the app pins/encrypts to this key)"
     },
     {
       "name": "PEM RSA Key",
       "type": "string",
       "pattern": "-----BEGIN RSA",
-      "severity": "HIGH",
-      "description": "Embedded RSA key material"
+      "severity": "MEDIUM",
+      "description": "Embedded RSA key block (public or private; inspect to confirm — private keys are HIGH in the secrets plugin)"
     },
     {
       "name": "AES S-Box Table",

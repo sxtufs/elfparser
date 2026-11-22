@@ -92,11 +92,25 @@
       "description": "CRC32 routine (common; possible integrity check)"
     },
     {
-      "name": "Xposed / Substrate Indicator",
+      "name": "Xposed Bridge class",
       "type": "string",
-      "pattern": "xposed",
+      "pattern": "XposedBridge",
       "severity": "MEDIUM",
-      "description": "Xposed framework detection string"
+      "description": "Xposed framework class reference"
+    },
+    {
+      "name": "Xposed package namespace",
+      "type": "string",
+      "pattern": "de.robv.android.xposed",
+      "severity": "HIGH",
+      "description": "Xposed framework package namespace"
+    },
+    {
+      "name": "Substrate (Cydia) hooking",
+      "type": "string",
+      "pattern": "MSHookFunction",
+      "severity": "MEDIUM",
+      "description": "Cydia Substrate hooking API reference"
     },
     {
       "name": "QEMU / Emulator Check",
