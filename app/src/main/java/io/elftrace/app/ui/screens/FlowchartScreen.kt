@@ -269,7 +269,17 @@ fun FlowchartScreen(viewModel: ELFTraceViewModel) {
     val graph = remember(flowchartText) { parseCfgText(flowchartText) }
     val density = LocalDensity.current
 
-    val nodeWidthDp = 230.dp
+    // Size blocks to fit the widest instruction line instead of a fixed width
+    // (a fixed 290dp left dead space on short blocks; a fixed 230dp truncated
+    // long operands). Monospace 10sp advance is ~6.2dp/char; the addr (72dp) and
+    // mnemonic (54dp) columns are fixed, plus horizontal padding.
+    val nodeWidthDp = remember(graph) {
+        val maxOperandChars = graph.blocks
+            .flatMap { it.instructions }
+            .maxOfOrNull { it.operands.length } ?: 0
+        val contentDp = 72f + 54f + 16f + (maxOperandChars * 6.3f) + 18f
+        contentDp.coerceIn(210f, 380f).dp
+    }
     val nodeWidthPx = with(density) { nodeWidthDp.toPx() }
     val hGapPx = with(density) { 44.dp.toPx() }
     val vGapPx = with(density) { 64.dp.toPx() }
