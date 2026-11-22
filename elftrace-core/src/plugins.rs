@@ -706,12 +706,15 @@ fn rule_matches(haystack: &str, needle: &str, case_sensitive: bool, match_mode: 
 }
 
 /// Case-sensitive word-boundary containment: `needle` must not be immediately
-/// preceded or followed by an identifier character (`[A-Za-z0-9_]`).
+/// preceded or followed by an alphanumeric character (`[A-Za-z0-9]`).
+/// Underscore is treated as a boundary so a rule for `connect` matches the
+/// C-style wrapper/call site `posix_connect`, while still rejecting the
+/// embedded substrings `disconnect` / `reconnect` / `connectivity`.
 fn word_boundary_contains(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
     }
-    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let is_word = |c: char| c.is_ascii_alphanumeric();
     let h_bytes = haystack.as_bytes();
     let mut start = 0usize;
     while let Some(pos) = haystack[start..].find(needle) {
