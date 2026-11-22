@@ -562,8 +562,10 @@ fn execute_rhai_script(
               severity: &str,
               desc: &str,
               mode: &str,
-              value: &str,
-              patch_offset: i64| {
+              value: &str| {
+            // Scripts call this with 6 args (no explicit patch offset). The
+            // patch is applied at the reported address, so offset defaults to 0.
+            let patch_offset: i64 = 0;
             let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
             let vaddr = addr as u64;
             let file_offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);

@@ -158,7 +158,6 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         }
                     },
                     onRemove = { viewModel.removePlugin(plugin.manifest.id) },
-                    onToggleEnabled = { viewModel.togglePlugin(plugin.manifest.id) },
                     onJumpToAddress = { addr, sym ->
                         viewModel.selectFunction(addr, sym ?: "0x${addr.toString(16)}")
                         viewModel.codeSubTab.value = 0
@@ -292,7 +291,6 @@ private fun PluginCard(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onRemove: () -> Unit,
-    onToggleEnabled: () -> Unit,
     onJumpToAddress: (Long, String?) -> Unit,
     onApplyPatch: (PluginFinding) -> Unit
 ) {
@@ -374,15 +372,6 @@ private fun PluginCard(
                     }
                 }
 
-                Switch(
-                    checked = plugin.enabled,
-                    onCheckedChange = { onToggleEnabled() },
-                    modifier = Modifier.padding(start = 4.dp),
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = GreenAccent,
-                        checkedTrackColor = GreenAccent.copy(alpha = 0.4f)
-                    )
-                )
                 if (!plugin.isBuiltIn) {
                     IconButton(onClick = onRemove) {
                         Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
