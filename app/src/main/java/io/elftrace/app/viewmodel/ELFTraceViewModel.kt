@@ -412,8 +412,7 @@ class ELFTraceViewModel : ViewModel() {
                   "type": "symbol",
                   "pattern": "SSL_CTX_set_verify",
                   "severity": "HIGH",
-                  "description": "OpenSSL/Cronet/gRPC certificate verification setup",
-                  "patch": { "mode": "quick", "value": "ret_void", "offset": 0 }
+                  "description": "OpenSSL/Cronet/gRPC certificate verification setup"
                 },
                 {
                   "name": "SSL_get_verify_result",
@@ -460,8 +459,44 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "Frida String",
                   "type": "string",
                   "pattern": "frida",
+                  "case_sensitive": true,
                   "severity": "HIGH",
-                  "description": "Frida detection string"
+                  "description": "Frida detection string (case-sensitive to avoid matching 'Friday')"
+                },
+                {
+                  "name": "Frida Agent Artifact",
+                  "type": "string",
+                  "pattern": "frida-agent",
+                  "severity": "HIGH",
+                  "description": "Frida agent library loaded"
+                },
+                {
+                  "name": "Frida Gadget Artifact",
+                  "type": "string",
+                  "pattern": "frida-gadget",
+                  "severity": "HIGH",
+                  "description": "Frida gadget library loaded"
+                },
+                {
+                  "name": "Frida Server Artifact",
+                  "type": "string",
+                  "pattern": "frida-server",
+                  "severity": "HIGH",
+                  "description": "Frida server binary path"
+                },
+                {
+                  "name": "Frida RPC Artifact",
+                  "type": "string",
+                  "pattern": "frida:rpc",
+                  "severity": "HIGH",
+                  "description": "Frida JS RPC channel"
+                },
+                {
+                  "name": "Frida Java Bridge",
+                  "type": "string",
+                  "pattern": "re.frida.",
+                  "severity": "MEDIUM",
+                  "description": "Frida Java bridge class/package namespace"
                 },
                 {
                   "name": "Frida Thread (gum-js-loop)",
@@ -474,15 +509,18 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "Frida Thread (gmain)",
                   "type": "string",
                   "pattern": "gmain",
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
                   "severity": "MEDIUM",
-                  "description": "Anti-Frida GLib main thread scan"
+                  "description": "Anti-Frida GLib main thread scan (exact token)"
                 },
                 {
                   "name": "Frida Default Port (27042)",
                   "type": "string",
                   "pattern": "27042",
-                  "severity": "MEDIUM",
-                  "description": "Frida server default TCP port check"
+                  "match_mode": "word_boundary",
+                  "severity": "INFO",
+                  "description": "Frida server default TCP port (numeric token only; low signal)"
                 },
                 {
                   "name": "Magisk / Su String",
@@ -654,22 +692,22 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "AES_set_encrypt_key",
                   "type": "symbol",
                   "pattern": "AES_set_encrypt_key",
-                  "severity": "MEDIUM",
-                  "description": "AES key schedule setup"
+                  "severity": "INFO",
+                  "description": "AES key schedule setup (crypto library present)"
                 },
                 {
                   "name": "EVP_DecryptInit",
                   "type": "symbol",
                   "pattern": "EVP_DecryptInit",
-                  "severity": "MEDIUM",
-                  "description": "OpenSSL EVP decryption initialization"
+                  "severity": "INFO",
+                  "description": "OpenSSL EVP decryption init (crypto library present)"
                 },
                 {
                   "name": "mbedtls_aes",
                   "type": "symbol",
                   "pattern": "mbedtls_aes",
-                  "severity": "MEDIUM",
-                  "description": "mbedTLS AES routine"
+                  "severity": "INFO",
+                  "description": "mbedTLS AES routine (crypto library present)"
                 },
                 {
                   "name": "PEM Public Key",
@@ -771,25 +809,27 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "checkSignature",
                   "type": "symbol",
                   "pattern": "checkSignature",
-                  "severity": "HIGH",
-                  "description": "Potential APK/binary signature check routine",
-                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Potential APK/binary signature check routine (inspect before patching)"
                 },
                 {
                   "name": "verifySignature",
                   "type": "symbol",
                   "pattern": "verifySignature",
-                  "severity": "HIGH",
-                  "description": "Potential APK/binary signature verification routine",
-                  "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Potential APK/binary signature verification routine (inspect before patching)"
                 },
                 {
                   "name": "Tamper Check Symbol",
                   "type": "symbol",
                   "pattern": "Tamper",
-                  "severity": "HIGH",
-                  "description": "Potential anti-tamper check function",
-                  "patch": { "mode": "quick", "value": "ret_false", "offset": 0 }
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Potential anti-tamper check function (inspect before patching)"
                 },
                 {
                   "name": "/proc/self/maps Scan",
@@ -802,43 +842,54 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "classes.dex Integrity",
                   "type": "string",
                   "pattern": "classes.dex",
-                  "severity": "MEDIUM",
-                  "description": "DEX file integrity or CRC verification reference"
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "INFO",
+                  "description": "DEX file reference (common; not proof of an integrity check)"
                 },
                 {
                   "name": "JNI getPackageManager",
                   "type": "string",
                   "pattern": "getPackageManager",
-                  "severity": "HIGH",
-                  "description": "Native JNI call to PackageManager (common APK signature check)"
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Native JNI reference to PackageManager (often benign; check context)"
                 },
                 {
                   "name": "JNI getPackageInfo",
                   "type": "string",
                   "pattern": "getPackageInfo",
-                  "severity": "HIGH",
-                  "description": "Native JNI call to getPackageInfo (APK signature/version check)"
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Native JNI reference to getPackageInfo (often benign; check context)"
                 },
                 {
                   "name": "JNI Signature toByteArray",
                   "type": "string",
                   "pattern": "toByteArray",
-                  "severity": "MEDIUM",
-                  "description": "Converts APK Signature/Certificate to bytes for hashing"
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "INFO",
+                  "description": "toByteArray reference (ubiquitous; not proof of signature hashing)"
                 },
                 {
                   "name": "JNI MessageDigest",
                   "type": "string",
                   "pattern": "MessageDigest",
-                  "severity": "MEDIUM",
-                  "description": "Hashes APK signature or DEX bytes in native code"
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
+                  "severity": "INFO",
+                  "description": "MessageDigest reference (common; hashing, not necessarily signature)"
                 },
                 {
                   "name": "CRC32 Routine",
                   "type": "symbol",
                   "pattern": "crc32",
-                  "severity": "MEDIUM",
-                  "description": "CRC32 checksum routine (possible integrity check)"
+                  "match_mode": "word_boundary",
+                  "severity": "INFO",
+                  "description": "CRC32 routine (common; possible integrity check)"
                 },
                 {
                   "name": "Xposed / Substrate Indicator",
@@ -890,6 +941,8 @@ class ELFTraceViewModel : ViewModel() {
                   "name": "Raw Socket Connect",
                   "type": "symbol",
                   "pattern": "connect",
+                  "case_sensitive": true,
+                  "match_mode": "word_boundary",
                   "severity": "INFO",
                   "description": "POSIX socket connect() symbol"
                 },
@@ -949,7 +1002,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Rhai script scanning strings for API keys, bearer tokens, and private keys.",
-              "script": "let keys = [\"api_key\", \"apikey\", \"secret\", \"Bearer \", \"AIza\", \"-----BEGIN\"];\nfor k in keys {\n  let hits = find_strings(k);\n  for h in hits {\n    report(\"Secret Indicator: \" + k, h.address, \"HIGH\", h.value);\n  }\n}"
+              "script": "let exact = [\"sk_live_\", \"sk_test_\", \"AKIA\", \"AIza\", \"-----BEGIN\", \"Bearer \"];\nfor k in exact {\n  let hits = find_strings(k);\n  for h in hits {\n    if h.value.contains(k) {\n      report(\"Secret: \" + k, h.address, \"HIGH\", h.value);\n    }\n  }\n}\nlet loose = [\"api_key\", \"apikey\", \"secret\"];\nfor k in loose {\n  let hits = find_strings(k);\n  for h in hits {\n    if h.value.len() <= 96 {\n      report(\"Possible Secret: \" + k, h.address, \"MEDIUM\", h.value);\n    }\n  }\n}"
             }
             """.trimIndent(),
             """

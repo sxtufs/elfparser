@@ -25,7 +25,15 @@ pub struct PluginRule {
     #[serde(default)]
     pub description: String,
     #[serde(default)]
+    pub case_sensitive: bool,
+    #[serde(default = "default_match_mode")]
+    pub match_mode: String,
+    #[serde(default)]
     pub patch: Option<PluginPatch>,
+}
+
+fn default_match_mode() -> String {
+    "contains".to_string()
 }
 
 fn default_severity() -> String {
@@ -178,8 +186,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                 }
             }
             "symbol" | "sym" => {
-                let needle = rule.pattern.to_lowercase();
-                if !needle.is_empty() {
+                if !rule.pattern.is_empty() {
                     let mut count = 0;
                     for (&addr, sym) in &ctx.syms_map {
                         if count >= MAX_MATCHES_PER_RULE {
@@ -189,9 +196,17 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                         if display.starts_with("typeinfo ") || display.starts_with("vtable ") {
                             continue;
                         }
-                        if sym.sym.to_lowercase().contains(&needle)
-                            || display.to_lowercase().contains(&needle)
-                        {
+                        if rule_matches(
+                            sym.sym.as_str(),
+                            &rule.pattern,
+                            rule.case_sensitive,
+                            &rule.match_mode,
+                        ) || rule_matches(
+                            display,
+                            &rule.pattern,
+                            rule.case_sensitive,
+                            &rule.match_mode,
+                        ) {
                             let file_off = ctx.vaddr_to_offset(addr).unwrap_or(0);
                             findings.push(PluginFinding {
                                 rule_name: rule.name.clone(),
@@ -210,8 +225,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                 }
             }
             "string" | "str" => {
-                let needle = rule.pattern.to_lowercase();
-                if !needle.is_empty() {
+                if !rule.pattern.is_empty() {
                     if cached_strings.is_none() {
                         cached_strings = ctx.extract_strings().ok().map(|s| s.data);
                     }
@@ -221,7 +235,13 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                             if count >= MAX_MATCHES_PER_RULE {
                                 break;
                             }
-                            if item.string.to_lowercase().contains(&needle) {
+                            let hit = rule_matches(
+                                &item.string,
+                                &rule.pattern,
+                                rule.case_sensitive,
+                                &rule.match_mode,
+                            );
+                            if hit {
                                 findings.push(PluginFinding {
                                     rule_name: rule.name.clone(),
                                     rule_type: rule.rule_type.clone(),
@@ -488,10 +508,11 @@ fn execute_rhai_script(
               severity: &str,
               desc: &str,
               mode: &str,
-              value: &str| {
+              value: &str,
+              patch_offset: i64| {
             let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
             let vaddr = addr as u64;
-            let offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);
+            let file_offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);
             let sym_name = find_enclosing_symbol(ctx_ref, vaddr);
             if let Ok(mut list) = c2.lock() {
                 if list.len() < 256 {
@@ -499,7 +520,7 @@ fn execute_rhai_script(
                         rule_name: rule_name.to_string(),
                         rule_type: "rhai".to_string(),
                         address: vaddr,
-                        offset,
+                        offset: file_offset,
                         matched_value: format!("0x{:x}", vaddr),
                         severity: severity.to_string(),
                         description: desc.to_string(),
@@ -507,7 +528,7 @@ fn execute_rhai_script(
                         patch: Some(PluginPatch {
                             mode: mode.to_string(),
                             value: value.to_string(),
-                            offset: 0,
+                            offset: patch_offset,
                         }),
                     });
                 }
@@ -602,6 +623,55 @@ pub fn apply_plugin_patch(
             error: Some(format!("Unsupported patch mode: {}", mode)),
         },
     }
+}
+
+/// Returns true if `haystack` matches `needle` according to the rule's match mode.
+/// `match_mode` may be "contains" (default), "exact", or "word_boundary".
+/// When `case_sensitive` is false, comparison is done on lowercased strings.
+fn rule_matches(haystack: &str, needle: &str, case_sensitive: bool, match_mode: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    if case_sensitive {
+        match match_mode.to_lowercase().as_str() {
+            "exact" => haystack == needle,
+            "word_boundary" => word_boundary_contains(haystack, needle),
+            _ => haystack.contains(needle),
+        }
+    } else {
+        let h = haystack.to_lowercase();
+        let n = needle.to_lowercase();
+        match match_mode.to_lowercase().as_str() {
+            "exact" => h == n,
+            "word_boundary" => word_boundary_contains(&h, &n),
+            _ => h.contains(&n),
+        }
+    }
+}
+
+/// Case-sensitive word-boundary containment: `needle` must not be immediately
+/// preceded or followed by an identifier character (`[A-Za-z0-9_]`).
+fn word_boundary_contains(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let h_bytes = haystack.as_bytes();
+    let mut start = 0usize;
+    while let Some(pos) = haystack[start..].find(needle) {
+        let abs = start + pos;
+        let before_ok = abs == 0 || !is_word(h_bytes[abs - 1] as char);
+        let end = abs + needle.len();
+        let after_ok = end >= haystack.len() || !is_word(h_bytes[end] as char);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + needle.len().max(1);
+        if start >= haystack.len() {
+            break;
+        }
+    }
+    false
 }
 
 fn parse_ida_pattern(pattern: &str) -> Result<Vec<Option<u8>>, String> {

@@ -160,6 +160,10 @@ data class PluginRule(
     val pattern: String = "",
     val severity: String = "INFO",
     val description: String = "",
+    @SerializedName("case_sensitive")
+    val caseSensitive: Boolean = false,
+    @SerializedName("match_mode")
+    val matchMode: String = "contains",
     val patch: PluginPatch? = null
 )
 
