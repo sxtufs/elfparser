@@ -645,7 +645,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.1",
               "author": "ELFTrace",
               "description": "Detects DexProtector (DPLF & modern native VM), 360 Jiagu, Tencent Legu, Bangcle, and dynamic DEX loaders.",
-              "script": "let dplf = find_bytes(\"44 50 4C 46\");\nfor addr in dplf {\n  report(\"DexProtector Payload (DPLF)\", addr, \"HIGH\", \"Embedded DPLF packed-library magic\");\n}\nlet str_sigs = [\n  [\"libpairipcore.so\", \"Google PairIP Core\", \"HIGH\", \"Google PairIP native VM & integrity library\"],\n  [\"libjiagu\", \"360 Jiagu Indicator\", \"HIGH\", \"360 Jiagu packer library reference\"],\n  [\"libshell\", \"Tencent Legu Indicator\", \"HIGH\", \"Tencent Legu packer stub reference\"],\n  [\"libsecexe\", \"Bangcle / SecNeo Indicator\", \"HIGH\", \"Bangcle packer library reference\"],\n  [\"libDexHelper\", \"Alibaba DexHelper Indicator\", \"HIGH\", \"Alibaba DexHelper packer library reference\"],\n  [\"libmobisec\", \"Alibaba MobiSec Indicator\", \"HIGH\", \"Alibaba MobiSec protector library reference\"],\n  [\"libnesec\", \"NetEase Sec Indicator\", \"HIGH\", \"NetEase (libnesec) protector library reference\"],\n  [\"libbaiduprotect\", \"Baidu Protect Indicator\", \"HIGH\", \"Baidu protect packer library reference\"],\n  [\"DexClassLoader\", \"ART DexClassLoader\", \"MEDIUM\", \"Dynamic DEX loading / unpacking indicator\"]\n];\nlet pairip_vm = find_symbols(\"ExecuteProgram\");\nfor s in pairip_vm {\n  if s.name == \"ExecuteProgram\" && s.address > 0 {\n    report(\"PairIP VM Entrypoint (ExecuteProgram)\", s.address, \"HIGH\", \"PairIP bytecode VM interpreter called by VMRunner\");\n  }\n}\nfor sig in str_sigs {\n  let hits = find_strings(sig[0]);\n  for h in hits {\n    report(sig[1], h.address, sig[2], h.value + \" (\" + sig[3] + \")\");\n  }\n}\nlet jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 24);\n  if insns.len() >= 3 && insns[0].mnemonic == \"adr\" && insns[2].mnemonic == \"br\" {\n    report(\"DexProtector Obfuscated JNI_OnLoad\", s.address, \"HIGH\", \"Indirect branch trampoline (\" + insns[0].op_str + \" -> br)\");\n  }\n}\nlet has_aux = find_symbols(\"getauxval\").len() > 0;\nlet has_fork = find_symbols(\"__register_atfork\").len() > 0;\nlet sys_syms = find_symbols(\"syscall\");\nif has_aux && has_fork && sys_syms.len() > 0 {\n  for s in sys_syms {\n    if s.name == \"syscall\" && s.address > 0 {\n      report(\"DexProtector / RASP Syscall Import\", s.address, \"HIGH\", \"Combined getauxval + __register_atfork + syscall anti-tamper profile\");\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report(\"Direct syscall() Call Site\", x.from, \"HIGH\", x.instruction);\n      }\n    }\n  }\n}"
+              "script": "let dplf = find_bytes(\"44 50 4C 46\");\nfor addr in dplf {\n  report(\"DexProtector Payload (DPLF)\", addr, \"HIGH\", \"Embedded DPLF packed-library magic\");\n}\nlet str_sigs = [\n  [\"libjiagu\", \"360 Jiagu Indicator\", \"HIGH\", \"360 Jiagu packer library reference\"],\n  [\"libshell\", \"Tencent Legu Indicator\", \"HIGH\", \"Tencent Legu packer stub reference\"],\n  [\"libsecexe\", \"Bangcle / SecNeo Indicator\", \"HIGH\", \"Bangcle packer library reference\"],\n  [\"libDexHelper\", \"Alibaba DexHelper Indicator\", \"HIGH\", \"Alibaba DexHelper packer library reference\"],\n  [\"libmobisec\", \"Alibaba MobiSec Indicator\", \"HIGH\", \"Alibaba MobiSec protector library reference\"],\n  [\"libnesec\", \"NetEase Sec Indicator\", \"HIGH\", \"NetEase (libnesec) protector library reference\"],\n  [\"libbaiduprotect\", \"Baidu Protect Indicator\", \"HIGH\", \"Baidu protect packer library reference\"],\n  [\"DexClassLoader\", \"ART DexClassLoader\", \"MEDIUM\", \"Dynamic DEX loading / unpacking indicator\"]\n];\nlet pairip_vm = find_symbols(\"ExecuteProgram\");\nfor s in pairip_vm {\n  if s.name == \"ExecuteProgram\" && s.address > 0 {\n    report(\"PairIP VM Entrypoint (ExecuteProgram)\", s.address, \"HIGH\", \"PairIP bytecode VM interpreter called by VMRunner\");\n  }\n}\nfor sig in str_sigs {\n  let hits = find_strings(sig[0]);\n  for h in hits {\n    report(sig[1], h.address, sig[2], h.value + \" (\" + sig[3] + \")\");\n  }\n}\nlet jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 24);\n  if insns.len() >= 3 && insns[0].mnemonic == \"adr\" && insns[2].mnemonic == \"br\" {\n    report(\"DexProtector Obfuscated JNI_OnLoad\", s.address, \"HIGH\", \"Indirect branch trampoline (\" + insns[0].op_str + \" -> br)\");\n  }\n}\nlet has_aux = find_symbols(\"getauxval\").len() > 0;\nlet has_fork = find_symbols(\"__register_atfork\").len() > 0;\nlet sys_syms = find_symbols(\"syscall\");\nif has_aux && has_fork && sys_syms.len() > 0 {\n  for s in sys_syms {\n    if s.name == \"syscall\" && s.address > 0 {\n      report(\"DexProtector / RASP Syscall Import\", s.address, \"HIGH\", \"Combined getauxval + __register_atfork + syscall anti-tamper profile\");\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report(\"Direct syscall() Call Site\", x.from, \"HIGH\", x.instruction);\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
@@ -1004,7 +1004,7 @@ class ELFTraceViewModel : ViewModel() {
             """
             {
               "id": "builtin-rhai-jni-table",
-              "name": "Rhai: JNINativeMethod Table Recovery",
+              "name": "Rhai: JNI Method Table",
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Scans .data/.data.rel.ro for hidden RegisterNatives (name, sig, fnPtr) triplets.",
@@ -1024,7 +1024,7 @@ class ELFTraceViewModel : ViewModel() {
             """
             {
               "id": "builtin-rhai-jni-inspector",
-              "name": "Rhai: JNI_OnLoad Call Inspector",
+              "name": "Rhai: JNI_OnLoad Calls",
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Rhai script that disassembles JNI_OnLoad and lists its outgoing branch/call targets.",
@@ -1034,7 +1034,7 @@ class ELFTraceViewModel : ViewModel() {
             """
             {
               "id": "builtin-rhai-watchdog",
-              "name": "Rhai: Watchdog Thread & Abort Tracer",
+              "name": "Rhai: Watchdog & Abort",
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Traces pthread_create watchdog spawns and abort/kill/raise termination call sites.",
@@ -1044,7 +1044,7 @@ class ELFTraceViewModel : ViewModel() {
             """
             {
               "id": "builtin-rhai-xref-tracer",
-              "name": "Rhai: Anti-Debug XRef Tracer",
+              "name": "Rhai: Anti-Debug XRefs",
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Rhai script that traces callers of ptrace/kill/exit and suggests NOP patches.",
@@ -1054,24 +1054,17 @@ class ELFTraceViewModel : ViewModel() {
             """
             {
               "id": "builtin-play-integrity",
-              "name": "Play Integrity / Pairip (native markers)",
+              "name": "Play Integrity & Pairip",
               "version": "1.0",
               "author": "ELFTrace",
-              "description": "Detects native-side Play Integrity markers in this .so. Separates Google Automatic Integrity Protection (Pairip) from the developer Play Integrity API. NOTE: Standard-vs-Classic request style (nonce vs requestHash) is a runtime/DEX distinction and cannot be proven from the native ELF alone.",
+              "description": "Detects Google Play Integrity API and Pairip (AIP) native markers. Pairip indicates native VM code protection; the API alone only attests app/environment integrity.",
               "rules": [
                 {
                   "name": "AIP / Pairip native marker",
                   "type": "string",
                   "pattern": "pairip",
                   "severity": "HIGH",
-                  "description": "Google Automatic Integrity Protection (Pairip) — NOT the Play Integrity API. Distinct from com.google.android.play.core.integrity."
-                },
-                {
-                  "name": "AIP Pairip core lib path",
-                  "type": "string",
-                  "pattern": "libpairipcore",
-                  "severity": "HIGH",
-                  "description": "Reference to the Pairip integrity core library (Automatic Integrity Protection)."
+                  "description": "Google Automatic Integrity Protection (Pairip) native VM / core library (libpairipcore.so). NOT the developer Play Integrity API (com.google.android.play.core.integrity)."
                 },
                 {
                   "name": "Play Integrity API namespace",

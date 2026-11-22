@@ -594,6 +594,48 @@ fn execute_rhai_script(
         },
     );
 
+    // 7-argument overload (with explicit patch offset), used by some built-in
+    // scripts (e.g. Direct Syscall Tracer). Rhai dispatches report_patch by
+    // arity, so both the 6-arg and 7-arg forms must be registered.
+    let c3 = Arc::clone(&collected);
+    let tf3 = Arc::clone(truncated_flag);
+    engine.register_fn(
+        "report_patch",
+        move |rule_name: &str,
+              addr: i64,
+              severity: &str,
+              desc: &str,
+              mode: &str,
+              value: &str,
+              patch_offset: i64| {
+            let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+            let vaddr = addr as u64;
+            let file_offset = ctx_ref.vaddr_to_offset(vaddr).unwrap_or(0);
+            let sym_name = find_enclosing_symbol(ctx_ref, vaddr);
+            if let Ok(mut list) = c3.lock() {
+                if list.len() < 256 {
+                    list.push(PluginFinding {
+                        rule_name: rule_name.to_string(),
+                        rule_type: "rhai".to_string(),
+                        address: vaddr,
+                        offset: file_offset,
+                        matched_value: format!("0x{:x}", vaddr),
+                        severity: severity.to_string(),
+                        description: desc.to_string(),
+                        symbol_name: sym_name,
+                        patch: Some(PluginPatch {
+                            mode: mode.to_string(),
+                            value: value.to_string(),
+                            offset: patch_offset,
+                        }),
+                    });
+                } else {
+                    tf3.store(true, Ordering::Relaxed);
+                }
+            }
+        },
+    );
+
     engine
         .run(script_src)
         .map_err(|e| format!("Rhai script error: {}", e))?;
