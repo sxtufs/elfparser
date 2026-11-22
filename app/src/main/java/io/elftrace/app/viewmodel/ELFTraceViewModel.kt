@@ -386,12 +386,12 @@ class ELFTraceViewModel : ViewModel() {
     // Accumulates built-in plugin load failures. Declared BEFORE _plugins so it
     // is initialized first (defaultBuiltInPlugins() writes into it). Previously
     // a malformed built-in JSON was silently dropped by mapNotNull{ try/catch }.
-    private val builtInLoadErrors = mutableListOf<String>()
+    private val builtInLoadErrorsAccumulator = mutableListOf<String>()
 
     private val _plugins = MutableStateFlow<List<LoadedPlugin>>(defaultBuiltInPlugins())
     val plugins: StateFlow<List<LoadedPlugin>> = _plugins.asStateFlow()
 
-    private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(builtInLoadErrors.toList())
+    private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(builtInLoadErrorsAccumulator.toList())
     val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
 
     private val _isRunningPlugins = MutableStateFlow(false)
@@ -1219,12 +1219,12 @@ class ELFTraceViewModel : ViewModel() {
                 // so gson can't produce a manifest, but the id often still parses.
                 val guessId = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
                     .find(raw)?.groupValues?.getOrNull(1) ?: "<unknown>"
-                builtInLoadErrors.add("$guessId: ${e.message ?: e.javaClass.simpleName}")
+                builtInLoadErrorsAccumulator.add("$guessId: ${e.message ?: e.javaClass.simpleName}")
                 null
             }
         }
         // Publish the collected errors (field set happened during this init).
-        _builtInLoadErrorsFlow.value = builtInLoadErrors.toList()
+        _builtInLoadErrorsFlow.value = builtInLoadErrorsAccumulator.toList()
         return loaded
     }
 
