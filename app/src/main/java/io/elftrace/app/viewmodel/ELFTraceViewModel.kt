@@ -575,6 +575,20 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "/proc/self/status",
                   "severity": "MEDIUM",
                   "description": "Reads process status (TracerPid/State) for anti-debug"
+                },
+                {
+                  "name": "dlopen",
+                  "type": "symbol",
+                  "pattern": "dlopen",
+                  "severity": "MEDIUM",
+                  "description": "Dynamic library loader (runtime/decrypted loading = packing behavior)"
+                },
+                {
+                  "name": "dlsym",
+                  "type": "symbol",
+                  "pattern": "dlsym",
+                  "severity": "LOW",
+                  "description": "Dynamic symbol resolver"
                 }
               ]
             }
@@ -747,30 +761,8 @@ class ELFTraceViewModel : ViewModel() {
               "name": "Crypto & Key Material",
               "version": "1.0",
               "author": "ELFTrace",
-              "description": "Finds OpenSSL/BoringSSL/mbedTLS cipher routines and embedded PEM keys.",
-              "default_enabled": false,
+              "description": "Locates embedded key material and hardcoded crypto tables (AES S-box, SHA-256/MD5 constants).",
               "rules": [
-                {
-                  "name": "AES_set_encrypt_key",
-                  "type": "symbol",
-                  "pattern": "AES_set_encrypt_key",
-                  "severity": "INFO",
-                  "description": "AES key schedule setup (crypto library present)"
-                },
-                {
-                  "name": "EVP_DecryptInit",
-                  "type": "symbol",
-                  "pattern": "EVP_DecryptInit",
-                  "severity": "INFO",
-                  "description": "OpenSSL EVP decryption init (crypto library present)"
-                },
-                {
-                  "name": "mbedtls_aes",
-                  "type": "symbol",
-                  "pattern": "mbedtls_aes",
-                  "severity": "INFO",
-                  "description": "mbedTLS AES routine (crypto library present)"
-                },
                 {
                   "name": "PEM Public Key",
                   "type": "string",
@@ -995,95 +987,6 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "__system_property_get",
                   "severity": "LOW",
                   "description": "Property read (root/emulator property checks)"
-                }
-              ]
-            }
-            """.trimIndent(),
-            """
-            {
-              "id": "builtin-network-endpoints",
-              "name": "Network, URLs & Sockets",
-              "version": "1.0",
-              "author": "ELFTrace",
-              "description": "Surfaces hardcoded HTTP/HTTPS/WebSocket URLs and raw socket/TLS calls.",
-              "default_enabled": false,
-              "rules": [
-                {
-                  "name": "HTTPS URL",
-                  "type": "string",
-                  "pattern": "https://",
-                  "severity": "INFO",
-                  "description": "Hardcoded HTTPS endpoint"
-                },
-                {
-                  "name": "HTTP URL (Cleartext)",
-                  "type": "string",
-                  "pattern": "http://",
-                  "severity": "INFO",
-                  "description": "Cleartext HTTP string (may include XML schema URLs; verify host)"
-                },
-                {
-                  "name": "WebSocket URL",
-                  "type": "string",
-                  "pattern": "wss://",
-                  "severity": "INFO",
-                  "description": "Hardcoded WebSocket endpoint"
-                },
-                {
-                  "name": "Raw Socket Connect",
-                  "type": "symbol",
-                  "pattern": "connect",
-                  "case_sensitive": true,
-                  "match_mode": "word_boundary",
-                  "severity": "INFO",
-                  "description": "POSIX socket connect() symbol"
-                },
-                {
-                  "name": "SSL_write",
-                  "type": "symbol",
-                  "pattern": "SSL_write",
-                  "severity": "INFO",
-                  "description": "OpenSSL/BoringSSL encrypted write"
-                }
-              ]
-            }
-            """.trimIndent(),
-            """
-            {
-              "id": "builtin-dynamic-loading",
-              "name": "Dynamic Loading & JNI Reflection",
-              "version": "1.0",
-              "author": "ELFTrace",
-              "description": "Finds dlopen/dlsym dynamic loading and native-to-Java reflection calls.",
-              "default_enabled": false,
-              "rules": [
-                {
-                  "name": "dlopen",
-                  "type": "symbol",
-                  "pattern": "dlopen",
-                  "severity": "INFO",
-                  "description": "Dynamic shared library loader (common in plugin systems)"
-                },
-                {
-                  "name": "dlsym",
-                  "type": "symbol",
-                  "pattern": "dlsym",
-                  "severity": "INFO",
-                  "description": "Dynamic symbol resolver (common in plugin systems)"
-                },
-                {
-                  "name": "RegisterNatives",
-                  "type": "string",
-                  "pattern": "RegisterNatives",
-                  "severity": "INFO",
-                  "description": "Dynamic JNI method registration indicator"
-                },
-                {
-                  "name": "FindClass",
-                  "type": "string",
-                  "pattern": "FindClass",
-                  "severity": "INFO",
-                  "description": "JNI Java class lookup"
                 }
               ]
             }
