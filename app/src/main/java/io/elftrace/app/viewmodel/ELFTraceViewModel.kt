@@ -26,6 +26,10 @@ sealed class Screen {
 
 class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
 
+    // `application` is private in AndroidViewModel (newer lifecycle), so keep
+    // our own reference for asset loading.
+    private val appContext: Application = app
+
     /// Single-threaded dispatcher for ALL native (JNI) calls. The native
     /// `ElfContext` — and especially the Unicorn engine inside it — is not
     /// thread-safe. Running every native call on exactly one thread eliminates
@@ -407,13 +411,13 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         // Load plugin manifests from assets/plugins/*.json (P1 refactor:
         // previously an ~700-line inline listOf of raw JSON strings).
         val builtInJsons: List<String> = try {
-            val names = application.assets.list("plugins")
+            val names = appContext.assets.list("plugins")
                 ?.filter { it.endsWith(".json") }
                 ?.sorted()
                 ?: emptyList()
             names.mapNotNull { name ->
                 try {
-                    application.assets.open("plugins/$name")
+                    appContext.assets.open("plugins/$name")
                         .bufferedReader().use { it.readText() }
                 } catch (e: Exception) {
                     builtInLoadErrorsAccumulator.add(
