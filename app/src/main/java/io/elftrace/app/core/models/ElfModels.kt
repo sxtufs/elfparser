@@ -175,7 +175,11 @@ data class PluginManifest(
     val description: String = "",
     val arch: List<String> = emptyList(),
     val rules: List<PluginRule> = emptyList(),
-    val script: String? = null
+    val script: String? = null,
+    /** Whether this plugin is enabled by default when first loaded.
+     *  Noisy INFO-only built-ins set this false so "Run All" stays quiet. */
+    @SerializedName("default_enabled")
+    val defaultEnabled: Boolean = true
 )
 
 data class PluginFinding(
@@ -195,7 +199,10 @@ data class PluginReport(
     val plugin_name: String = "",
     val total_findings: Int = 0,
     val findings: List<PluginFinding> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    /** True when one or more rules hit the per-rule cap (or the Rhai 256-cap)
+     *  and results were silently dropped. UI shows "showing first N". */
+    val truncated: Boolean = false
 )
 
 data class LoadedPlugin(

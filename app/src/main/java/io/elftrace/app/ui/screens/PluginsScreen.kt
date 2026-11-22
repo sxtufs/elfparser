@@ -37,6 +37,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     val plugins by viewModel.plugins.collectAsState()
     val isRunning by viewModel.isRunningPlugins.collectAsState()
     val bridge by viewModel.bridge.collectAsState()
+    val loadErrors by viewModel.builtInLoadErrors.collectAsState()
 
     var expandedPluginId by remember { mutableStateOf<String?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -93,6 +94,33 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
+        if (loadErrors.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.card),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, RedAccent),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "${loadErrors.size} built-in plugin(s) failed to load",
+                        color = RedAccent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    loadErrors.forEach { err ->
+                        Text(
+                            text = "• $err",
+                            color = colors.textSecondary,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         if (bridge == null) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.card),
@@ -130,6 +158,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         }
                     },
                     onRemove = { viewModel.removePlugin(plugin.manifest.id) },
+                    onToggleEnabled = { viewModel.togglePlugin(plugin.manifest.id) },
                     onJumpToAddress = { addr, sym ->
                         viewModel.selectFunction(addr, sym ?: "0x${addr.toString(16)}")
                         viewModel.codeSubTab.value = 0
@@ -263,6 +292,7 @@ private fun PluginCard(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onRemove: () -> Unit,
+    onToggleEnabled: () -> Unit,
     onJumpToAddress: (Long, String?) -> Unit,
     onApplyPatch: (PluginFinding) -> Unit
 ) {
@@ -332,10 +362,27 @@ private fun PluginCard(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                            if (report.truncated) {
+                                Text(
+                                    text = "capped",
+                                    color = AmberAccent,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }
 
+                Switch(
+                    checked = plugin.enabled,
+                    onCheckedChange = { onToggleEnabled() },
+                    modifier = Modifier.padding(start = 4.dp),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = GreenAccent,
+                        checkedTrackColor = GreenAccent.copy(alpha = 0.4f)
+                    )
+                )
                 if (!plugin.isBuiltIn) {
                     IconButton(onClick = onRemove) {
                         Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
@@ -361,6 +408,21 @@ private fun PluginCard(
                         fontSize = 12.sp
                     )
                 } else {
+                    if (report.truncated) {
+                        Surface(
+                            color = colors.surface,
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, AmberAccent.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Results capped at ${report.total_findings} — more matches exist and were not shown.",
+                                color = AmberAccent,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         report.findings.forEach { finding ->
                             PluginFindingRow(

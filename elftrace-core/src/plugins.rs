@@ -4,6 +4,7 @@ use crate::patcher::{apply_quick_patch, assemble_and_patch, PatchResult, QuickPa
 use crate::xref::find_callers_to;
 use rhai::{Array, Dynamic, Engine, Map};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +83,10 @@ pub struct PluginReport {
     pub total_findings: usize,
     pub findings: Vec<PluginFinding>,
     pub error: Option<String>,
+    /// True when one or more rules hit MAX_MATCHES_PER_RULE and results were
+    /// silently capped. The UI uses this to show "showing first N".
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 const MAX_MATCHES_PER_RULE: usize = 64;
@@ -103,9 +108,32 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                 total_findings: 0,
                 findings: Vec::new(),
                 error: Some(format!("JSON parse error: {}", e)),
+                truncated: false,
             };
         }
     };
+
+    // Validate match_mode early: unknown values used to silently fall back to
+    // "contains" inside rule_matches(), masking plugin authoring mistakes.
+    for rule in &manifest.rules {
+        let rt = rule.rule_type.to_lowercase();
+        if rt == "string" || rt == "str" || rt == "symbol" || rt == "sym" {
+            let mm = rule.match_mode.to_lowercase();
+            if mm != "contains" && mm != "exact" && mm != "word_boundary" {
+                return PluginReport {
+                    plugin_id: manifest.id,
+                    plugin_name: manifest.name,
+                    total_findings: 0,
+                    findings: Vec::new(),
+                    error: Some(format!(
+                        "Rule '{}' has invalid match_mode '{}' (expected contains|exact|word_boundary)",
+                        rule.name, rule.match_mode
+                    )),
+                    truncated: false,
+                };
+            }
+        }
+    }
 
     let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(0);
     let arch_name = match e_machine {
@@ -131,11 +159,16 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                 "Plugin targets {:?}, but loaded binary is {}",
                 manifest.arch, arch_name
             )),
+            truncated: false,
         };
     }
 
     let mut findings = Vec::new();
     let mut cached_strings: Option<Vec<crate::model::SDataItem>> = None;
+    // Shared truncation flag: set by rule loops that hit MAX_MATCHES_PER_RULE
+    // and by the Rhai report()/report_patch() 256-cap. Surfaced in PluginReport
+    // so the UI can render "showing first N" instead of silently dropping.
+    let truncated_flag = Arc::new(AtomicBool::new(false));
 
     for rule in &manifest.rules {
         match rule.rule_type.to_lowercase().as_str() {
@@ -147,6 +180,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                         let raw = &ctx.raw;
                         let plen = pattern.len();
                         while i + plen <= raw.len() && count < MAX_MATCHES_PER_RULE {
+                            // (loop body unchanged)
                             let mut matched = true;
                             for (j, pat_byte) in pattern.iter().enumerate() {
                                 if let Some(b) = pat_byte {
@@ -182,6 +216,9 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                                 i += 1;
                             }
                         }
+                        if count >= MAX_MATCHES_PER_RULE {
+                            truncated_flag.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
             }
@@ -190,6 +227,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                     let mut count = 0;
                     for (&addr, sym) in &ctx.syms_map {
                         if count >= MAX_MATCHES_PER_RULE {
+                            truncated_flag.store(true, Ordering::Relaxed);
                             break;
                         }
                         let display = sym.demangled.as_deref().unwrap_or(sym.sym.as_str());
@@ -233,6 +271,7 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
                         let mut count = 0;
                         for item in strings {
                             if count >= MAX_MATCHES_PER_RULE {
+                                truncated_flag.store(true, Ordering::Relaxed);
                                 break;
                             }
                             let hit = rule_matches(
@@ -266,20 +305,30 @@ pub fn run_plugin(ctx: &ElfContext, plugin_json: &str) -> PluginReport {
     let mut script_error: Option<String> = None;
     if let Some(ref script_src) = manifest.script {
         if !script_src.trim().is_empty() {
-            match execute_rhai_script(ctx, arch_name, script_src) {
+            match execute_rhai_script(ctx, arch_name, script_src, &truncated_flag) {
                 Ok(mut script_findings) => findings.append(&mut script_findings),
                 Err(e) => script_error = Some(e),
             }
         }
     }
 
+    // Deduplicate findings produced by overlapping rules within this plugin.
+    // Key is (address, rule_name) so distinct rules at the same address are kept.
+    {
+        use std::collections::HashSet;
+        let mut seen: HashSet<(u64, String)> = HashSet::new();
+        findings.retain(|f| seen.insert((f.address, f.rule_name.clone())));
+    }
+
     let total = findings.len();
+    let truncated = truncated_flag.load(Ordering::Relaxed);
     PluginReport {
         plugin_id: manifest.id,
         plugin_name: manifest.name,
         total_findings: total,
         findings,
         error: script_error,
+        truncated,
     }
 }
 
@@ -288,6 +337,7 @@ fn execute_rhai_script(
     ctx: &ElfContext,
     arch_name: &str,
     script_src: &str,
+    truncated_flag: &Arc<AtomicBool>,
 ) -> Result<Vec<PluginFinding>, String> {
     let mut engine = Engine::new();
     // Bound total work and recursion so a pathological or malicious plugin script
@@ -475,6 +525,7 @@ fn execute_rhai_script(
     let collected: Arc<Mutex<Vec<PluginFinding>>> = Arc::new(Mutex::new(Vec::new()));
 
     let c1 = Arc::clone(&collected);
+    let tf1 = Arc::clone(truncated_flag);
     engine.register_fn(
         "report",
         move |rule_name: &str, addr: i64, severity: &str, desc: &str| {
@@ -495,12 +546,15 @@ fn execute_rhai_script(
                         symbol_name: sym_name,
                         patch: None,
                     });
+                } else {
+                    tf1.store(true, Ordering::Relaxed);
                 }
             }
         },
     );
 
     let c2 = Arc::clone(&collected);
+    let tf2 = Arc::clone(truncated_flag);
     engine.register_fn(
         "report_patch",
         move |rule_name: &str,
@@ -531,6 +585,8 @@ fn execute_rhai_script(
                             offset: patch_offset,
                         }),
                     });
+                } else {
+                    tf2.store(true, Ordering::Relaxed);
                 }
             }
         },

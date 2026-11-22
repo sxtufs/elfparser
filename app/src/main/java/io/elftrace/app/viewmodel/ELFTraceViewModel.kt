@@ -383,8 +383,16 @@ class ELFTraceViewModel : ViewModel() {
 
     private val gson = com.google.gson.Gson()
 
+    // Accumulates built-in plugin load failures. Declared BEFORE _plugins so it
+    // is initialized first (defaultBuiltInPlugins() writes into it). Previously
+    // a malformed built-in JSON was silently dropped by mapNotNull{ try/catch }.
+    private val builtInLoadErrors = mutableListOf<String>()
+
     private val _plugins = MutableStateFlow<List<LoadedPlugin>>(defaultBuiltInPlugins())
     val plugins: StateFlow<List<LoadedPlugin>> = _plugins.asStateFlow()
+
+    private val _builtInLoadErrorsFlow = MutableStateFlow<List<String>>(builtInLoadErrors.toList())
+    val builtInLoadErrors: StateFlow<List<String>> = _builtInLoadErrorsFlow.asStateFlow()
 
     private val _isRunningPlugins = MutableStateFlow(false)
     val isRunningPlugins: StateFlow<Boolean> = _isRunningPlugins.asStateFlow()
@@ -436,6 +444,27 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "sha256/",
                   "severity": "INFO",
                   "description": "Potential certificate pin hash string"
+                },
+                {
+                  "name": "SSL_CTX_set_verify_callback",
+                  "type": "symbol",
+                  "pattern": "SSL_CTX_set_verify_callback",
+                  "severity": "HIGH",
+                  "description": "Companion verify callback setter (paired with custom_verify)"
+                },
+                {
+                  "name": "SSL_get_peer_certificate",
+                  "type": "symbol",
+                  "pattern": "SSL_get_peer_certificate",
+                  "severity": "MEDIUM",
+                  "description": "Peer certificate retrieval, often near pin checks"
+                },
+                {
+                  "name": "Cronet Verify Path",
+                  "type": "string",
+                  "pattern": "cronet",
+                  "severity": "INFO",
+                  "description": "Cronet TLS stack marker (higher-signal pinning context)"
                 }
               ]
             }
@@ -535,6 +564,13 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "TracerPid",
                   "severity": "MEDIUM",
                   "description": "/proc/self/status TracerPid anti-debug check"
+                },
+                {
+                  "name": "proc self status",
+                  "type": "string",
+                  "pattern": "/proc/self/status",
+                  "severity": "MEDIUM",
+                  "description": "Reads process status (TracerPid/State) for anti-debug"
                 }
               ]
             }
@@ -591,7 +627,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.1",
               "author": "ELFTrace",
               "description": "Detects DexProtector (DPLF & modern native VM), 360 Jiagu, Tencent Legu, Bangcle, and dynamic DEX loaders.",
-              "script": "let dplf = find_bytes(\"44 50 4C 46\");\nfor addr in dplf {\n  report(\"DexProtector Payload (DPLF)\", addr, \"HIGH\", \"Embedded DPLF packed-library magic\");\n}\nlet str_sigs = [\n  [\"libpairipcore.so\", \"Google PairIP Core\", \"HIGH\", \"Google PairIP native VM & integrity library\"],\n  [\"libjiagu\", \"360 Jiagu Indicator\", \"HIGH\", \"360 Jiagu packer library reference\"],\n  [\"libshell\", \"Tencent Legu Indicator\", \"HIGH\", \"Tencent Legu packer stub reference\"],\n  [\"libsecexe\", \"Bangcle / SecNeo Indicator\", \"HIGH\", \"Bangcle packer library reference\"],\n  [\"DexClassLoader\", \"ART DexClassLoader\", \"MEDIUM\", \"Dynamic DEX loading / unpacking indicator\"]\n];\nlet pairip_vm = find_symbols(\"ExecuteProgram\");\nfor s in pairip_vm {\n  if s.name == \"ExecuteProgram\" && s.address > 0 {\n    report(\"PairIP VM Entrypoint (ExecuteProgram)\", s.address, \"HIGH\", \"PairIP bytecode VM interpreter called by VMRunner\");\n  }\n}\nfor sig in str_sigs {\n  let hits = find_strings(sig[0]);\n  for h in hits {\n    report(sig[1], h.address, sig[2], h.value + \" (\" + sig[3] + \")\");\n  }\n}\nlet jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 24);\n  if insns.len() >= 3 && insns[0].mnemonic == \"adr\" && insns[2].mnemonic == \"br\" {\n    report(\"DexProtector Obfuscated JNI_OnLoad\", s.address, \"HIGH\", \"Indirect branch trampoline (\" + insns[0].op_str + \" -> br)\");\n  }\n}\nlet has_aux = find_symbols(\"getauxval\").len() > 0;\nlet has_fork = find_symbols(\"__register_atfork\").len() > 0;\nlet sys_syms = find_symbols(\"syscall\");\nif has_aux && has_fork && sys_syms.len() > 0 {\n  for s in sys_syms {\n    if s.name == \"syscall\" && s.address > 0 {\n      report(\"DexProtector / RASP Syscall Import\", s.address, \"HIGH\", \"Combined getauxval + __register_atfork + syscall anti-tamper profile\");\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report(\"Direct syscall() Call Site\", x.from, \"HIGH\", x.instruction);\n      }\n    }\n  }\n}"
+              "script": "let dplf = find_bytes(\"44 50 4C 46\");\nfor addr in dplf {\n  report(\"DexProtector Payload (DPLF)\", addr, \"HIGH\", \"Embedded DPLF packed-library magic\");\n}\nlet str_sigs = [\n  [\"libpairipcore.so\", \"Google PairIP Core\", \"HIGH\", \"Google PairIP native VM & integrity library\"],\n  [\"libjiagu\", \"360 Jiagu Indicator\", \"HIGH\", \"360 Jiagu packer library reference\"],\n  [\"libshell\", \"Tencent Legu Indicator\", \"HIGH\", \"Tencent Legu packer stub reference\"],\n  [\"libsecexe\", \"Bangcle / SecNeo Indicator\", \"HIGH\", \"Bangcle packer library reference\"],\n  [\"libDexHelper\", \"Alibaba DexHelper Indicator\", \"HIGH\", \"Alibaba DexHelper packer library reference\"],\n  [\"libmobisec\", \"Alibaba MobiSec Indicator\", \"HIGH\", \"Alibaba MobiSec protector library reference\"],\n  [\"libnesec\", \"NetEase Sec Indicator\", \"HIGH\", \"NetEase (libnesec) protector library reference\"],\n  [\"libbaiduprotect\", \"Baidu Protect Indicator\", \"HIGH\", \"Baidu protect packer library reference\"],\n  [\"DexClassLoader\", \"ART DexClassLoader\", \"MEDIUM\", \"Dynamic DEX loading / unpacking indicator\"]\n];\nlet pairip_vm = find_symbols(\"ExecuteProgram\");\nfor s in pairip_vm {\n  if s.name == \"ExecuteProgram\" && s.address > 0 {\n    report(\"PairIP VM Entrypoint (ExecuteProgram)\", s.address, \"HIGH\", \"PairIP bytecode VM interpreter called by VMRunner\");\n  }\n}\nfor sig in str_sigs {\n  let hits = find_strings(sig[0]);\n  for h in hits {\n    report(sig[1], h.address, sig[2], h.value + \" (\" + sig[3] + \")\");\n  }\n}\nlet jni = find_symbols(\"JNI_OnLoad\");\nfor s in jni {\n  let insns = disasm(s.address, 24);\n  if insns.len() >= 3 && insns[0].mnemonic == \"adr\" && insns[2].mnemonic == \"br\" {\n    report(\"DexProtector Obfuscated JNI_OnLoad\", s.address, \"HIGH\", \"Indirect branch trampoline (\" + insns[0].op_str + \" -> br)\");\n  }\n}\nlet has_aux = find_symbols(\"getauxval\").len() > 0;\nlet has_fork = find_symbols(\"__register_atfork\").len() > 0;\nlet sys_syms = find_symbols(\"syscall\");\nif has_aux && has_fork && sys_syms.len() > 0 {\n  for s in sys_syms {\n    if s.name == \"syscall\" && s.address > 0 {\n      report(\"DexProtector / RASP Syscall Import\", s.address, \"HIGH\", \"Combined getauxval + __register_atfork + syscall anti-tamper profile\");\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report(\"Direct syscall() Call Site\", x.from, \"HIGH\", x.instruction);\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
@@ -671,6 +707,27 @@ class ELFTraceViewModel : ViewModel() {
                   "description": "Unity Il2Cpp string allocator"
                 },
                 {
+                  "name": "il2cpp_domain_get",
+                  "type": "symbol",
+                  "pattern": "il2cpp_domain_get",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp domain access (common modding hook)"
+                },
+                {
+                  "name": "il2cpp_class_from_name",
+                  "type": "symbol",
+                  "pattern": "il2cpp_class_from_name",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp class resolution by name (modding hook)"
+                },
+                {
+                  "name": "il2cpp_resolve_icall",
+                  "type": "symbol",
+                  "pattern": "il2cpp_resolve_icall",
+                  "severity": "INFO",
+                  "description": "Unity Il2Cpp internal-call resolution path"
+                },
+                {
                   "name": "Unreal GWorld / GUObjectArray",
                   "type": "string",
                   "pattern": "GUObjectArray",
@@ -687,6 +744,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Finds OpenSSL/BoringSSL/mbedTLS cipher routines and embedded PEM keys.",
+              "default_enabled": false,
               "rules": [
                 {
                   "name": "AES_set_encrypt_key",
@@ -904,6 +962,35 @@ class ELFTraceViewModel : ViewModel() {
                   "pattern": "ro.kernel.qemu",
                   "severity": "LOW",
                   "description": "Android emulator property check"
+                },
+                {
+                  "name": "SafetyNet Attest Symbol",
+                  "type": "symbol",
+                  "pattern": "SafetyNet",
+                  "severity": "MEDIUM",
+                  "description": "SafetyNet attestation API reference"
+                },
+                {
+                  "name": "Play Integrity Symbol",
+                  "type": "symbol",
+                  "pattern": "IntegrityToken",
+                  "severity": "MEDIUM",
+                  "description": "Play Integrity token request reference"
+                },
+                {
+                  "name": "attest Symbol",
+                  "type": "symbol",
+                  "pattern": "attest",
+                  "match_mode": "word_boundary",
+                  "severity": "MEDIUM",
+                  "description": "Attestation routine (SafetyNet/Play Integrity native path)"
+                },
+                {
+                  "name": "__system_property_get",
+                  "type": "symbol",
+                  "pattern": "__system_property_get",
+                  "severity": "LOW",
+                  "description": "Property read (root/emulator property checks)"
                 }
               ]
             }
@@ -915,6 +1002,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Surfaces hardcoded HTTP/HTTPS/WebSocket URLs and raw socket/TLS calls.",
+              "default_enabled": false,
               "rules": [
                 {
                   "name": "HTTPS URL",
@@ -963,6 +1051,7 @@ class ELFTraceViewModel : ViewModel() {
               "version": "1.0",
               "author": "ELFTrace",
               "description": "Finds dlopen/dlsym dynamic loading and native-to-Java reflection calls.",
+              "default_enabled": false,
               "rules": [
                 {
                   "name": "dlopen",
@@ -1003,16 +1092,6 @@ class ELFTraceViewModel : ViewModel() {
               "author": "ELFTrace",
               "description": "Rhai script scanning strings for API keys, bearer tokens, and private keys.",
               "script": "let exact = [\"sk_live_\", \"sk_test_\", \"AKIA\", \"AIza\", \"-----BEGIN\", \"Bearer \"];\nfor k in exact {\n  let hits = find_strings(k);\n  for h in hits {\n    if h.value.contains(k) {\n      report(\"Secret: \" + k, h.address, \"HIGH\", h.value);\n    }\n  }\n}\nlet loose = [\"api_key\", \"apikey\", \"secret\"];\nfor k in loose {\n  let hits = find_strings(k);\n  for h in hits {\n    if h.value.len() <= 96 {\n      report(\"Possible Secret: \" + k, h.address, \"MEDIUM\", h.value);\n    }\n  }\n}"
-            }
-            """.trimIndent(),
-            """
-            {
-              "id": "builtin-raw-syscalls",
-              "name": "Raw Syscalls (svc #0)",
-              "version": "1.0",
-              "author": "ELFTrace",
-              "description": "Detects aligned svc #0 syscalls in executable code used to bypass libc/Frida hooks.",
-              "script": "let a = arch();\nlet pat = if a == \"aarch64\" { \"01 00 00 D4\" } else if a == \"arm\" { \"00 00 00 EF\" } else if a == \"x86_64\" { \"0F 05\" } else if a == \"x86\" { \"CD 80\" } else { \"\" };\nlet target_mnem = if a == \"x86_64\" { \"syscall\" } else if a == \"x86\" { \"int\" } else { \"svc\" };\nlet align = if a == \"aarch64\" || a == \"arm\" { 4 } else { 1 };\nif pat != \"\" {\n  let hits = find_bytes(pat);\n  for addr in hits {\n    if (addr % align) == 0 {\n      let ins = disasm(addr, 4);\n      if ins.len() > 0 && ins[0].mnemonic == target_mnem {\n        report(target_mnem + \" (\" + a + \")\", addr, \"HIGH\", \"Direct supervisor/syscall (bypasses libc hooks)\");\n      }\n    }\n  }\n}"
             }
             """.trimIndent(),
             """
@@ -1126,14 +1205,27 @@ class ELFTraceViewModel : ViewModel() {
             }
             """.trimIndent()
         )
-        return builtInJsons.mapNotNull { raw ->
+        val loaded = builtInJsons.mapNotNull { raw ->
             try {
                 val manifest = gson.fromJson(raw, PluginManifest::class.java)
-                LoadedPlugin(manifest = manifest, rawJson = raw, enabled = true, isBuiltIn = true)
-            } catch (_: Exception) {
+                LoadedPlugin(
+                    manifest = manifest,
+                    rawJson = raw,
+                    enabled = manifest.defaultEnabled,
+                    isBuiltIn = true
+                )
+            } catch (e: Exception) {
+                // Best-effort plugin id for the error message; the JSON is broken
+                // so gson can't produce a manifest, but the id often still parses.
+                val guessId = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
+                    .find(raw)?.groupValues?.getOrNull(1) ?: "<unknown>"
+                builtInLoadErrors.add("$guessId: ${e.message ?: e.javaClass.simpleName}")
                 null
             }
         }
+        // Publish the collected errors (field set happened during this init).
+        _builtInLoadErrorsFlow.value = builtInLoadErrors.toList()
+        return loaded
     }
 
     fun importPluginJson(rawInput: String, defaultName: String = "Custom Rhai Script"): Result<PluginManifest> {
