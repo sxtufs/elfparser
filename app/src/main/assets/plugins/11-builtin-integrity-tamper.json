@@ -12,7 +12,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Potential APK/binary signature check routine (inspect before patching)"
+      "description": "Signature-check routine (verify before patching)"
     },
     {
       "name": "verifySignature",
@@ -21,15 +21,15 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Potential APK/binary signature verification routine (inspect before patching)"
+      "description": "Signature-verify routine (verify before patching)"
     },
     {
-      "name": "Tamper Check Symbol",
+      "name": "Tamper Check",
       "type": "symbol",
       "pattern": "Tamper",
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Potential anti-tamper check function (inspect before patching)"
+      "description": "Anti-tamper routine (verify before patching)"
     },
     {
       "name": "/proc/self/maps Scan",
@@ -39,49 +39,49 @@
       "description": "Memory map inspection (Frida/Xposed/hook detection)"
     },
     {
-      "name": "classes.dex Integrity",
+      "name": "classes.dex Reference",
       "type": "string",
       "pattern": "classes.dex",
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "INFO",
-      "description": "DEX file reference (common; not proof of an integrity check)"
+      "description": "DEX filename reference (common; not proof of an integrity check)"
     },
     {
-      "name": "JNI getPackageManager",
+      "name": "getPackageManager",
       "type": "string",
       "pattern": "getPackageManager",
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Native JNI reference to PackageManager (often benign; check context)"
+      "description": "PackageManager reference (often benign; check context)"
     },
     {
-      "name": "JNI getPackageInfo",
+      "name": "getPackageInfo",
       "type": "string",
       "pattern": "getPackageInfo",
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Native JNI reference to getPackageInfo (often benign; check context)"
+      "description": "getPackageInfo reference (often benign; check context)"
     },
     {
-      "name": "JNI Signature toByteArray",
+      "name": "toByteArray",
       "type": "string",
       "pattern": "toByteArray",
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "INFO",
-      "description": "toByteArray reference (ubiquitous; not proof of signature hashing)"
+      "description": "toByteArray reference (ubiquitous; not proof of hashing)"
     },
     {
-      "name": "JNI MessageDigest",
+      "name": "MessageDigest",
       "type": "string",
       "pattern": "MessageDigest",
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "INFO",
-      "description": "MessageDigest reference (common; hashing, not necessarily signature)"
+      "description": "MessageDigest reference (hashing, not necessarily signature)"
     },
     {
       "name": "CRC32 Routine",

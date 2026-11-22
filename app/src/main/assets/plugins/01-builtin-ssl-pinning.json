@@ -37,32 +37,32 @@
       "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
     },
     {
-      "name": "Pinning String Indicator",
+      "name": "Pin Hash String",
       "type": "string",
       "pattern": "sha256/",
       "severity": "INFO",
-      "description": "Potential certificate pin hash string"
+      "description": "Possible certificate pin hash (sha256/...)"
     },
     {
       "name": "SSL_CTX_set_verify_callback",
       "type": "symbol",
       "pattern": "SSL_CTX_set_verify_callback",
       "severity": "HIGH",
-      "description": "Companion verify callback setter (paired with custom_verify)"
+      "description": "Certificate verify callback setter"
     },
     {
       "name": "SSL_get_peer_certificate",
       "type": "symbol",
       "pattern": "SSL_get_peer_certificate",
       "severity": "MEDIUM",
-      "description": "Peer certificate retrieval, often near pin checks"
+      "description": "Peer certificate retrieval (often near pin checks)"
     },
     {
-      "name": "Cronet Verify Path",
+      "name": "Cronet TLS Marker",
       "type": "string",
       "pattern": "cronet",
       "severity": "INFO",
-      "description": "Cronet TLS stack marker (higher-signal pinning context)"
+      "description": "Cronet TLS stack marker"
     }
   ]
 }
