@@ -69,8 +69,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
     // Patch propagation review state (ExactClone = 1, Callers = 2).
     var showPropagateDialog by remember { mutableStateOf(false) }
-    var propagatePatchMode by remember { mutableStateOf("quick") }
-    var propagatePatchValue by remember { mutableStateOf("ret_true") }
     var propagateInsnAddr by remember { mutableStateOf(0L) }
     var propagateSeedLabel by remember { mutableStateOf("") }
 
@@ -437,8 +435,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             onClick = {
                                 propagateInsnAddr = ins.address
                                 propagateSeedLabel = "${ins.mnemonic} ${ins.op_str}".trim()
-                                propagatePatchMode = "quick"
-                                propagatePatchValue = "ret_true"
                                 showPropagateDialog = true
                                 selectedInsn = null
                             },
