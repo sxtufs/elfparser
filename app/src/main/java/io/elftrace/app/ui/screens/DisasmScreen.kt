@@ -446,6 +446,15 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             Text("Propagate", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+
+                    // Undo + Rename on their own row so labels never truncate.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedButton(
                             onClick = {
                                 viewModel.undoLastPatch { addr ->
