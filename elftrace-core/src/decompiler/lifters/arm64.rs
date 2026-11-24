@@ -234,9 +234,21 @@ impl InstructionLifter for Arm64Lifter {
             "cmn" => {
                 let parts: Vec<&str> = ops.split(',').map(|s| s.trim()).collect();
                 if parts.len() == 2 {
+                    // CMN Rn, <op> sets flags on Rn + op, i.e. it behaves like
+                    // CMP Rn, -op. The operand may be a register (common:
+                    // `cmn x0, x1`) — the old code forced it through
+                    // parse_imm_num and silently produced Const(0) for a
+                    // register, emitting a bogus `Rn == 0` condition.
                     let r1 = IrExpr::reg(parts[0], IrType::Int64);
-                    let r2_val = parse_imm_num(clean_imm(parts[1]).as_str()).unwrap_or(0);
-                    let r2 = IrExpr::Const(r2_val.wrapping_neg());
+                    let r2 = if let Ok(imm) = parse_imm_num(clean_imm(parts[1]).as_str()) {
+                        IrExpr::Const(imm.wrapping_neg())
+                    } else {
+                        IrExpr::Unary(
+                            UnaryOp::Neg,
+                            Box::new(IrExpr::reg(parts[1], IrType::Int64)),
+                            IrType::Int64,
+                        )
+                    };
                     self.last_cmp = Some(IrExpr::Binary(
                         BinaryOp::Eq,
                         Box::new(r1),
@@ -761,10 +773,18 @@ impl InstructionLifter for Arm64Lifter {
                     let lhs = IrExpr::reg(parts[1], dst_ty);
                     let rhs = parse_operand(parts[2], dst_ty);
                     if mnem == "adds" {
+                        // ADDS sets Z when lhs + rhs == 0, i.e. lhs == -rhs.
+                        // The old code compared lhs == rhs, which made a
+                        // following conditional branch take the wrong path
+                        // for the extremely common `adds ..; b.eq/b.ne` idiom.
+                        let neg_rhs = match rhs {
+                            IrExpr::Const(c) => IrExpr::Const(c.wrapping_neg()),
+                            other => IrExpr::Unary(UnaryOp::Neg, Box::new(other), dst_ty),
+                        };
                         self.last_cmp = Some(IrExpr::Binary(
                             BinaryOp::Eq,
                             Box::new(lhs.clone()),
-                            Box::new(rhs.clone()),
+                            Box::new(neg_rhs),
                             IrType::Int8,
                         ));
                     }
