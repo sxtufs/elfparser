@@ -549,4 +549,35 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             launch(Dispatchers.Main) { onComplete(res) }
         }
     }
+
+    /**
+     * Spread one seed patch across the binary (ExactClone = 1, Callers = 2).
+     * Run with dryRun = true first to populate a review dialog; then call again
+     * with dryRun = false for the confirmed subset (the native side re-applies
+     * the seed at every matched address through the same validation gate).
+     */
+    fun propagatePatch(
+        seedAddr: Long,
+        mode: Int,
+        patchMode: String,
+        patchValue: String,
+        dryRun: Boolean,
+        onComplete: (PatchPropagationReport) -> Unit
+    ) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) {
+                    onComplete(PatchPropagationReport(error = "No binary loaded"))
+                }
+                return@launch
+            }
+            val report = b.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun)
+            if (!dryRun && report.applied > 0 && _currentAddress.value != 0L) {
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(report) }
+        }
+    }
 }

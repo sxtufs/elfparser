@@ -18,6 +18,58 @@ pub enum QuickPatchType {
     ReturnVoid,
 }
 
+/// Return the raw byte encoding for a quick-patch type on the given machine,
+/// WITHOUT writing anything. Shared by `apply_quick_patch` and the propagation
+/// engine (`propagation::resolve_seed_patch`) so both use one byte table.
+pub fn quick_patch_bytes(
+    e_machine: u32,
+    patch_type: QuickPatchType,
+    is_thumb: bool,
+) -> Option<Vec<u8>> {
+    match patch_type {
+        QuickPatchType::Nop => match e_machine {
+            183 => Some(vec![0x1f, 0x20, 0x03, 0xd5]), // ARM64: nop
+            40 if is_thumb => Some(vec![0x00, 0xbf]),  // Thumb: nop
+            40 => Some(vec![0x00, 0xf0, 0x20, 0xe3]),  // ARM32: nop
+            62 | 3 => Some(vec![0x90]),                // x86/x64: nop
+            _ => None,
+        },
+        QuickPatchType::ReturnTrue => match e_machine {
+            183 => Some(vec![0x20, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6]),
+            40 if is_thumb => Some(vec![0x01, 0x20, 0x70, 0x47]),
+            40 => Some(vec![0x01, 0x00, 0xa0, 0xe3, 0x1e, 0xff, 0x2f, 0xe1]),
+            62 | 3 => Some(vec![0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]),
+            _ => None,
+        },
+        QuickPatchType::ReturnFalse => match e_machine {
+            183 => Some(vec![0x00, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6]),
+            40 if is_thumb => Some(vec![0x00, 0x20, 0x70, 0x47]),
+            40 => Some(vec![0x00, 0x00, 0xa0, 0xe3, 0x1e, 0xff, 0x2f, 0xe1]),
+            62 | 3 => Some(vec![0x31, 0xc0, 0xc3]),
+            _ => None,
+        },
+        QuickPatchType::ReturnVoid => match e_machine {
+            183 => Some(vec![0xc0, 0x03, 0x5f, 0xd6]),
+            40 if is_thumb => Some(vec![0x70, 0x47]),
+            40 => Some(vec![0x1e, 0xff, 0x2f, 0xe1]),
+            62 | 3 => Some(vec![0xc3]),
+            _ => None,
+        },
+    }
+}
+
+/// Public wrapper around the private `validate_patch_target` so the propagation
+/// engine can pre-validate candidate addresses (for an accurate review dialog)
+/// using the exact same rules as a direct patch.
+pub fn validate_patch_target_public(
+    ctx: &ElfContext,
+    vaddr: u64,
+    file_offset: usize,
+    patch_bytes: &[u8],
+) -> Result<(), String> {
+    validate_patch_target(ctx, vaddr, file_offset, patch_bytes)
+}
+
 pub fn apply_quick_patch(
     ctx: &mut ElfContext,
     address: u64,
@@ -26,50 +78,14 @@ pub fn apply_quick_patch(
 ) -> PatchResult {
     let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
 
-    let (patch_bytes_opt, type_name) = match patch_type {
-        QuickPatchType::Nop => {
-            let bytes = match e_machine {
-                183 => Some(vec![0x1f, 0x20, 0x03, 0xd5]), // ARM64: nop
-                40 if is_thumb => Some(vec![0x00, 0xbf]),  // Thumb: nop
-                40 => Some(vec![0x00, 0xf0, 0x20, 0xe3]),  // ARM32: nop
-                62 | 3 => Some(vec![0x90]),                // x86/x64: nop
-                _ => None,
-            };
-            (bytes, "NOP")
-        }
-        QuickPatchType::ReturnTrue => {
-            let bytes = match e_machine {
-                183 => Some(vec![0x20, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6]),
-                40 if is_thumb => Some(vec![0x01, 0x20, 0x70, 0x47]),
-                40 => Some(vec![0x01, 0x00, 0xa0, 0xe3, 0x1e, 0xff, 0x2f, 0xe1]),
-                62 | 3 => Some(vec![0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]),
-                _ => None,
-            };
-            (bytes, "Force Return True")
-        }
-        QuickPatchType::ReturnFalse => {
-            let bytes = match e_machine {
-                183 => Some(vec![0x00, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6]),
-                40 if is_thumb => Some(vec![0x00, 0x20, 0x70, 0x47]),
-                40 => Some(vec![0x00, 0x00, 0xa0, 0xe3, 0x1e, 0xff, 0x2f, 0xe1]),
-                62 | 3 => Some(vec![0x31, 0xc0, 0xc3]),
-                _ => None,
-            };
-            (bytes, "Force Return False")
-        }
-        QuickPatchType::ReturnVoid => {
-            let bytes = match e_machine {
-                183 => Some(vec![0xc0, 0x03, 0x5f, 0xd6]),
-                40 if is_thumb => Some(vec![0x70, 0x47]),
-                40 => Some(vec![0x1e, 0xff, 0x2f, 0xe1]),
-                62 | 3 => Some(vec![0xc3]),
-                _ => None,
-            };
-            (bytes, "Return Void (Skip)")
-        }
+    let type_name = match patch_type {
+        QuickPatchType::Nop => "NOP",
+        QuickPatchType::ReturnTrue => "Force Return True",
+        QuickPatchType::ReturnFalse => "Force Return False",
+        QuickPatchType::ReturnVoid => "Return Void (Skip)",
     };
 
-    let patch_bytes = match patch_bytes_opt {
+    let patch_bytes = match quick_patch_bytes(e_machine, patch_type, is_thumb) {
         Some(b) => b,
         None => {
             return PatchResult {

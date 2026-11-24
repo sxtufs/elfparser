@@ -50,6 +50,16 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         // JSON Signature & Patch Plugins
         @JvmStatic private external fun runPlugin(handle: Long, pluginJson: String): String
         @JvmStatic private external fun applyPluginPatch(handle: Long, address: Long, mode: String, value: String): String
+
+        // Patch Propagation (ExactClone / Callers)
+        @JvmStatic private external fun propagatePatch(
+            handle: Long,
+            seedAddr: Long,
+            mode: Int,
+            patchMode: String,
+            patchValue: String,
+            dryRun: Boolean
+        ): String
     }
 
     fun assemblePatch(address: Long, text: String): PatchResult {
@@ -185,6 +195,26 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             gson.fromJson(json, PatchResult::class.java) ?: PatchResult(error = "Unknown error")
         } catch (e: Exception) {
             PatchResult(error = e.message)
+        }
+    }
+
+    /**
+     * Patch Propagation. `mode` 1 = ExactClone, 2 = Callers. `dryRun` returns
+     * candidates without writing. Never blind-applies: the UI reviews first.
+     */
+    fun propagatePatch(
+        seedAddr: Long,
+        mode: Int,
+        patchMode: String,
+        patchValue: String,
+        dryRun: Boolean = false
+    ): PatchPropagationReport {
+        val json = propagatePatch(handle, seedAddr, mode, patchMode, patchValue, dryRun)
+        return try {
+            gson.fromJson(json, PatchPropagationReport::class.java)
+                ?: PatchPropagationReport(error = "Empty propagation response")
+        } catch (e: Exception) {
+            PatchPropagationReport(error = e.message)
         }
     }
 

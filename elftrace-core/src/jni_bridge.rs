@@ -655,3 +655,99 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_applyPluginPatch(
         env.new_string(out).unwrap().into_inner()
     })
 }
+
+/// Patch Propagation: spread one seed patch across the binary.
+///
+/// `mode`: 1 = ExactClone, 2 = Callers.
+/// `patch_mode` / `patch_value`: same encoding pair as `applyPluginPatch`
+/// (e.g. "quick"/"ret_true" or "hex"/"C0 03 5F D6").
+/// `dry_run`: when true nothing is written; candidates are returned for review.
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_propagatePatch(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    seed_addr: jlong,
+    mode: jint,
+    patch_mode: JString,
+    patch_value: JString,
+    dry_run: jboolean,
+) -> jstring {
+    if handle == 0 {
+        return env
+            .new_string(
+                "{\"seed_address\":0,\"mode\":\"\",\"dry_run\":false,\"total_candidates\":0,\"applied\":0,\"skipped\":0,\"truncated\":false,\"entries\":[],\"error\":\"Invalid handle\"}",
+            )
+            .unwrap()
+            .into_inner();
+    }
+    let p_mode: String = match env.get_string(patch_mode) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let p_value: String = match env.get_string(patch_value) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let dry = dry_run == JNI_TRUE;
+
+    guard_jstring(
+        &env,
+        "{\"seed_address\":0,\"mode\":\"\",\"dry_run\":false,\"total_candidates\":0,\"applied\":0,\"skipped\":0,\"truncated\":false,\"entries\":[],\"error\":\"panic while propagating\"}",
+        || {
+            let ctx = &mut *(handle as *mut ElfContext);
+            let seed = seed_addr as u64;
+            let prop_mode = crate::propagation::PropagationMode::from_i32(mode as i32);
+            let seed_patch = match crate::propagation::resolve_seed_patch(
+                ctx,
+                &p_mode,
+                &p_value,
+                seed,
+                false,
+            ) {
+                Ok(b) => b,
+                Err(e) => {
+                    let rep = crate::propagation::PatchPropagationReport {
+                        seed_address: seed,
+                        mode: prop_mode.map(|m| m.name().to_string()).unwrap_or_default(),
+                        dry_run: dry,
+                        total_candidates: 0,
+                        applied: 0,
+                        skipped: 0,
+                        truncated: false,
+                        entries: Vec::new(),
+                        error: Some(e),
+                    };
+                    let json = serde_json::to_string(&rep).unwrap_or_else(|_| "{}".to_string());
+                    return env.new_string(json).unwrap().into_inner();
+                }
+            };
+
+            let opts = crate::propagation::PropagateOptions {
+                dry_run: dry,
+                ..Default::default()
+            };
+            let report = match prop_mode {
+                Some(crate::propagation::PropagationMode::ExactClone) => {
+                    crate::propagation::propagate_exact(ctx, seed, &seed_patch, &opts)
+                }
+                Some(crate::propagation::PropagationMode::Callers) => {
+                    crate::propagation::propagate_callers(ctx, seed, &seed_patch, &opts)
+                }
+                None => crate::propagation::PatchPropagationReport {
+                    seed_address: seed,
+                    mode: String::new(),
+                    dry_run: dry,
+                    total_candidates: 0,
+                    applied: 0,
+                    skipped: 0,
+                    truncated: false,
+                    entries: Vec::new(),
+                    error: Some(format!("Invalid propagation mode: {}", mode)),
+                },
+            };
+            let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(json).unwrap().into_inner()
+        },
+    )
+}

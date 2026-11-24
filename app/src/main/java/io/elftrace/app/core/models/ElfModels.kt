@@ -63,6 +63,26 @@ data class PatchResult(
     val error: String? = null
 )
 
+data class PropagatedPatch(
+    val address: Long = 0,
+    val status: String = "",
+    val reason: String? = null,
+    val original_bytes: List<Int> = emptyList(),
+    val patched_bytes: List<Int> = emptyList()
+)
+
+data class PatchPropagationReport(
+    val seed_address: Long = 0,
+    val mode: String = "",
+    val dry_run: Boolean = false,
+    val total_candidates: Int = 0,
+    val applied: Int = 0,
+    val skipped: Int = 0,
+    val truncated: Boolean = false,
+    val entries: List<PropagatedPatch> = emptyList(),
+    val error: String? = null
+)
+
 data class SecurityFinding(
     val category: String = "",
     val name: String = "",

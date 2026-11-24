@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.elftrace.app.core.models.CallHierarchy
 import io.elftrace.app.core.models.Instruction
+import io.elftrace.app.core.models.PatchPropagationReport
+import io.elftrace.app.core.models.PropagatedPatch
 import io.elftrace.app.core.models.XRefItem
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
@@ -64,6 +66,14 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
     var showAssembleDialog by remember { mutableStateOf(false) }
     var assembleInput by remember { mutableStateOf("") }
     var currentEditInsnAddr by remember { mutableStateOf(0L) }
+
+    // Patch propagation review state (ExactClone = 1, Callers = 2).
+    var showPropagateDialog by remember { mutableStateOf(false) }
+    var propagateMode by remember { mutableStateOf(1) }
+    var propagatePatchMode by remember { mutableStateOf("quick") }
+    var propagatePatchValue by remember { mutableStateOf("ret_true") }
+    var propagateInsnAddr by remember { mutableStateOf(0L) }
+    var propagateSeedLabel by remember { mutableStateOf("") }
 
     // Clean function title (e.g. JNIBridge -> info0 instead of full package that wraps mid-word)
     val shortTitle = remember(symbolName, currentAddr) {
@@ -423,6 +433,22 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
                             Text("Assemble", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                propagateInsnAddr = ins.address
+                                propagateSeedLabel = "${ins.mnemonic} ${ins.op_str}".trim()
+                                propagatePatchMode = "quick"
+                                propagatePatchValue = "ret_true"
+                                showPropagateDialog = true
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Text("Propagate", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -881,6 +907,18 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
         }
 
         // Assemble / edit instruction dialog
+        if (showPropagateDialog) {
+            PropagationReviewDialog(
+                viewModel = viewModel,
+                seedAddr = propagateInsnAddr,
+                seedLabel = propagateSeedLabel,
+                mode = propagateMode,
+                patchMode = propagatePatchMode,
+                patchValue = propagatePatchValue,
+                onDismiss = { showPropagateDialog = false }
+            )
+        }
+
         if (showAssembleDialog) {
             AlertDialog(onDismissRequest = { showAssembleDialog = false }) {
                 Surface(
@@ -997,4 +1035,125 @@ private fun parseBranchTarget(mnemonic: String, opStr: String): Long? {
         }
     }
     return null
+}
+
+/**
+ * Patch Propagation review dialog.
+ *
+ * Dry-run on open (nothing written) -> list every candidate / skip with a
+ * checkbox -> "Apply N" re-runs propagation for the confirmed subset.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PropagationReviewDialog(
+    viewModel: ELFTraceViewModel,
+    seedAddr: Long,
+    seedLabel: String,
+    mode: Int,
+    patchMode: String,
+    patchValue: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val colors = LocalELFTraceColors.current
+    var report by remember { mutableStateOf<PatchPropagationReport?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
+
+    LaunchedEffect(seedAddr, mode, patchMode, patchValue) {
+        loading = true
+        viewModel.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun = true) { r ->
+            report = r
+            selected = r.entries.filter { it.status == "candidate" }.map { it.address }.toSet()
+            loading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.card,
+        title = {
+            Text(
+                "Propagate: " + (if (mode == 1) "Exact Clones" else "Callers"),
+                color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp
+            )
+        },
+        text = {
+            Column(modifier = Modifier.heightIn(max = 360.dp)) {
+                Text(
+                    "Seed 0x" + "%08X".format(seedAddr) + "  (" + seedLabel + ")",
+                    color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp
+                )
+                Text(
+                    "Patch: " + patchMode + " / " + patchValue,
+                    color = colors.textSecondary, fontSize = 11.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                val r = report
+                when {
+                    loading -> Text("Scanning for matches\u2026", color = colors.textSecondary, fontSize = 12.sp)
+                    r == null -> Text("No report", color = colors.textSecondary, fontSize = 12.sp)
+                    r.error != null -> Text("Error: " + r.error, color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                    r.total_candidates == 0 -> Text("No other matches found.", color = colors.textSecondary, fontSize = 12.sp)
+                    else -> {
+                        Text(
+                            "" + r.total_candidates + " found, " + r.skipped + " skipped" + (if (r.truncated) " (capped)" else ""),
+                            color = colors.textSecondary, fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                            items(r.entries) { e ->
+                                val isCandidate = e.status == "candidate"
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = selected.contains(e.address),
+                                        enabled = isCandidate,
+                                        onCheckedChange = { on ->
+                                            selected = if (on) selected + e.address else selected - e.address
+                                        }
+                                    )
+                                    Column {
+                                        Text(
+                                            "0x" + "%08X".format(e.address),
+                                            color = if (isCandidate) colors.primary else colors.textSecondary,
+                                            fontFamily = FontFamily.Monospace, fontSize = 11.sp
+                                        )
+                                        if (!isCandidate && e.reason != null) {
+                                            Text(e.reason, color = colors.textSecondary, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !loading && selected.isNotEmpty(),
+                onClick = {
+                    viewModel.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun = false) { applied ->
+                        if (applied.error != null) {
+                            Toast.makeText(context, "Error: " + applied.error, Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Applied " + applied.applied + ", skipped " + applied.skipped,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        onDismiss()
+                    }
+                }
+            ) {
+                Text("Apply " + selected.size, color = colors.primary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = colors.textSecondary)
+            }
+        }
+    )
 }
