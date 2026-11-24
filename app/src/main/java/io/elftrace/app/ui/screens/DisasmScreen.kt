@@ -1070,17 +1070,19 @@ private fun PropagationReviewDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.card,
-        title = {
-            Text(
-                "Propagate Patch",
-                color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp
-            )
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+    AlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = colors.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(
+                    "Propagate Patch",
+                    color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp
+                )
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "Seed 0x" + "%08X".format(seedAddr) + "  (" + seedLabel + ")",
                     color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp
@@ -1179,8 +1181,6 @@ private fun PropagationReviewDialog(
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {}
-    )
+        }
+    }
 }
