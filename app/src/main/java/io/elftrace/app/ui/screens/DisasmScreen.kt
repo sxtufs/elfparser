@@ -239,11 +239,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 dragHandle = null
             ) {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp)
-                        .heightIn(max = 420.dp)
                         .verticalScroll(rememberScrollState(), flingBehavior = rememberMomentumFlingBehavior())
                 ) {
                     Text(
@@ -304,84 +304,33 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     )
                     Spacer(Modifier.height(6.dp))
 
-                    // Quick patch buttons
+                    // Quick patch: one compact row of 4 chips (was a 2x2 grid of
+                    // 42dp buttons that dominated the sheet height).
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.applyQuickPatch(ins.address, 1) { res ->
-                                    Toast.makeText(context, "Patched NOP: ${res.success}", Toast.LENGTH_SHORT).show()
-                                    selectedInsn = null
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                        ) {
-                            Text("NOP", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.applyQuickPatch(ins.address, 2) { res ->
-                                    Toast.makeText(context, "Patched Return True: ${res.success}", Toast.LENGTH_SHORT).show()
-                                    selectedInsn = null
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                        ) {
-                            Text("Ret True", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.applyQuickPatch(ins.address, 3) { res ->
-                                    Toast.makeText(context, "Patched Return False: ${res.success}", Toast.LENGTH_SHORT).show()
-                                    selectedInsn = null
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                        ) {
-                            Text("Ret False", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.applyQuickPatch(ins.address, 4) { res ->
-                                    Toast.makeText(context, "Patched Return Void: ${res.success}", Toast.LENGTH_SHORT).show()
-                                    selectedInsn = null
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                        ) {
-                            Text("Ret Void", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        listOf(
+                            1 to "NOP",
+                            2 to "Ret T",
+                            3 to "Ret F",
+                            4 to "Void"
+                        ).forEach { (type, label) ->
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.applyQuickPatch(ins.address, type) { res ->
+                                        Toast.makeText(context, "Patched $label: ${res.success}", Toast.LENGTH_SHORT).show()
+                                        selectedInsn = null
+                                    }
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                shape = RoundedCornerShape(50),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp),
+                                modifier = Modifier.weight(1f).height(34.dp)
+                            ) {
+                                Text(label, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            }
                         }
                     }
 
@@ -595,6 +544,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             }
                         }
                     }
+                }
                 }
             }
         }
