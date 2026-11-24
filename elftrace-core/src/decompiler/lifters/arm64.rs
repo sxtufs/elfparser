@@ -777,7 +777,8 @@ impl InstructionLifter for Arm64Lifter {
                         // The old code compared lhs == rhs, which made a
                         // following conditional branch take the wrong path
                         // for the extremely common `adds ..; b.eq/b.ne` idiom.
-                        let neg_rhs = match rhs {
+                        // NOTE: clone rhs — the Add assignment below still needs it.
+                        let neg_rhs = match rhs.clone() {
                             IrExpr::Const(c) => IrExpr::Const(c.wrapping_neg()),
                             other => IrExpr::Unary(UnaryOp::Neg, Box::new(other), dst_ty),
                         };
