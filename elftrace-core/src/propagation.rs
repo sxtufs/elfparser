@@ -192,7 +192,22 @@ fn align_of(e_machine: u32) -> usize {
     }
 }
 
-fn seed_word_mask(e_machine: u32, word: u32) -> (u32, u32) {
+/// True when `data[i..i+template.len()]` equals `template` under `mask`
+/// (mask byte 0x00 = ignored, 0xFF = exact). Pure and side-effect-free so it
+/// can be unit-tested without an ELF context.
+pub fn template_matches_at(data: &[u8], template: &[u8], mask: &[u8], i: usize) -> bool {
+    if mask.len() != template.len() || i + template.len() > data.len() {
+        return false;
+    }
+    for k in 0..template.len() {
+        if mask[k] != 0 && (data[i + k] & mask[k]) != (template[k] & mask[k]) {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn seed_word_mask(e_machine: u32, word: u32) -> (u32, u32) {
     if e_machine == 183 {
         let operand_bits: u32 = 0x00FF_FFE0;
         (word & !operand_bits, !operand_bits)
@@ -360,14 +375,7 @@ pub fn propagate_exact(
         }
         let mut i = 0usize;
         while i + template.len() <= data.len() {
-            let mut ok = true;
-            for k in 0..template.len() {
-                if mask[k] != 0 && (data[i + k] & mask[k]) != (template[k] & mask[k]) {
-                    ok = false;
-                    break;
-                }
-            }
-            if ok {
+            if template_matches_at(data, &template, &mask, i) {
                 let hit_vaddr = base_vaddr + i as u64;
                 let target = hit_vaddr
                     .wrapping_add(seed_in_tpl as u64)
