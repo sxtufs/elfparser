@@ -1154,7 +1154,7 @@ private fun PropagationReviewDialog(
 
                 // Scope is fixed to Exact Clones (see rationale above).
                 Text(
-                    "Scope: Exact Clones (inline duplicates)",
+                    "Scope: Exact Clones",
                     color = colors.textSecondary, fontSize = 10.sp
                 )
                 Spacer(Modifier.height(6.dp))
@@ -1174,7 +1174,10 @@ private fun PropagationReviewDialog(
                     loading -> Text("Scanning for matches\u2026", color = colors.textSecondary, fontSize = 12.sp)
                     r == null -> Text("No report", color = colors.textSecondary, fontSize = 12.sp)
                     r.error != null -> Text("Error: " + r.error, color = Color(0xFFFF6B6B), fontSize = 12.sp)
-                    r.total_candidates == 0 -> Text("No other matches found.", color = colors.textSecondary, fontSize = 12.sp)
+                    r.total_candidates == 0 -> Text(
+                        "No other matches found. This function may not be inlined elsewhere.",
+                        color = colors.textSecondary, fontSize = 12.sp
+                    )
                     else -> {
                         Text(
                             "" + r.total_candidates + " found, " + r.skipped + " skipped" + (if (r.truncated) " (capped)" else ""),
