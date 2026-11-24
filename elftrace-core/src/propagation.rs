@@ -272,12 +272,16 @@ pub fn propagate_exact(
     if seed_patch.is_empty() {
         return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Empty seed patch".into());
     }
-    if e_machine == 183 && seed_patch.len() != 4 {
+    // Multi-instruction seeds (e.g. `ret_true` = mov+ret, 8 bytes on AArch64)
+    // are allowed: the first instruction word is operand-wildcarded, the rest
+    // of the seed must match the clone exactly. Only the alignment rule below
+    // constrains the length (it must be a whole number of instructions).
+    if e_machine == 183 && seed_patch.len() % 4 != 0 {
         return PatchPropagationReport::error(
             seed_addr,
             mode,
             opts.dry_run,
-            format!("AArch64 seed patch must be 4 bytes, got {}", seed_patch.len()),
+            format!("AArch64 seed patch must be a multiple of 4 bytes, got {}", seed_patch.len()),
         );
     }
 
@@ -330,7 +334,7 @@ pub fn propagate_exact(
     template[seed_in_tpl..seed_in_tpl + seed_patch.len()].copy_from_slice(seed_patch);
 
     let mut mask: Vec<u8> = vec![0xFF; template.len()];
-    if opts.operand_wildcard && e_machine == 183 && seed_patch.len() == 4 {
+    if opts.operand_wildcard && e_machine == 183 && seed_patch.len() >= 4 {
         let patched_word = u32::from_le_bytes([
             template[seed_in_tpl],
             template[seed_in_tpl + 1],

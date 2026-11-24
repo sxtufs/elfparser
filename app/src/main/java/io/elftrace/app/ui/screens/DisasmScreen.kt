@@ -912,9 +912,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 viewModel = viewModel,
                 seedAddr = propagateInsnAddr,
                 seedLabel = propagateSeedLabel,
-                mode = propagateMode,
-                patchMode = propagatePatchMode,
-                patchValue = propagatePatchValue,
+                initialMode = propagateMode,
                 onDismiss = { showPropagateDialog = false }
             )
         }
@@ -1049,9 +1047,7 @@ private fun PropagationReviewDialog(
     viewModel: ELFTraceViewModel,
     seedAddr: Long,
     seedLabel: String,
-    mode: Int,
-    patchMode: String,
-    patchValue: String,
+    initialMode: Int,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1060,9 +1056,14 @@ private fun PropagationReviewDialog(
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
-    LaunchedEffect(seedAddr, mode, patchMode, patchValue) {
+    // User-selectable knobs. Default: NOP for ExactClone (neutralise an inline
+    // check), Return-True for Callers (force the branch to look satisfied).
+    var mode by remember { mutableStateOf(initialMode) }
+    var patchValue by remember { mutableStateOf(if (initialMode == 2) "ret_true" else "nop") }
+
+    LaunchedEffect(seedAddr, mode, patchValue) {
         loading = true
-        viewModel.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun = true) { r ->
+        viewModel.propagatePatch(seedAddr, mode, "quick", patchValue, dryRun = true) { r ->
             report = r
             selected = r.entries.filter { it.status == "candidate" }.map { it.address }.toSet()
             loading = false
@@ -1074,20 +1075,38 @@ private fun PropagationReviewDialog(
         containerColor = colors.card,
         title = {
             Text(
-                "Propagate: " + (if (mode == 1) "Exact Clones" else "Callers"),
+                "Propagate Patch",
                 color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp
             )
         },
         text = {
-            Column(modifier = Modifier.heightIn(max = 360.dp)) {
+            Column(modifier = Modifier.heightIn(max = 420.dp)) {
                 Text(
                     "Seed 0x" + "%08X".format(seedAddr) + "  (" + seedLabel + ")",
                     color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp
                 )
-                Text(
-                    "Patch: " + patchMode + " / " + patchValue,
-                    color = colors.textSecondary, fontSize = 11.sp
-                )
+                Spacer(Modifier.height(6.dp))
+
+                // Mode selector.
+                Text("Scope", color = colors.textSecondary, fontSize = 10.sp)
+                Row {
+                    FilterChip(selected = mode == 1, onClick = { mode = 1; patchValue = "nop" },
+                        label = { Text("Exact Clones", fontSize = 10.sp) })
+                    Spacer(Modifier.width(6.dp))
+                    FilterChip(selected = mode == 2, onClick = { mode = 2; patchValue = "ret_true" },
+                        label = { Text("Callers", fontSize = 10.sp) })
+                }
+                Spacer(Modifier.height(4.dp))
+
+                // Patch selector.
+                Text("Patch", color = colors.textSecondary, fontSize = 10.sp)
+                Row {
+                    listOf("nop" to "NOP", "ret_true" to "True", "ret_false" to "False", "ret_void" to "Void").forEach { (v, label) ->
+                        FilterChip(selected = patchValue == v, onClick = { patchValue = v },
+                            label = { Text(label, fontSize = 10.sp) })
+                        Spacer(Modifier.width(4.dp))
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 val r = report
                 when {
@@ -1133,7 +1152,7 @@ private fun PropagationReviewDialog(
             TextButton(
                 enabled = !loading && selected.isNotEmpty(),
                 onClick = {
-                    viewModel.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun = false) { applied ->
+                    viewModel.propagatePatch(seedAddr, mode, "quick", patchValue, dryRun = false) { applied ->
                         if (applied.error != null) {
                             Toast.makeText(context, "Error: " + applied.error, Toast.LENGTH_LONG).show()
                         } else {
