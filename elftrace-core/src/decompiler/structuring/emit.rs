@@ -371,6 +371,32 @@ fn emit_block_stmts(
     for stmt in &b.stmts {
         match stmt {
             IrStmt::Assign { dst, src } => {
+                // Sub-register destination (w0/eax/…) cannot be used as an C
+                // lvalue: `format_expr` renders it as `(uint32_t)x0`, and
+                // `(uint32_t)x0 = …;` is a compile error. Mirror codegen.rs:
+                // assign the wider parent with a zero-extending truncation of
+                // the source, matching ARM64 w-writes / x86-64 32-bit writes.
+                if let IrExpr::Reg(dst_r, _) = dst {
+                    let dst_lower = dst_r.to_lowercase();
+                    if let Some((parent, _)) = crate::decompiler::codegen::sub_register_info(&dst_lower) {
+                        let parent_name = param_map
+                            .get(&parent)
+                            .cloned()
+                            .unwrap_or(parent);
+                        let src_str = codegen.format_expr(
+                            src,
+                            param_map,
+                            func.base_stack_offset,
+                            func.inferred_params.len(),
+                        );
+                        out.push_str(&format!(
+                            "{}{} = (uint64_t)(uint32_t)({});\n",
+                            ind_str, parent_name, src_str
+                        ));
+                        continue;
+                    }
+                }
+
                 let dst_str = codegen.format_expr(
                     dst,
                     param_map,

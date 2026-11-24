@@ -1348,7 +1348,7 @@ fn libc_arg_cast(name: &str, position: usize) -> &'static str {
 /// Byte/word-level x86 partial updates (ax, al, ah, sil, dil, etc.) are NOT
 /// tracked — those require bitfield-aware partial writes and are deferred to a
 /// separate work order.
-fn sub_register_info(r: &str) -> Option<(String, &'static str)> {
+pub(crate) fn sub_register_info(r: &str) -> Option<(String, &'static str)> {
     let r_lower = r.to_lowercase();
 
     // AArch64 wN → xN
