@@ -243,6 +243,8 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp)
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState(), flingBehavior = rememberMomentumFlingBehavior())
                 ) {
                     Text(
                         text = "Instruction Analysis",
