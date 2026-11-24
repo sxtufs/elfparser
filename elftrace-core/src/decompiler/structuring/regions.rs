@@ -30,6 +30,13 @@ pub fn structure_function(
     )
 }
 
+/// Maximum structuring recursion depth. Past this we stop recursing and emit
+/// the remaining blocks linearly (valid, if less pretty, output). This prevents
+/// a pathological / deeply-nested function from exhausting the native stack —
+/// a stack overflow is NOT catchable by the JNI `catch_unwind` guard and would
+/// abort the whole process.
+const MAX_STRUCTURE_DEPTH: usize = 200;
+
 #[allow(clippy::too_many_arguments, clippy::only_used_in_recursion)]
 fn structure_sequence(
     func: &IrFunction,
@@ -41,6 +48,40 @@ fn structure_sequence(
     stop_idx: Option<usize>,
     visited: &mut [bool],
 ) -> Vec<StructuredNode> {
+    structure_sequence_d(
+        func, graph, loop_info, ipdom, start, end, stop_idx, visited, 0,
+    )
+}
+
+#[allow(clippy::too_many_arguments, clippy::only_used_in_recursion)]
+fn structure_sequence_d(
+    func: &IrFunction,
+    graph: &CfGraph,
+    loop_info: &LoopInfo,
+    ipdom: &[Option<usize>],
+    start: usize,
+    end: usize,
+    stop_idx: Option<usize>,
+    visited: &mut [bool],
+    depth: usize,
+) -> Vec<StructuredNode> {
+    // Depth guard: degrade to a flat linear listing instead of recursing further.
+    if depth > MAX_STRUCTURE_DEPTH {
+        let mut flat = Vec::new();
+        let n_guard = graph.blocks.len();
+        let mut j = start;
+        while j < end && j < n_guard {
+            if Some(j) == stop_idx {
+                break;
+            }
+            if !visited[j] {
+                visited[j] = true;
+                flat.push(StructuredNode::Block(graph.blocks[j].clone()));
+            }
+            j += 1;
+        }
+        return flat;
+    }
     let mut nodes = Vec::new();
     let mut i = start;
     let n = graph.blocks.len();
@@ -59,6 +100,9 @@ fn structure_sequence(
             let mut is_while = false;
             let mut while_cond = None;
             let mut loop_exit_tgt = None;
+            let mut is_do_while = false;
+            let mut do_while_cond = None;
+            let mut do_while_exit = None;
 
             if let Some(IrStmt::Branch {
                 cond: Some(c),
@@ -103,6 +147,39 @@ fn structure_sequence(
                 }
             }
 
+            // Do-While detection (conservative): only when neither while heuristic
+            // fired. A do-while's condition lives at the LATCH (bottom) block: its
+            // last stmt is a conditional branch whose taken edge jumps back to the
+            // header (loop again) and whose fallthrough exits the loop. Detecting
+            // it here only *adds* structure where the current code would otherwise
+            // emit nothing, so worst case is today's behavior (no regression).
+            if !is_while {
+                for &latch in &lp.nodes {
+                    if latch == i {
+                        continue;
+                    }
+                    let lb = &graph.blocks[latch];
+                    if let Some(IrStmt::Branch {
+                        cond: Some(c),
+                        target,
+                    }) = lb.stmts.last()
+                    {
+                        if let Some(&tgt_idx) = graph.address_to_idx.get(target) {
+                            // Taken edge -> header (back-edge): classic do-while.
+                            if tgt_idx == i {
+                                let fall = latch + 1;
+                                if fall < n && !lp.nodes.contains(&fall) {
+                                    is_do_while = true;
+                                    do_while_cond = Some(c.clone());
+                                    do_while_exit = Some(fall);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if is_while {
                 if let Some(cond) = while_cond {
                     let exit_idx = loop_exit_tgt.unwrap_or(end);
@@ -121,7 +198,7 @@ fn structure_sequence(
                     }
 
                     // Structure remaining loop body blocks
-                    let mut body_seq = structure_sequence(
+                    let mut body_seq = structure_sequence_d(
                         func,
                         graph,
                         loop_info,
@@ -130,6 +207,7 @@ fn structure_sequence(
                         end,
                         Some(exit_idx),
                         visited,
+                        depth + 1,
                     );
                     body_nodes.append(&mut body_seq);
 
@@ -146,7 +224,85 @@ fn structure_sequence(
                         body: body_nodes,
                     });
 
-                    i = exit_idx;
+                    // Guard against non-termination: `exit_idx` is normally a
+                    // forward block (outside the loop body we just consumed).
+                    // In a malformed/irreducible edge case it can resolve to an
+                    // index <= i (e.g. eb_idx + 1 where the exit block precedes
+                    // the header), which would re-enter already-structured code.
+                    // Force forward progress instead of looping forever.
+                    if exit_idx <= i {
+                        if i + 1 < n {
+                            i += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i = exit_idx;
+                    }
+                    continue;
+                }
+            }
+
+            // Do-While emission: body executes once, then `cond` decides whether to
+            // repeat. The header block and the rest of the loop body up to the latch
+            // are structured exactly like a while body; the latch's back-edge branch
+            // is dropped by transform_loop_control (target == header -> no-op).
+            if is_do_while {
+                if let Some(cond) = do_while_cond {
+                    let exit_idx = do_while_exit.unwrap_or(end);
+
+                    let mut body_nodes = Vec::new();
+                    // Header runs unconditionally first. Drop a trailing Branch only
+                    // if present (a do-while header usually has no exiting branch;
+                    // if it has an unconditional jump into the body, emit it via
+                    // transform_loop_control rather than as a raw goto here).
+                    let mut header_stmts = header_block.stmts.clone();
+                    if matches!(header_stmts.last(), Some(IrStmt::Branch { .. })) {
+                        header_stmts.pop();
+                    }
+                    if !header_stmts.is_empty() {
+                        body_nodes.push(StructuredNode::Block(IrBlock {
+                            id: header_block.id,
+                            start_address: header_block.start_address,
+                            end_address: header_block.end_address,
+                            stmts: header_stmts,
+                        }));
+                    }
+
+                    let mut body_seq = structure_sequence_d(
+                        func,
+                        graph,
+                        loop_info,
+                        ipdom,
+                        i + 1,
+                        end,
+                        Some(exit_idx),
+                        visited,
+                        depth + 1,
+                    );
+                    body_nodes.append(&mut body_seq);
+
+                    transform_loop_control(
+                        &mut body_nodes,
+                        header_block.start_address,
+                        &lp.nodes,
+                        graph,
+                    );
+
+                    nodes.push(StructuredNode::DoWhile {
+                        cond,
+                        body: body_nodes,
+                    });
+
+                    if exit_idx <= i {
+                        if i + 1 < n {
+                            i += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i = exit_idx;
+                    }
                     continue;
                 }
             }
@@ -178,8 +334,8 @@ fn structure_sequence(
 
                 // Case 1: Simple If-Then (fallthrough == join_idx)
                 if Some(fallthrough) == join_idx && tgt_idx < n {
-                    let then_nodes = structure_sequence(
-                        func, graph, loop_info, ipdom, tgt_idx, end, join_idx, visited,
+                    let then_nodes = structure_sequence_d(
+                        func, graph, loop_info, ipdom, tgt_idx, end, join_idx, visited, depth + 1,
                     );
                     nodes.push(StructuredNode::If {
                         cond: c,
@@ -192,7 +348,7 @@ fn structure_sequence(
 
                 // Case 2: Inverted If-Then (target == join_idx)
                 if Some(tgt_idx) == join_idx && fallthrough < n {
-                    let then_nodes = structure_sequence(
+                    let then_nodes = structure_sequence_d(
                         func,
                         graph,
                         loop_info,
@@ -201,6 +357,7 @@ fn structure_sequence(
                         end,
                         join_idx,
                         visited,
+                        depth + 1,
                     );
                     nodes.push(StructuredNode::If {
                         cond: negate_condition(c),
@@ -214,7 +371,7 @@ fn structure_sequence(
                 // Case 3: If-Then-Else
                 if let Some(j) = join_idx {
                     if tgt_idx < n && fallthrough < n && tgt_idx != j && fallthrough != j {
-                        let then_nodes = structure_sequence(
+                        let then_nodes = structure_sequence_d(
                             func,
                             graph,
                             loop_info,
@@ -223,8 +380,9 @@ fn structure_sequence(
                             end,
                             Some(j),
                             visited,
+                            depth + 1,
                         );
-                        let else_nodes = structure_sequence(
+                        let else_nodes = structure_sequence_d(
                             func,
                             graph,
                             loop_info,
@@ -233,6 +391,7 @@ fn structure_sequence(
                             end,
                             Some(j),
                             visited,
+                            depth + 1,
                         );
                         nodes.push(StructuredNode::If {
                             cond: c,

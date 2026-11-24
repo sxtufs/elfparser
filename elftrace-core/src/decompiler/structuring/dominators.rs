@@ -92,17 +92,17 @@ pub fn post_dominators(g: &CfGraph) -> Vec<HashSet<usize>> {
     let exit_node = n;
     let total_nodes = n + 1;
 
-    let mut rev_succ: Vec<Vec<usize>> = vec![Vec::new(); total_nodes];
+    // `rev_pred` holds, for each node, the predecessors in the reversed graph
+    // (i.e. the original successors, plus the synthetic exit for leaf nodes).
+    // The former `rev_succ` mirror was computed but never read; removed.
     let mut rev_pred: Vec<Vec<usize>> = vec![Vec::new(); total_nodes];
 
     for u in 0..n {
         if g.succ[u].is_empty() {
             // Node u reaches synthetic exit
-            rev_succ[exit_node].push(u);
             rev_pred[u].push(exit_node);
         } else {
             for &v in &g.succ[u] {
-                rev_succ[v].push(u);
                 rev_pred[u].push(v);
             }
         }
