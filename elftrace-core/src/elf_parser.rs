@@ -274,13 +274,14 @@ pub struct ElfContext {
     pub syms_map: HashMap<u64, SymsDTO>,
     /// Memoized result of `get_info()`. `get_info` re-parses the whole ELF and
     /// rebuilds the symbol/section/segment tables on every call; the UI used to
-    /// trigger 4+ of these per function selection. OnceLock makes it a one-time
-    /// cost. The value is immutable after the first successful build.
-    info_cache: std::sync::OnceLock<ElfInfo>,
+    /// trigger 4+ of these per function selection. A RwLock-backed Option makes it
+    /// a one-time cost while still allowing invalidation when `syms_map` mutates
+    /// (rename_function, Il2Cpp symbol injection). A OnceLock could not be reset,
+    /// which previously left the UI showing stale symbol names after a rename.
+    info_cache: std::sync::RwLock<Option<ElfInfo>>,
     /// Sorted (start, end, name) symbol bounds for O(log n) enclosing-symbol
-    /// lookups. Built lazily on first use; previously `plugins::find_enclosing_symbol`
-    /// did a full O(n) linear scan per finding.
-    symbol_index: std::sync::OnceLock<Vec<(u64, u64, String)>>,
+    /// lookups. Built lazily on first use; invalidated together with info_cache.
+    symbol_index: std::sync::RwLock<Option<Vec<(u64, u64, String)>>>,
 }
 
 impl ElfContext {
@@ -298,8 +299,8 @@ impl ElfContext {
             path: String::from("<stub>"),
             raw: Vec::new(),
             syms_map: HashMap::new(),
-            info_cache: std::sync::OnceLock::new(),
-            symbol_index: std::sync::OnceLock::new(),
+            info_cache: std::sync::RwLock::new(None),
+            symbol_index: std::sync::RwLock::new(None),
         }
     }
 
@@ -691,8 +692,8 @@ impl ElfContext {
             path: path.to_string(),
             raw,
             syms_map,
-            info_cache: std::sync::OnceLock::new(),
-            symbol_index: std::sync::OnceLock::new(),
+            info_cache: std::sync::RwLock::new(None),
+            symbol_index: std::sync::RwLock::new(None),
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)
@@ -700,8 +701,10 @@ impl ElfContext {
 
     pub fn get_info(&self) -> Result<ElfInfo, String> {
         // Fast path: return the memoized result instead of re-parsing the ELF.
-        if let Some(cached) = self.info_cache.get() {
-            return Ok(cached.clone());
+        if let Ok(guard) = self.info_cache.read() {
+            if let Some(cached) = guard.as_ref() {
+                return Ok(cached.clone());
+            }
         }
         let obj_file =
             object::File::parse(&*self.raw).map_err(|e| format!("Failed to parse ELF: {}", e))?;
@@ -870,7 +873,11 @@ impl ElfContext {
         };
         // Cache the successful build. If another thread raced us, keep whichever
         // value landed first; both are identical in content.
-        let _ = self.info_cache.set(info.clone());
+        if let Ok(mut guard) = self.info_cache.write() {
+            if guard.is_none() {
+                *guard = Some(info.clone());
+            }
+        }
         Ok(info)
     }
 
@@ -882,23 +889,36 @@ impl ElfContext {
         if let Some(sym) = self.syms_map.get(&vaddr) {
             return Some(sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()));
         }
-        let index = self.symbol_index.get_or_init(|| {
-            let mut v: Vec<(u64, u64, String)> = self
-                .syms_map
-                .iter()
-                .filter(|(addr, _)| **addr != 0)
-                .map(|(&addr, sym)| {
-                    let end = if sym.size > 0 {
-                        addr.saturating_add(sym.size)
-                    } else {
-                        addr.saturating_add(0x1000)
-                    };
-                    (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
-                })
-                .collect();
-            v.sort_by_key(|e| e.0);
-            v
-        });
+        // Lazily build the sorted symbol index under a write lock, then read it
+        // back under a read lock for the binary search. The index is invalidated
+        // (reset to None) whenever syms_map mutates, so it is rebuilt on demand.
+        if let Ok(mut guard) = self.symbol_index.write() {
+            if guard.is_none() {
+                let mut v: Vec<(u64, u64, String)> = self
+                    .syms_map
+                    .iter()
+                    .filter(|(addr, _)| **addr != 0)
+                    .map(|(&addr, sym)| {
+                        let end = if sym.size > 0 {
+                            addr.saturating_add(sym.size)
+                        } else {
+                            addr.saturating_add(0x1000)
+                        };
+                        (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
+                    })
+                    .collect();
+                v.sort_by_key(|e| e.0);
+                *guard = Some(v);
+            }
+        }
+        let index_guard = match self.symbol_index.read() {
+            Ok(g) => g,
+            Err(_) => return None,
+        };
+        let index = match index_guard.as_ref() {
+            Some(v) => v,
+            None => return None,
+        };
         // Find the greatest start <= vaddr, then verify vaddr < its end.
         match index.binary_search_by(|e| {
             if e.0 <= vaddr {
@@ -917,6 +937,19 @@ impl ElfContext {
                     None
                 }
             }
+        }
+    }
+
+    /// Invalidate the memoized `get_info()` result and the sorted symbol index.
+    /// MUST be called after any mutation of `syms_map` (rename_function, Il2Cpp
+    /// symbol injection) so the next `get_info()` / `enclosing_symbol()` rebuild
+    /// from the current symbol table instead of returning stale data.
+    pub fn invalidate_symbol_caches(&self) {
+        if let Ok(mut g) = self.info_cache.write() {
+            *g = None;
+        }
+        if let Ok(mut g) = self.symbol_index.write() {
+            *g = None;
         }
     }
 
@@ -1051,41 +1084,57 @@ impl ElfContext {
     }
 
     pub fn is_executable_address(&self, address: u64) -> bool {
-        if let Ok(obj) = object::File::parse(&*self.raw) {
-            use object::{Object, ObjectSection};
-            for section in obj.sections() {
-                let start = section.address();
-                let size = section.size();
-                if address >= start && address < start + size {
-                    let name = section.name().unwrap_or("");
-                    if name.contains("text")
-                        || name.contains("plt")
-                        || name.contains("init")
-                        || name.contains("fini")
-                    {
+        // Correctness: an address only counts as executable if it provably falls
+        // inside an executable section OR an executable PT_LOAD segment. The
+        // previous fallback returned `true` for ANY address that matched no
+        // region (and for any unparseable file), which let `validate_patch_target`
+        // accept writes into .rodata/.data or into a completely bogus vaddr.
+        //
+        // Section-stripped/packed ELFs (e.g. LIAPP) are still handled: their
+        // PT_LOAD segments carry the real PF_X flag, and the segment loop below
+        // is authoritative when no section claims the address.
+        let obj = match object::File::parse(&*self.raw) {
+            Ok(o) => o,
+            // Cannot prove executability without a parseable object; refuse.
+            Err(_) => return false,
+        };
+        use object::{Object, ObjectSection};
+        for section in obj.sections() {
+            let start = section.address();
+            let size = section.size();
+            if size > 0 && address >= start && address < start.saturating_add(size) {
+                let name = section.name().unwrap_or("");
+                if name.contains("text")
+                    || name.contains("plt")
+                    || name.contains("init")
+                    || name.contains("fini")
+                {
+                    return true;
+                }
+                if let object::SectionFlags::Elf { sh_flags } = section.flags() {
+                    let shf_execinstr = 0x4u64;
+                    if (sh_flags & shf_execinstr) != 0 {
                         return true;
                     }
-                    if let object::SectionFlags::Elf { sh_flags } = section.flags() {
-                        let shf_execinstr = 0x4u64;
-                        if (sh_flags & shf_execinstr) != 0 {
-                            return true;
-                        }
-                    }
-                    return false;
                 }
-            }
-            use object::ObjectSegment;
-            for segment in obj.segments() {
-                let start = segment.address();
-                let size = segment.size();
-                if address >= start && address < start + size {
-                    if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
-                        return (p_flags & 1) != 0; // PF_X = 1
-                    }
-                }
+                // Address is inside a *known* non-executable section: definitively false.
+                return false;
             }
         }
-        true
+        use object::ObjectSegment;
+        for segment in obj.segments() {
+            let start = segment.address();
+            let size = segment.size();
+            if size > 0 && address >= start && address < start.saturating_add(size) {
+                if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
+                    return (p_flags & 1) != 0; // PF_X = 1
+                }
+                // Segment found but flags are non-ELF: cannot prove executable.
+                return false;
+            }
+        }
+        // Not inside any section or segment: not executable.
+        false
     }
 
     pub fn get_section_name_for_vaddr(&self, address: u64) -> Option<String> {
@@ -1211,7 +1260,6 @@ impl ElfContext {
         if let Some(sym) = self.syms_map.get_mut(&clean_addr) {
             sym.sym = new_name.to_string();
             sym.demangled = Some(new_name.to_string());
-            true
         } else {
             self.syms_map.insert(
                 clean_addr,
@@ -1226,8 +1274,11 @@ impl ElfContext {
                     json: None,
                 },
             );
-            true
         }
+        // The memoized ElfInfo (get_info) and the enclosing-symbol index both
+        // derive from syms_map; drop them so the next query reflects the rename.
+        self.invalidate_symbol_caches();
+        true
     }
 
     pub fn extract_strings(&self) -> Result<SData, String> {

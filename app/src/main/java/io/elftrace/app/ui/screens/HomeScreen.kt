@@ -674,37 +674,63 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
  */
 private fun extractSoFromUri(context: Context, uri: Uri, entryName: String, outFile: File): Boolean {
     return try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            val zip = ZipInputStream(stream)
-            var entry = zip.nextEntry
-            while (entry != null) {
-                if (entryName.contains("!/")) {
-                    val parts = entryName.split("!/", limit = 2)
-                    if (entry.name == parts[0]) {
-                        val nestedZip = ZipInputStream(zip)
-                        var nestedEntry = nestedZip.nextEntry
-                        while (nestedEntry != null) {
-                            if (nestedEntry.name == parts[1]) {
-                                FileOutputStream(outFile).use { output ->
-                                    nestedZip.copyTo(output)
-                                }
-                                return true
-                            }
-                            nestedEntry = nestedZip.nextEntry
+        if (entryName.contains("!/")) {
+            // Composite entry ("base.apk!/lib/arm64-v8a/libx.so") inside an .xapk/zip.
+            // A ZipInputStream cannot be wrapped around another ZipInputStream (the
+            // outer stream has already consumed the nested entry's local header), so
+            // first buffer ONLY the nested .apk entry to a temp file, then scan that
+            // fresh, seekable-from-zero zip for the requested .so.
+            val parts = entryName.split("!/", limit = 2)
+            val outerName = parts[0]
+            val innerName = parts[1]
+            val nestedTmp = File(context.cacheDir, "nested_${System.nanoTime()}.apk")
+            try {
+                var foundNested = false
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val zip = ZipInputStream(stream)
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory && entry.name == outerName) {
+                            FileOutputStream(nestedTmp).use { out -> zip.copyTo(out) }
+                            foundNested = true
+                            break
                         }
-                    }
-                } else {
-                    if (entry.name == entryName) {
-                        FileOutputStream(outFile).use { output ->
-                            zip.copyTo(output)
-                        }
-                        return true
+                        entry = zip.nextEntry
                     }
                 }
-                entry = zip.nextEntry
+                if (!foundNested) return false
+
+                // Now scan the buffered nested APK with a fresh ZipInputStream.
+                nestedTmp.inputStream().use { nestedStream ->
+                    val nestedZip = ZipInputStream(nestedStream)
+                    var nestedEntry = nestedZip.nextEntry
+                    while (nestedEntry != null) {
+                        if (!nestedEntry.isDirectory && nestedEntry.name == innerName) {
+                            FileOutputStream(outFile).use { output -> nestedZip.copyTo(output) }
+                            return true
+                        }
+                        nestedEntry = nestedZip.nextEntry
+                    }
+                }
+                false
+            } finally {
+                nestedTmp.delete()
             }
+        } else {
+            // Plain entry directly inside the picked APK/zip.
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val zip = ZipInputStream(stream)
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name == entryName) {
+                        FileOutputStream(outFile).use { output -> zip.copyTo(output) }
+                        return true
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+            false
         }
-        false
     } catch (_: Exception) {
         false
     }

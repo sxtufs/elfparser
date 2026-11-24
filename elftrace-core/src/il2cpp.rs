@@ -79,6 +79,12 @@ pub fn load_script_json(ctx: &mut ElfContext, json_path: &str) -> Result<usize, 
         }
     }
 
+    // Symbols were injected into syms_map; drop the memoized ElfInfo and the
+    // enclosing-symbol index so the refreshed UI sees the new C# method names.
+    if count > 0 {
+        ctx.invalidate_symbol_caches();
+    }
+
     Ok(count)
 }
 
