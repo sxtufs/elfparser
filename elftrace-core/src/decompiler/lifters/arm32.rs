@@ -176,9 +176,19 @@ impl InstructionLifter for Arm32Lifter {
             "cmn" => {
                 let parts: Vec<&str> = ops.split(',').map(|s| s.trim()).collect();
                 if parts.len() == 2 {
+                    // CMN Rn, <op> sets flags on Rn + op (== CMP Rn, -op). The
+                    // operand may be a register — the old code forced it through
+                    // parse_imm_num and produced Const(0) for a register.
                     let r1 = IrExpr::reg(parts[0], IrType::Int32);
-                    let r2_val = parse_imm_num(clean_imm(parts[1]).as_str()).unwrap_or(0);
-                    let r2 = IrExpr::Const((r2_val as u32).wrapping_neg() as u64);
+                    let r2 = if let Ok(imm) = parse_imm_num(clean_imm(parts[1]).as_str()) {
+                        IrExpr::Const((imm as u32).wrapping_neg() as u64)
+                    } else {
+                        IrExpr::Unary(
+                            UnaryOp::Neg,
+                            Box::new(IrExpr::reg(parts[1], IrType::Int32)),
+                            IrType::Int32,
+                        )
+                    };
                     self.last_cmp = Some(IrExpr::Binary(
                         BinaryOp::Eq,
                         Box::new(r1),
@@ -458,10 +468,18 @@ impl InstructionLifter for Arm32Lifter {
                     let lhs = IrExpr::reg(parts[1], IrType::Int32);
                     let rhs = parse_operand(parts[2], IrType::Int32);
                     if mnem == "adds" {
+                        // ADDS sets Z when lhs + rhs == 0, i.e. lhs == -rhs.
+                        // NOTE: clone rhs — the Add assignment below still needs it.
+                        let neg_rhs = match rhs.clone() {
+                            IrExpr::Const(c) => {
+                                IrExpr::Const((c as u32).wrapping_neg() as u64)
+                            }
+                            other => IrExpr::Unary(UnaryOp::Neg, Box::new(other), IrType::Int32),
+                        };
                         self.last_cmp = Some(IrExpr::Binary(
                             BinaryOp::Eq,
                             Box::new(lhs.clone()),
-                            Box::new(rhs.clone()),
+                            Box::new(neg_rhs),
                             IrType::Int8,
                         ));
                     }
@@ -969,17 +987,35 @@ impl InstructionLifter for Arm32Lifter {
         if let Some(cond_suffix) = cond_code {
             if !stmts.is_empty() {
                 let cond = match (&self.last_cmp, cond_suffix) {
-                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "gt" | "hi") => {
+                    // Signed conditions.
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "gt") => {
                         IrExpr::Binary(BinaryOp::GtS, l.clone(), r.clone(), *ty)
                     }
-                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ge" | "cs" | "hs") => {
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ge") => {
                         IrExpr::Binary(BinaryOp::GeS, l.clone(), r.clone(), *ty)
                     }
-                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "lt" | "cc" | "lo") => {
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "lt") => {
                         IrExpr::Binary(BinaryOp::LtS, l.clone(), r.clone(), *ty)
                     }
-                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "le" | "ls") => {
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "le") => {
                         IrExpr::Binary(BinaryOp::LeS, l.clone(), r.clone(), *ty)
+                    }
+                    // Unsigned conditions (hi/hs/cs/lo/cc/ls) MUST use the
+                    // unsigned ops. Previously hi/hs/lo/ls were mapped to the
+                    // signed variants, so a conditional move like `movhi`/
+                    // `movls` in an IT block took the wrong branch for values
+                    // above INT32_MAX.
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "hi") => {
+                        IrExpr::Binary(BinaryOp::GtU, l.clone(), r.clone(), *ty)
+                    }
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "cs" | "hs") => {
+                        IrExpr::Binary(BinaryOp::GeU, l.clone(), r.clone(), *ty)
+                    }
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "cc" | "lo") => {
+                        IrExpr::Binary(BinaryOp::LtU, l.clone(), r.clone(), *ty)
+                    }
+                    (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ls") => {
+                        IrExpr::Binary(BinaryOp::LeU, l.clone(), r.clone(), *ty)
                     }
                     (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ne") => {
                         IrExpr::Binary(BinaryOp::Ne, l.clone(), r.clone(), *ty)

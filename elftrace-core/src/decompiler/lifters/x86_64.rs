@@ -378,17 +378,33 @@ impl InstructionLifter for X86_64Lifter {
                     let src = parse_x86_operand(parts[1], next_pc, ctx);
                     let cond_suffix = &m[4..];
                     let cond = match (&self.last_cmp, cond_suffix) {
-                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "l" | "b") => {
+                        // Signed conditions.
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "l") => {
                             IrExpr::Binary(BinaryOp::LtS, l.clone(), r.clone(), *ty)
                         }
-                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "le" | "be") => {
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "le") => {
                             IrExpr::Binary(BinaryOp::LeS, l.clone(), r.clone(), *ty)
                         }
-                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "g" | "a") => {
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "g") => {
                             IrExpr::Binary(BinaryOp::GtS, l.clone(), r.clone(), *ty)
                         }
-                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ge" | "ae") => {
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ge") => {
                             IrExpr::Binary(BinaryOp::GeS, l.clone(), r.clone(), *ty)
+                        }
+                        // Unsigned conditions (b/be/a/ae). Previously conflated
+                        // with the signed aliases, so cmovb/cmovbe/cmova/cmovae
+                        // took the wrong branch when the sign bit was set.
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "b" | "c") => {
+                            IrExpr::Binary(BinaryOp::LtU, l.clone(), r.clone(), *ty)
+                        }
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "be") => {
+                            IrExpr::Binary(BinaryOp::LeU, l.clone(), r.clone(), *ty)
+                        }
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "a") => {
+                            IrExpr::Binary(BinaryOp::GtU, l.clone(), r.clone(), *ty)
+                        }
+                        (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ae") => {
+                            IrExpr::Binary(BinaryOp::GeU, l.clone(), r.clone(), *ty)
                         }
                         (Some(IrExpr::Binary(BinaryOp::Eq, l, r, ty)), "ne" | "nz") => {
                             IrExpr::Binary(BinaryOp::Ne, l.clone(), r.clone(), *ty)
