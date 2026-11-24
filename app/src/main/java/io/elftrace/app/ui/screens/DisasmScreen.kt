@@ -562,7 +562,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             Spacer(Modifier.height(8.dp))
                             if (confirmPatchAll) {
                                 Text(
-                                    "This NOPs the call at each caller site (undoable). Continue?",
+                                    "This NOPs the call at each caller site. Continue?",
                                     color = colors.textSecondary, fontSize = 11.sp
                                 )
                                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
