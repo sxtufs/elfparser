@@ -1080,7 +1080,7 @@ private fun PropagationReviewDialog(
             )
         },
         text = {
-            Column(modifier = Modifier.heightIn(max = 420.dp)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     "Seed 0x" + "%08X".format(seedAddr) + "  (" + seedLabel + ")",
                     color = colors.address, fontFamily = FontFamily.Monospace, fontSize = 11.sp
@@ -1146,33 +1146,41 @@ private fun PropagationReviewDialog(
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !loading && selected.isNotEmpty(),
-                onClick = {
-                    viewModel.propagatePatch(seedAddr, mode, "quick", patchValue, dryRun = false) { applied ->
-                        if (applied.error != null) {
-                            Toast.makeText(context, "Error: " + applied.error, Toast.LENGTH_LONG).show()
-                        } else {
-                            Toast.makeText(
-                                context,
-                                "Applied " + applied.applied + ", skipped " + applied.skipped,
-                                Toast.LENGTH_SHORT
-                            ).show()
+                // Buttons live INSIDE the content column so the M3 AlertDialog
+                // does not reserve a separate bottom area (which produced large
+                // empty gaps when the result was a single short line).
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = colors.textSecondary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        enabled = !loading && selected.isNotEmpty(),
+                        onClick = {
+                            viewModel.propagatePatch(seedAddr, mode, "quick", patchValue, dryRun = false) { applied ->
+                                if (applied.error != null) {
+                                    Toast.makeText(context, "Error: " + applied.error, Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Applied " + applied.applied + ", skipped " + applied.skipped,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                onDismiss()
+                            }
                         }
-                        onDismiss()
+                    ) {
+                        Text("Apply " + selected.size, color = colors.primary, fontWeight = FontWeight.Bold)
                     }
                 }
-            ) {
-                Text("Apply " + selected.size, color = colors.primary, fontWeight = FontWeight.Bold)
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textSecondary)
-            }
-        }
+        confirmButton = {},
+        dismissButton = {}
     )
 }
