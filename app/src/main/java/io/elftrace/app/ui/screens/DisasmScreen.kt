@@ -69,7 +69,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
     // Patch propagation review state (ExactClone = 1, Callers = 2).
     var showPropagateDialog by remember { mutableStateOf(false) }
-    var propagateMode by remember { mutableStateOf(1) }
     var propagatePatchMode by remember { mutableStateOf("quick") }
     var propagatePatchValue by remember { mutableStateOf("ret_true") }
     var propagateInsnAddr by remember { mutableStateOf(0L) }
@@ -912,7 +911,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 viewModel = viewModel,
                 seedAddr = propagateInsnAddr,
                 seedLabel = propagateSeedLabel,
-                initialMode = propagateMode,
                 onDismiss = { showPropagateDialog = false }
             )
         }
@@ -1047,7 +1045,6 @@ private fun PropagationReviewDialog(
     viewModel: ELFTraceViewModel,
     seedAddr: Long,
     seedLabel: String,
-    initialMode: Int,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1056,12 +1053,14 @@ private fun PropagationReviewDialog(
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
-    // User-selectable knobs. Default: NOP for ExactClone (neutralise an inline
-    // check), Return-True for Callers (force the branch to look satisfied).
-    var mode by remember { mutableStateOf(initialMode) }
-    var patchValue by remember { mutableStateOf(if (initialMode == 2) "ret_true" else "nop") }
+    // Exact Clone propagation only. Caller discovery is already covered by
+    // the Hierarchy/XREF view, so a separate "Callers" mode here would be
+    // redundant; Exact Clones is the unique capability (finding inline-
+    // duplicated bodies that XREF cannot see).
+    val mode = 1
+    var patchValue by remember { mutableStateOf("nop") }
 
-    LaunchedEffect(seedAddr, mode, patchValue) {
+    LaunchedEffect(seedAddr, patchValue) {
         loading = true
         viewModel.propagatePatch(seedAddr, mode, "quick", patchValue, dryRun = true) { r ->
             report = r
@@ -1089,16 +1088,12 @@ private fun PropagationReviewDialog(
                 )
                 Spacer(Modifier.height(6.dp))
 
-                // Mode selector.
-                Text("Scope", color = colors.textSecondary, fontSize = 10.sp)
-                Row {
-                    FilterChip(selected = mode == 1, onClick = { mode = 1; patchValue = "nop" },
-                        label = { Text("Exact Clones", fontSize = 10.sp) })
-                    Spacer(Modifier.width(6.dp))
-                    FilterChip(selected = mode == 2, onClick = { mode = 2; patchValue = "ret_true" },
-                        label = { Text("Callers", fontSize = 10.sp) })
-                }
-                Spacer(Modifier.height(4.dp))
+                // Scope is fixed to Exact Clones (see rationale above).
+                Text(
+                    "Scope: Exact Clones (inline duplicates)",
+                    color = colors.textSecondary, fontSize = 10.sp
+                )
+                Spacer(Modifier.height(6.dp))
 
                 // Patch selector.
                 Text("Patch", color = colors.textSecondary, fontSize = 10.sp)
