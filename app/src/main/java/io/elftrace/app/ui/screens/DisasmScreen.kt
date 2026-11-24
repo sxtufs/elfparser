@@ -288,8 +288,8 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     ) {
                         listOf(
                             1 to "NOP",
-                            2 to "Ret T",
-                            3 to "Ret F",
+                            2 to "True",
+                            3 to "False",
                             4 to "Void"
                         ).forEach { (type, label) ->
                             OutlinedButton(
@@ -401,7 +401,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Undo" + if (undoDepth > 0) " ($undoDepth)" else "", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text(if (undoDepth > 0) "Undo · $undoDepth" else "Undo", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -557,7 +557,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Patch all ${callers.size} callers (NOP)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Patch all ${callers.size} callers · NOP", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                             Spacer(Modifier.height(8.dp))
                             if (confirmPatchAll) {
@@ -604,7 +604,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                         }
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                            Text("[${ref.kind}] in ${ref.caller_func ?: "unknown"}", color = AmberAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("[${ref.kind}] in ${ref.caller_func ?: "sub_" + "%06X".format(ref.from_address)}", color = AmberAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                                         }
                                     }
@@ -719,7 +719,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                             }
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                                Text(ref.caller_func ?: "unknown", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text(ref.caller_func ?: "sub_" + "%06X".format(ref.from_address), color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                                 Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                                             }
                                         }
