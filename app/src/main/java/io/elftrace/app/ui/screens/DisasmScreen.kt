@@ -557,7 +557,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Patch all ${callers.size} callers · NOP", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Patch all ${callers.size} callers", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                             Spacer(Modifier.height(8.dp))
                             if (confirmPatchAll) {
