@@ -346,17 +346,20 @@ pub fn propagate_exact(
     if seed_in_tpl + seed_patch.len() > template.len() {
         return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Seed outside template".into());
     }
-    template[seed_in_tpl..seed_in_tpl + seed_patch.len()].copy_from_slice(seed_patch);
-
+    // IMPORTANT: the template must reflect the ORIGINAL bytes at the seed, not
+    // the patched ones. We are searching for sibling clones in their *current*
+    // (unpatched) form, then applying `seed_patch` at each hit below. Writing
+    // seed_patch into the template would only match already-patched code (i.e.
+    // nothing on a fresh binary).
     let mut mask: Vec<u8> = vec![0xFF; template.len()];
     if opts.operand_wildcard && e_machine == 183 && seed_patch.len() >= 4 {
-        let patched_word = u32::from_le_bytes([
+        let seed_word = u32::from_le_bytes([
             template[seed_in_tpl],
             template[seed_in_tpl + 1],
             template[seed_in_tpl + 2],
             template[seed_in_tpl + 3],
         ]);
-        let (val, m) = seed_word_mask(e_machine, patched_word);
+        let (val, m) = seed_word_mask(e_machine, seed_word);
         let val_b = val.to_le_bytes();
         let m_b = m.to_le_bytes();
         for i in 0..4 {
