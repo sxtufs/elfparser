@@ -606,6 +606,42 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
+                        if (xrefsList.isNotEmpty()) {
+                            var confirmPatchAll by remember { mutableStateOf(false) }
+                            Button(
+                                onClick = { confirmPatchAll = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Patch all ${xrefsList.size} callers (NOP)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (confirmPatchAll) {
+                                Text(
+                                    "This NOPs the branch at each caller site (undoable). Continue?",
+                                    color = colors.textSecondary, fontSize = 11.sp
+                                )
+                                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = { confirmPatchAll = false }) {
+                                        Text("No", color = colors.textSecondary)
+                                    }
+                                    TextButton(onClick = {
+                                        confirmPatchAll = false
+                                        viewModel.patchCallers(xrefsList.map { it.from_address }) { applied, skipped ->
+                                            Toast.makeText(
+                                                context,
+                                                "Patched " + applied + (if (skipped > 0) ", skipped " + skipped else ""),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }) {
+                                        Text("Patch all", color = colors.primary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
                         if (xrefsList.isEmpty()) {
                             Text("No callers or references found for this address in the binary.", color = colors.textSecondary, fontSize = 12.sp)
                         } else {

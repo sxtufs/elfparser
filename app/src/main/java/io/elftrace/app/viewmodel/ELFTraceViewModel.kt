@@ -348,6 +348,36 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Neutralise every caller in [addresses] by NOP-ing the branch instruction
+     * at each site. Sequential on the single native thread; each write goes
+     * through the validated quick-patch path and is recorded for undo.
+     */
+    fun patchCallers(
+        addresses: List<Long>,
+        onComplete: (applied: Int, skipped: Int) -> Unit
+    ) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(0, addresses.size) }
+                return@launch
+            }
+            var applied = 0
+            var skipped = 0
+            for (addr in addresses) {
+                val res = b.quickPatch(addr, 1 /* NOP */, false)
+                if (res.success) applied++ else skipped++
+            }
+            _undoDepth.value = b.undoLen()
+            if (_currentAddress.value != 0L) {
+                _instructions.value = b.disassemble(_currentAddress.value, 256)
+                _decompileText.value = b.decompile(_currentAddress.value)
+                _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+            }
+            launch(Dispatchers.Main) { onComplete(applied, skipped) }
+        }
+    }
+
     /// Suspending variant that always runs on the single native thread.
     suspend fun getHierarchy(address: Long): CallHierarchy =
         withContext(nativeDispatcher) {
@@ -570,12 +600,47 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             }
             val targetAddr = address + patch.offset
             val res = b.applyPluginPatch(targetAddr, patch.mode, patch.value)
-            if (res.success && _currentAddress.value != 0L) {
+            if (res.success) {
+                _undoDepth.value = b.undoLen()
+                if (_currentAddress.value != 0L) {
+                    _instructions.value = b.disassemble(_currentAddress.value, 256)
+                    _decompileText.value = b.decompile(_currentAddress.value)
+                    _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+                }
+            }
+            launch(Dispatchers.Main) { onComplete(res) }
+        }
+    }
+
+    /**
+     * Apply every finding's patch in one batch (the plugin already produced the
+     * finding list). Runs sequentially on the single native thread; each patch
+     * goes through the same validated path as a manual plugin patch, and the
+     * native undo stack records all of them. Reports how many applied/skipped.
+     */
+    fun applyAllPluginPatches(
+        findings: List<PluginFinding>,
+        onComplete: (applied: Int, skipped: Int) -> Unit
+    ) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(0, findings.size) }
+                return@launch
+            }
+            var applied = 0
+            var skipped = 0
+            for (f in findings) {
+                val patch = f.patch ?: continue
+                val res = b.applyPluginPatch(f.address + patch.offset, patch.mode, patch.value)
+                if (res.success) applied++ else skipped++
+            }
+            _undoDepth.value = b.undoLen()
+            if (_currentAddress.value != 0L) {
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)
             }
-            launch(Dispatchers.Main) { onComplete(res) }
+            launch(Dispatchers.Main) { onComplete(applied, skipped) }
         }
     }
 

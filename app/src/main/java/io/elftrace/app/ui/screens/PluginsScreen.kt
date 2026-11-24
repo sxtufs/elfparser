@@ -15,6 +15,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -182,6 +183,20 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                             }
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
+                    },
+                    onPatchAll = {
+                        val patchable = plugin.lastReport?.findings?.filter { it.patch != null } ?: emptyList()
+                        if (patchable.isEmpty()) {
+                            Toast.makeText(context, "No patchable findings", Toast.LENGTH_SHORT).show()
+                        } else {
+                            viewModel.applyAllPluginPatches(patchable) { applied, skipped ->
+                                Toast.makeText(
+                                    context,
+                                    "Patched " + applied + (if (skipped > 0) ", skipped " + skipped else ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                     }
                 )
             }
@@ -301,7 +316,8 @@ private fun PluginCard(
     onToggleExpand: () -> Unit,
     onRemove: () -> Unit,
     onJumpToAddress: (Long, String?, String) -> Unit,
-    onApplyPatch: (PluginFinding) -> Unit
+    onApplyPatch: (PluginFinding) -> Unit,
+    onPatchAll: () -> Unit
 ) {
     val colors = LocalELFTraceColors.current
     val report = plugin.lastReport
@@ -384,6 +400,22 @@ private fun PluginCard(
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = colors.border)
                 Spacer(Modifier.height(8.dp))
+
+                // Batch-apply every finding that carries a patch. Shown only when
+                // there is at least one patchable finding, so the button never
+                // dangles with nothing to act on.
+                val patchable = report.findings.count { it.patch != null }
+                if (patchable > 0) {
+                    Button(
+                        onClick = onPatchAll,
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Patch all " + patchable, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
 
                 if (report.error != null) {
                     Text(

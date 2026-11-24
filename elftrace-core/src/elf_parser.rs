@@ -1396,8 +1396,45 @@ impl ElfContext {
             return Err("Patch exceeds file boundary".to_string());
         }
 
+        // Record undo before mutating, so this path is reversible too.
+        self.undo_stack
+            .push((address, self.raw[offset..offset + patch.len()].to_vec()));
         self.raw[offset..offset + patch.len()].copy_from_slice(patch);
         Ok(())
+    }
+
+    /// Record an undo entry for an in-place write that bypasses `patch_bytes`
+    /// (quick/assemble/plugin/propagation write `raw` directly after their own
+    /// validation). Call this immediately before such a write.
+    pub fn push_undo(&mut self, address: u64, original: Vec<u8>) {
+        self.undo_stack.push((address, original));
+    }
+
+    /// Number of reversible patches currently recorded.
+    pub fn undo_len(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    /// Revert the most recent patch. Returns Some(address) on success, None if
+    /// the stack is empty or the address no longer maps.
+    pub fn undo_last(&mut self) -> Option<u64> {
+        let (address, original) = self.undo_stack.pop()?;
+        let offset = self.vaddr_to_offset(address)? as usize;
+        if offset + original.len() > self.raw.len() {
+            return None;
+        }
+        self.raw[offset..offset + original.len()].copy_from_slice(&original);
+        Some(address)
+    }
+
+    /// Revert every recorded patch, newest first. Returns how many were undone.
+    #[allow(dead_code)]
+    pub fn undo_all(&mut self) -> usize {
+        let mut n = 0;
+        while self.undo_last().is_some() {
+            n += 1;
+        }
+        n
     }
 }
 
