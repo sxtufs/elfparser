@@ -813,11 +813,15 @@ impl<'a> CodeGenerator<'a> {
                     UnaryOp::Neg => "-",
                     UnaryOp::Not => "~",
                 };
-                format!(
-                    "{}{}",
-                    op_str,
-                    self.format_expr(inner, param_map, base_offset, param_count)
-                )
+                let mut inner_str = self.format_expr(inner, param_map, base_offset, param_count);
+                // `-`/`~` bind tighter than any binary operator: an unparenthesized
+                // compound operand would silently regroup. e.g. Neg(a+b) -> "-a + b"
+                // (== (-a)+b) and Not(a&b) -> "~a & b" (== (~a)&b). Parenthesize a
+                // Binary or Ternary inner expression so the emitted C matches the IR.
+                if matches!(**inner, IrExpr::Binary(..) | IrExpr::Ternary { .. }) {
+                    inner_str = format!("({})", inner_str);
+                }
+                format!("{}{}", op_str, inner_str)
             }
             IrExpr::Binary(op, lhs, rhs, _) => {
                 let is_unsigned = matches!(
