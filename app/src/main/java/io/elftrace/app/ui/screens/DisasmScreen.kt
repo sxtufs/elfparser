@@ -401,7 +401,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text(if (undoDepth > 0) "Undo · $undoDepth" else "Undo", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text(if (undoDepth > 0) "Undo $undoDepth" else "Undo", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
