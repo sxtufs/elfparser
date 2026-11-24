@@ -78,6 +78,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      # Build the propagation clone fixture so propagation_tests does not
+      # self-skip in CI. Writes into the checkout (always writable) and exports
+      # ELFTRACE_FIXTURES_DIR for the test step below. Produces
+      # elftrace-core/test_fixtures/accuracy/fx_a64_clones.so with two
+      # byte-identical exported functions (clone_a, clone_b).
+      - name: Build propagation test fixtures
+        run: |
+          set -euo pipefail
+          export ELFTRACE_FIXTURES_DIR="$GITHUB_WORKSPACE/elftrace-core/test_fixtures/accuracy"
+          chmod +x elftrace-core/tests/fixtures_src/build_clones.sh
+          elftrace-core/tests/fixtures_src/build_clones.sh "$ELFTRACE_FIXTURES_DIR"
+          ls -la "$ELFTRACE_FIXTURES_DIR/fx_a64_clones.so"
+          echo "ELFTRACE_FIXTURES_DIR=$ELFTRACE_FIXTURES_DIR" >> "$GITHUB_ENV"
+
       - name: Run Rust tests
         run: |
           set -uo pipefail

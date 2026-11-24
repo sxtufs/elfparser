@@ -10,7 +10,7 @@
 //! executable segment and be instruction-aligned.
 
 use crate::elf_parser::ElfContext;
-use crate::patcher::{PatchResult, QuickPatchType};
+use crate::patcher::QuickPatchType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

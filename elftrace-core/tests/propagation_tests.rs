@@ -54,14 +54,17 @@ fn matcher_rejects_out_of_bounds_and_bad_mask() {
 
 #[test]
 fn aarch64_mask_clears_operand_fields_only() {
-    // A typical `mov w0, #1` = 0x52800020. Bits 5..=23 are the immediate+reg;
-    // the opcode bits (0..=4 and 24..=31) must survive.
-    let word: u32 = 0x5280_0020;
+    // Bits 5..=23 are the register/immediate operand region; the opcode bits
+    // (low 0..=4 and top 24..=31) must survive. Use a word with a non-zero low
+    // nibble so the low-opcode preservation check is meaningful.
+    let word: u32 = 0x5280_0035;
     let (val, mask) = seed_word_mask(183, word);
-    // Opcode bits preserved in both value and mask.
-    assert_eq!(val & 0xFFFF_FFE0, 0x5280_0000);
-    assert_eq!(mask & 0xFFFF_FFE0, 0xFFFF_FFE0);
-    // Operand bits cleared in value, ignored in mask.
+    // Top opcode byte preserved.
+    assert_eq!(val & 0xFF00_0000, 0x5200_0000);
+    // Low opcode bits (0..=4) preserved, and required to match.
+    assert_eq!(val & 0x1F, 0x15);
+    assert_eq!(mask & 0x1F, 0x1F);
+    // Operand region cleared in value and ignored in mask.
     assert_eq!(val & 0x00FF_FFE0, 0);
     assert_eq!(mask & 0x00FF_FFE0, 0);
 }
@@ -85,9 +88,12 @@ fn fixture_dir() -> String {
 
 #[test]
 fn propagate_exact_applies_to_all_clones() {
-    // The fixture is expected to contain two byte-identical AArch64 function
-    // clones that each begin with `ret` (0xC0 0x03 0x5F 0xD6). We patch one
-    // with NOP and assert the other clone is also rewritten.
+    // The fixture (tests/fixtures_src/fx_a64_clones.c) exports two
+    // byte-identical AArch64 functions, clone_a and clone_b. We seed the patch
+    // at clone_a's first instruction (a NOP overwrite), and the engine must
+    // discover the identical body at clone_b and rewrite it too. The exact
+    // instruction at the seed does not matter for equivalence — what matters
+    // is that both function bodies are byte-for-byte equal.
     let path = format!("{}/fx_a64_clones.so", fixture_dir());
     if !std::path::Path::new(&path).exists() {
         eprintln!("SKIP: {} not found (fixture-gated)", path);

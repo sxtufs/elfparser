@@ -1,1 +1,3 @@
 /target
+# Generated test fixtures (built by tests/fixtures_src/build_clones.sh)
+/test_fixtures
