@@ -271,31 +271,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         )
                     }
 
-                    // Jump to branch target
-                    if (branchTarget != null) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
-                                selectedInsn = null
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                        ) {
-                            Text(
-                                "Jump to Target",
-                                color = colors.primary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         "ONE-TAP QUICK PATCH",
                         color = colors.textSecondary,
@@ -336,30 +312,42 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // Find cross-references
-                    OutlinedButton(
-                        onClick = {
-                            val target = branchTarget ?: ins.address
-                            viewModel.loadXrefsFor(target) { list ->
-                                xrefsList = list
-                                xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
-                                showXrefDialog = true
-                            }
-                            selectedInsn = null
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
+                    // Analyze row: Jump (if a branch target exists) + XREF side by side.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            "Find Cross-References",
-                            color = colors.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                        if (branchTarget != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.selectFunction(branchTarget, "sub_${"%08X".format(branchTarget)}")
+                                    selectedInsn = null
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.weight(1f).height(42.dp)
+                            ) {
+                                Text("Jump", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val target = branchTarget ?: ins.address
+                                viewModel.loadXrefsFor(target) { list ->
+                                    xrefsList = list
+                                    xrefDialogTitle = "XREFs to 0x${"%08X".format(target)}"
+                                    showXrefDialog = true
+                                }
+                                selectedInsn = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Text("Find XREFs", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                        }
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -397,15 +385,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             Text("Propagate", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-
-                    // Undo + Rename on their own row so labels never truncate.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
                         OutlinedButton(
                             onClick = {
                                 viewModel.undoLastPatch { addr ->
@@ -424,7 +403,14 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             Text("Undo" + if (undoDepth > 0) " ($undoDepth)" else "", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
+                    }
 
+                    Spacer(Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedButton(
                             onClick = {
                                 renameInput = symbolName
@@ -438,14 +424,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             Text("Rename", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
                         OutlinedButton(
                             onClick = {
                                 fridaCode = generateFridaHook(
