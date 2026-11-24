@@ -1120,7 +1120,7 @@ private fun PropagationReviewDialog(
                             color = colors.textSecondary, fontSize = 12.sp
                         )
                         Spacer(Modifier.height(6.dp))
-                        LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                        LazyColumn(modifier = Modifier.heightIn(max = 260.dp)) {
                             items(r.entries) { e ->
                                 val isCandidate = e.status == "candidate"
                                 Row(verticalAlignment = Alignment.CenterVertically) {

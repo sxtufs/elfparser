@@ -207,13 +207,37 @@ pub fn template_matches_at(data: &[u8], template: &[u8], mask: &[u8], i: usize) 
     true
 }
 
-pub fn seed_word_mask(e_machine: u32, word: u32) -> (u32, u32) {
-    if e_machine == 183 {
-        let operand_bits: u32 = 0x00FF_FFE0;
-        (word & !operand_bits, !operand_bits)
-    } else {
-        (word, 0xFFFF_FFFF)
+/// Build a per-instruction (value, mask) pair that ignores the operand fields
+/// of the seed instruction so clones differing only in register/immediate
+/// operands still compare equal.
+///
+/// `(value, mask)` semantics: a byte pair matches when
+/// `(data & mask) == (value & mask)`; mask `0xFF` = must match, `0x00` = ignored.
+///
+/// Supported:
+/// * AArch64 (183): masks bits 5..=23 (Rd/Rn/Rm/imm9/imm12 region).
+/// * ARM32/A32 (40, non-Thumb): masks the three 4-bit register fields Rd (12-15),
+///   Rn (16-19), Rm/Rs (0-3). Condition/opcode bits (20-31) stay exact.
+/// * Thumb and x86/x86_64: exact (no safe fixed-bit mask across encodings).
+pub fn seed_insn_mask(e_machine: u32, is_thumb: bool, word: u32) -> (u32, u32) {
+    match e_machine {
+        183 => {
+            let operand_bits: u32 = 0x00FF_FFE0; // bits 5..=23
+            (word & !operand_bits, !operand_bits)
+        }
+        40 if !is_thumb => {
+            // ARM A32 register fields: Rm/Rs (0-3), Rd/Rt (12-15), Rn (16-19).
+            // Never mask the condition (28-31) or opcode (20-27) bits.
+            let operand_bits: u32 = (0xF << 0) | (0xF << 12) | (0xF << 16);
+            (word & !operand_bits, !operand_bits)
+        }
+        _ => (word, 0xFFFF_FFFF),
     }
+}
+
+/// Backwards-compatible AArch64-only wrapper (used by older tests).
+pub fn seed_word_mask(e_machine: u32, word: u32) -> (u32, u32) {
+    seed_insn_mask(e_machine, false, word)
 }
 
 fn make_entry(
@@ -351,15 +375,20 @@ pub fn propagate_exact(
     // (unpatched) form, then applying `seed_patch` at each hit below. Writing
     // seed_patch into the template would only match already-patched code (i.e.
     // nothing on a fresh binary).
+    let is_thumb = e_machine == 40
+        && ((seed_addr & 1) != 0 || crate::decompiler::find_function_range(ctx, seed_addr).thumb);
+    let can_wildcard = opts.operand_wildcard
+        && seed_patch.len() >= 4
+        && (e_machine == 183 || (e_machine == 40 && !is_thumb));
     let mut mask: Vec<u8> = vec![0xFF; template.len()];
-    if opts.operand_wildcard && e_machine == 183 && seed_patch.len() >= 4 {
+    if can_wildcard {
         let seed_word = u32::from_le_bytes([
             template[seed_in_tpl],
             template[seed_in_tpl + 1],
             template[seed_in_tpl + 2],
             template[seed_in_tpl + 3],
         ]);
-        let (val, m) = seed_word_mask(e_machine, seed_word);
+        let (val, m) = seed_insn_mask(e_machine, is_thumb, seed_word);
         let val_b = val.to_le_bytes();
         let m_b = m.to_le_bytes();
         for i in 0..4 {

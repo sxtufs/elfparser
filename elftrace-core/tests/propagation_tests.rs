@@ -10,7 +10,8 @@
 
 use elftrace::elf_parser::ElfContext;
 use elftrace::propagation::{
-    propagate_exact, seed_word_mask, template_matches_at, PropagateOptions, PropagationMode,
+    propagate_exact, seed_insn_mask, seed_word_mask, template_matches_at, PropagateOptions,
+    PropagationMode,
 };
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,46 @@ fn non_aarch64_is_exact() {
     let (val, mask) = seed_word_mask(62, word); // x86_64
     assert_eq!(val, word);
     assert_eq!(mask, 0xFFFF_FFFF);
+}
+
+#[test]
+fn arm32_a32_masks_register_fields_only() {
+    // Example A32 data-processing word: `mov r0, r1` (0xE1A00001).
+    // Register fields: Rm(0-3)=1, Rd(12-15)=0, Rn(16-19)=0.
+    let word: u32 = 0xE1A0_0001;
+    let (val, mask) = seed_insn_mask(40, false, word);
+
+    // Condition (28-31) and opcode (20-27) must be exact-match.
+    assert_eq!(val & 0xFF00_0000, word & 0xFF00_0000);
+    assert_eq!(mask & 0xFF00_0000, 0xFF00_0000);
+    assert_eq!(val & 0x0FF0_0000, word & 0x0FF0_0000);
+    assert_eq!(mask & 0x0FF0_0000, 0x0FF0_0000);
+
+    // All three register fields must be cleared in value and ignored in mask.
+    let reg_bits: u32 = (0xF << 0) | (0xF << 12) | (0xF << 16);
+    assert_eq!(val & reg_bits, 0);
+    assert_eq!(mask & reg_bits, 0);
+}
+
+#[test]
+fn arm32_thumb_is_exact() {
+    // Thumb encodings are variable; we do not mask by fixed bit positions.
+    let word: u32 = 0x4608_0000;
+    let (val, mask) = seed_insn_mask(40, true, word);
+    assert_eq!(val, word);
+    assert_eq!(mask, 0xFFFF_FFFF);
+}
+
+#[test]
+fn arm32_register_differences_still_match() {
+    // Two A32 `mov rd, rm` words that differ only in Rd/Rm must compare equal
+    // under the ARM32 mask (i.e. they are treated as the same clone).
+    let a: u32 = 0xE1A0_0001; // mov r0, r1
+    let b: u32 = 0xE1A0_2003; // mov r2, r3
+    let (va, ma) = seed_insn_mask(40, false, a);
+    let (vb, mb) = seed_insn_mask(40, false, b);
+    assert_eq!(ma, mb);
+    assert_eq!(va & ma, vb & mb, "operand-only differences must not affect the masked comparison");
 }
 
 // ---------------------------------------------------------------------------
