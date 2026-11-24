@@ -606,7 +606,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("$countText: $xrefDialogTitle", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
-                        if (xrefsList.isNotEmpty()) {
+                        // Only true call sites (bl/blx) are safe to NOP in bulk.
+                        // Branch refs (b, b.cond, cbz, tbz) are excluded because
+                        // neutralising them can change control flow.
+                        val callers = xrefsList.filter { it.kind == "Call" }
+                        if (callers.isNotEmpty()) {
                             var confirmPatchAll by remember { mutableStateOf(false) }
                             Button(
                                 onClick = { confirmPatchAll = true },
@@ -614,12 +618,12 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Patch all ${xrefsList.size} callers (NOP)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Patch all ${callers.size} callers (NOP)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                             Spacer(Modifier.height(8.dp))
                             if (confirmPatchAll) {
                                 Text(
-                                    "This NOPs the branch at each caller site (undoable). Continue?",
+                                    "This NOPs the call at each caller site (undoable). Continue?",
                                     color = colors.textSecondary, fontSize = 11.sp
                                 )
                                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -628,7 +632,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                     }
                                     TextButton(onClick = {
                                         confirmPatchAll = false
-                                        viewModel.patchCallers(xrefsList.map { it.from_address }) { applied, skipped ->
+                                        viewModel.patchCallers(callers.map { it.from_address }) { applied, skipped ->
                                             Toast.makeText(
                                                 context,
                                                 "Patched " + applied + (if (skipped > 0) ", skipped " + skipped else ""),
