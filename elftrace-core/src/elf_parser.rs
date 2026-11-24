@@ -282,6 +282,10 @@ pub struct ElfContext {
     /// Sorted (start, end, name) symbol bounds for O(log n) enclosing-symbol
     /// lookups. Built lazily on first use; invalidated together with info_cache.
     symbol_index: std::sync::RwLock<Option<Vec<(u64, u64, String)>>>,
+    /// LIFO undo log: (address, original bytes) pushed before every in-place
+    /// patch. `undo_last`/`undo_all` restore them. Shared by every patch path
+    /// (quick, assemble, plugin, propagation, hex) so a single Undo covers all.
+    undo_stack: Vec<(u64, Vec<u8>)>,
 }
 
 impl ElfContext {
@@ -301,6 +305,7 @@ impl ElfContext {
             syms_map: HashMap::new(),
             info_cache: std::sync::RwLock::new(None),
             symbol_index: std::sync::RwLock::new(None),
+            undo_stack: Vec::new(),
         }
     }
 
@@ -694,6 +699,7 @@ impl ElfContext {
             syms_map,
             info_cache: std::sync::RwLock::new(None),
             symbol_index: std::sync::RwLock::new(None),
+            undo_stack: Vec::new(),
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)

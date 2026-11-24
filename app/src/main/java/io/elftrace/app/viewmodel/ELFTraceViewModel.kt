@@ -82,6 +82,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val ok = b.patchBytes(address, bytes)
+            if (ok) _undoDepth.value = b.undoLen()
             // Refresh the hex window / views regardless: on failure nothing
             // changed, but re-reading keeps the display consistent with the
             // actual buffer. The caller now sees the real success status.
@@ -205,6 +206,11 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     private val _instructions = MutableStateFlow<List<Instruction>>(emptyList())
     val instructions: StateFlow<List<Instruction>> = _instructions.asStateFlow()
 
+    /// Number of reversible patches recorded on the native side. Drives the
+    /// Undo button's enabled state. Refreshed after every patch/undo.
+    private val _undoDepth = MutableStateFlow(0)
+    val undoDepth: StateFlow<Int> = _undoDepth.asStateFlow()
+
     private val _decompileText = MutableStateFlow("")
     val decompileText: StateFlow<String> = _decompileText.asStateFlow()
 
@@ -291,6 +297,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val b = _bridge.value ?: return@launch
             val res = b.quickPatch(address, patchType, isThumb)
             if (res.success) {
+                _undoDepth.value = b.undoLen()
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)
@@ -298,6 +305,28 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             launch(Dispatchers.Main) {
                 onComplete(res)
             }
+        }
+    }
+
+    /// Revert the most recent patch (quick, assemble, plugin, propagate, or hex).
+    /// Returns the reverted address, or -1 if nothing to undo.
+    fun undoLastPatch(onComplete: (Long) -> Unit) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(-1L) }
+                return@launch
+            }
+            val addr = b.undoLast()
+            _undoDepth.value = b.undoLen()
+            if (addr >= 0) {
+                _hexBytes.value = b.readBytes(_hexStartAddress.value, 2048)
+                if (_currentAddress.value != 0L) {
+                    _instructions.value = b.disassemble(_currentAddress.value, 256)
+                    _decompileText.value = b.decompile(_currentAddress.value)
+                    _flowchartText.value = b.getFlowchartText(_currentAddress.value)
+                }
+            }
+            launch(Dispatchers.Main) { onComplete(addr) }
         }
     }
 

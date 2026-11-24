@@ -138,6 +138,7 @@ pub fn apply_quick_patch(
     }
 
     let original = ctx.raw[offset..offset + patch_len].to_vec();
+    ctx.push_undo(address, original.clone());
     ctx.raw[offset..offset + patch_len].copy_from_slice(&patch_bytes);
 
     PatchResult {
@@ -203,6 +204,7 @@ pub fn assemble_and_patch(ctx: &mut ElfContext, address: u64, text: &str) -> Pat
     }
 
     let original = ctx.raw[offset..offset + patch_len].to_vec();
+    ctx.push_undo(address, original.clone());
     ctx.raw[offset..offset + patch_len].copy_from_slice(&patch_bytes);
 
     PatchResult {

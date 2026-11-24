@@ -60,6 +60,10 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             patchValue: String,
             dryRun: Boolean
         ): String
+
+        // Undo: revert the most recent in-place patch.
+        @JvmStatic private external fun undoLast(handle: Long): Long
+        @JvmStatic private external fun undoLen(handle: Long): Int
     }
 
     fun assemblePatch(address: Long, text: String): PatchResult {
@@ -217,6 +221,12 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             PatchPropagationReport(error = e.message)
         }
     }
+
+    /** Returns the reverted address, or -1 if nothing to undo. */
+    fun undoLast(): Long = undoLast(handle)
+
+    /** Number of reversible patches recorded (0 = nothing to undo). */
+    fun undoLen(): Int = undoLen(handle)
 
     override fun close() {
         // Not synchronized: close() is only called from the single native

@@ -44,6 +44,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
     val instructions by viewModel.instructions.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
     val currentAddr by viewModel.currentAddress.collectAsState()
+    val undoDepth by viewModel.undoDepth.collectAsState()
 
     var selectedInsn by remember { mutableStateOf<Instruction?>(null) }
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
@@ -444,6 +445,24 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
                             Text("Propagate", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.undoLastPatch { addr ->
+                                    Toast.makeText(
+                                        context,
+                                        if (addr >= 0) "Undid patch at 0x${addr.toString(16)}" else "Nothing to undo",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            enabled = undoDepth > 0,
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (undoDepth > 0) colors.primary else colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Text("Undo" + if (undoDepth > 0) " ($undoDepth)" else "", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(

@@ -146,6 +146,7 @@ fn write_at_dispatch(
     }
     let orig = ctx.raw[offset..offset + bytes.len()].to_vec();
     if !dry_run {
+        ctx.push_undo(addr, orig.clone());
         ctx.raw[offset..offset + bytes.len()].copy_from_slice(bytes);
     }
     Ok(orig)

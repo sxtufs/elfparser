@@ -751,3 +751,36 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_propagatePatch(
         },
     )
 }
+
+/// Revert the most recent in-place patch. Returns the reverted address, or -1
+/// when the undo stack is empty. Every patch path (quick/assemble/plugin/
+/// propagate/hex) records an entry, so one Undo covers all of them.
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_undoLast(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jlong {
+    if handle == 0 {
+        return -1;
+    }
+    let ctx = &mut *(handle as *mut ElfContext);
+    match ctx.undo_last() {
+        Some(addr) => addr as jlong,
+        None => -1,
+    }
+}
+
+/// Number of reversible patches currently recorded (0 = nothing to undo).
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_undoLen(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+    let ctx = &*(handle as *const ElfContext);
+    ctx.undo_len().min(i32::MAX as usize) as jint
+}
