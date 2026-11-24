@@ -24,7 +24,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun disasm0(handle: Long, address: Long, size: Long, thumb: Boolean): String
         @JvmStatic private external fun dec0(mode: Int, handle: Long, address: Long): String
         @JvmStatic private external fun strings0(handle: Long): String
-        @JvmStatic private external fun write0(handle: Long, address: Long, bytes: ByteArray)
+        @JvmStatic private external fun write0(handle: Long, address: Long, bytes: ByteArray): Boolean
         @JvmStatic private external fun save0(handle: Long): ByteArray
         @JvmStatic private external fun readBytes0(handle: Long, address: Long, length: Int): ByteArray
 
@@ -100,8 +100,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         }
     }
 
-    fun patchBytes(address: Long, bytes: ByteArray) {
-        write0(handle, address, bytes)
+    /** Returns true only if the native patch actually landed (mapped + in-bounds). */
+    fun patchBytes(address: Long, bytes: ByteArray): Boolean {
+        return write0(handle, address, bytes)
     }
 
     fun saveBinary(): ByteArray {

@@ -181,13 +181,28 @@ unsafe fn handle_strings(env: &JNIEnv, handle: jlong) -> jstring {
     }
 }
 
-unsafe fn handle_write(env: &JNIEnv, handle: jlong, address: jlong, bytes: jbyteArray) {
+unsafe fn handle_write(
+    env: &JNIEnv,
+    handle: jlong,
+    address: jlong,
+    bytes: jbyteArray,
+) -> jboolean {
+    // Return 1 only when the patch actually landed. Previously this returned
+    // void and swallowed the Err from patch_bytes, so the UI reported
+    // "Patched N bytes" even for unmapped addresses / out-of-bounds writes.
     if handle == 0 || bytes.is_null() {
-        return;
+        return 0;
     }
     let ctx = &mut *(handle as *mut ElfContext);
-    if let Ok(byte_vec) = env.convert_byte_array(bytes) {
-        let _ = ctx.patch_bytes(address as u64, &byte_vec);
+    match env.convert_byte_array(bytes) {
+        Ok(byte_vec) => {
+            if ctx.patch_bytes(address as u64, &byte_vec).is_ok() {
+                1
+            } else {
+                0
+            }
+        }
+        Err(_) => 0,
     }
 }
 
@@ -292,7 +307,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_write0(
     handle: jlong,
     address: jlong,
     bytes: jbyteArray,
-) {
+) -> jboolean {
     handle_write(&env, handle, address, bytes)
 }
 

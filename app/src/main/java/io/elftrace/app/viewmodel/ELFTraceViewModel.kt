@@ -81,7 +81,10 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 launch(Dispatchers.Main) { onComplete(false) }
                 return@launch
             }
-            b.patchBytes(address, bytes)
+            val ok = b.patchBytes(address, bytes)
+            // Refresh the hex window / views regardless: on failure nothing
+            // changed, but re-reading keeps the display consistent with the
+            // actual buffer. The caller now sees the real success status.
             val alignedAddr = _hexStartAddress.value
             _hexBytes.value = b.readBytes(alignedAddr, 2048)
             if (_currentAddress.value != 0L) {
@@ -89,7 +92,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)
             }
-            launch(Dispatchers.Main) { onComplete(true) }
+            launch(Dispatchers.Main) { onComplete(ok) }
         }
     }
 
