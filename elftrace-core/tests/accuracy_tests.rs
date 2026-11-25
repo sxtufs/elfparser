@@ -1894,3 +1894,29 @@ fn test_batch_g_sub_register_aliasing() {
         "w8 must not be a declared local. Got:\n{}", c
     );
 }
+
+/// Guards the capstone feature set in Cargo.toml: the crate builds only the
+/// arm/arm64/x86 disassemblers to keep the shipped .so under its size budget,
+/// so every architecture disasm.rs can select must still decode here.
+#[test]
+fn test_disasm_supported_architectures_still_decode() {
+    let cases: &[(&str, u32, &[u8], &str)] = &[
+        ("arm64", 183, &[0xC0, 0x03, 0x5F, 0xD6], "ret"),
+        ("arm", 40, &[0x1E, 0xFF, 0x2F, 0xE1], "bx"),
+        ("x86_64", 62, &[0xC3], "ret"),
+        ("x86", 3, &[0x90], "nop"),
+    ];
+    for (name, e_machine, bytes, expected) in cases {
+        let out = elftrace::disasm::disassemble(bytes, 0x1000, bytes.len() as u64, *e_machine, false)
+            .unwrap_or_else(|e| panic!("{} disassembly failed: {}", name, e));
+        assert!(!out.data.is_empty(), "{} produced no instructions", name);
+        let mnemonics: Vec<&str> = out.data.iter().map(|i| i.mnemonic.as_str()).collect();
+        assert!(
+            mnemonics.contains(&expected),
+            "{} should decode `{}`, got {:?}",
+            name,
+            expected,
+            mnemonics
+        );
+    }
+}

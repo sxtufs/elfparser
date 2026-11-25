@@ -115,11 +115,14 @@ jobs:
           ls -la "$SO"
           SIZE=$(stat -c%s "$SO")
           echo "Bytes: $SIZE ($((SIZE/1024/1024)) MB)"
-          # Catches a missing-strip regression (unstripped is much larger).
+          # Catches both a missing-strip regression and dependency bloat (the
+          # stripped artifact is ~8 MB; unstripped is far larger). The stripped
+          # check below is authoritative for strip, so growth here means code
+          # was added — check dependency features before raising this.
           # NOTE: the release profile intentionally uses panic="unwind" (not "abort")
           # so the JNI bridge can catch panics; that adds ~500 KB of unwind tables.
           if [ "$SIZE" -gt 12582912 ]; then
-            echo "ERROR: .so > 12 MB — strip profile may not be active"
+            echo "ERROR: .so > 12 MB — either strip is off (see stripped check) or code grew; check dependency features"
             exit 1
           fi
 
