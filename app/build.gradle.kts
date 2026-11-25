@@ -5,7 +5,12 @@ plugins {
 
 android {
     namespace = "io.elftrace.app"
-    compileSdk = 36
+    compileSdk {
+        // AndroidX/Compose 1.13.0 require a minimum compile SDK of 37.1.
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = "io.elftrace.app"
