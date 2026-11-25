@@ -11,8 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CallMade
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -45,6 +47,9 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
     val symbolName by viewModel.selectedSymbolName.collectAsState()
     val currentAddr by viewModel.currentAddress.collectAsState()
     val undoDepth by viewModel.undoDepth.collectAsState()
+    val canGoBack by viewModel.canGoBack.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
+    val isBookmarked = bookmarks.any { it.address == currentAddr }
 
     var selectedInsn by remember { mutableStateOf<Instruction?>(null) }
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
@@ -103,6 +108,20 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            if (canGoBack) {
+                IconButton(
+                    onClick = { viewModel.goBack() },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to previous function",
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
                     text = shortTitle,
@@ -149,6 +168,18 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(3.dp))
                     Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(
+                    onClick = { viewModel.toggleBookmark(currentAddr, symbolName) },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = if (isBookmarked) "Remove bookmark" else "Add bookmark",
+                        tint = if (isBookmarked) Color(0xFFFFB300) else colors.textSecondary,
+                        modifier = Modifier.size(17.dp)
+                    )
                 }
             }
         }

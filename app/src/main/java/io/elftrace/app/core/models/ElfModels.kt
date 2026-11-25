@@ -49,6 +49,15 @@ data class SymsDTO(
         get() = jni_method != null || sym.startsWith("Java_") || sym.contains("JNI_OnLoad")
 }
 
+/** Result of a stripped-binary function discovery pass. */
+data class DiscoveryResult(
+    val added: Int = 0,
+    val known: Int = 0,
+    @SerializedName("scanned_bytes") val scannedBytes: Long = 0,
+    val truncated: Boolean = false,
+    val error: String? = null
+)
+
 data class YaraDTO(
     val name: String = "",
     val info: String = ""

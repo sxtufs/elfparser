@@ -64,6 +64,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         // Undo: revert the most recent in-place patch.
         @JvmStatic private external fun undoLast(handle: Long): Long
         @JvmStatic private external fun undoLen(handle: Long): Int
+
+        // Function discovery for stripped binaries (recovers sub_XXXXXXXX).
+        @JvmStatic private external fun discoverFunctions0(handle: Long, maxScanned: Long): String
     }
 
     fun assemblePatch(address: Long, text: String): PatchResult {
@@ -187,6 +190,21 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
 
     fun renameFunction(address: Long, newName: String): Boolean {
         return renameFunction(handle, address, newName)
+    }
+
+    /**
+     * Recover function starts from direct call instructions and install them as
+     * `sub_XXXXXXXX` symbols. `maxScanned` bounds how much executable code is
+     * decoded (default 32 MiB). Call [getInfo] afterwards to see them.
+     */
+    fun discoverFunctions(maxScanned: Long = 32L * 1024 * 1024): DiscoveryResult {
+        val json = discoverFunctions0(handle, maxScanned)
+        return try {
+            gson.fromJson(json, DiscoveryResult::class.java)
+                ?: DiscoveryResult(error = "Empty discovery response")
+        } catch (e: Exception) {
+            DiscoveryResult(error = e.message)
+        }
     }
 
     fun runPlugin(pluginJson: String): PluginReport {

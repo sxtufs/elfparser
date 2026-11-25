@@ -26,3 +26,29 @@ of defaulting to 183. `ArchKind::RiscV64` stays in the enum (register/calling-co
 data is kept) as the socket for a future lifter. Pinned by
 `test_disasm_unsupported_architecture_is_rejected` and
 `test_decompiler_rejects_riscv_and_unknown_arch`.
+
+## 2026-11-25 — Function discovery: bounded scan, conservative sizes
+`src/discovery.rs` recovers function starts for stripped binaries by scanning the
+executable regions for direct calls (`bl`/`blx` on AArch64 and ARM — Thumb-2 halfword
+pairs; ARM-mode `bl`/`blx` only at 4-byte-aligned offsets; `call rel32` via Capstone on
+x86). Seeds are the entry point, `.plt`, and every symbol already in `syms_map`, so
+`.symtab`/`.dynsym` names are never overwritten (`entry().or_insert`). Limits:
+`MAX_SCANNED_BYTES` 32 MiB per call, `MAX_FUNCTIONS` 40,000, and a discovered function's
+size is the distance to the next known start capped at 32 KiB (0 for the last one).
+Known symbols plus discovered starts supply the sorted start list, so sizes never
+overlap. Measured on the stripped 8.39 MB release `libelftrace.so` (8,393,496 bytes,
+`aarch64-unknown-linux-gnu`): 3,025 discovered, symbol table 110 -> 3,135 over 8.04 MB
+of scanned code, 0.14-0.2 s depending on machine load. `.symtab` was already parsed in
+`ElfContext::open`; `get_info` used to rebuild a shadowed dynsym-only table and throw it
+away (dead code, now removed). Pinned by `tests/symtab_discovery_tests.rs` (synthetic
+ELF64 fixture with a local-only `.symtab` symbol, plus hand-encoded BL/Thumb-BL scans).
+
+## 2026-11-25 — Workspace persistence is Room, keyed by content hash
+`app/.../core/db/WorkspaceStore.kt` (Room 2.8.5 via KSP 2.3.14) stores recent sessions,
+the last address per binary, manual renames, bookmarks and the patch journal. Every row
+is keyed by SHA-256 of the file, not by path: the picker copies every ELF to
+`cacheDir/input_target.so`, so a path key would mix different binaries. On open the
+stored renames are re-applied and the journal is replayed through the normal native
+patch path, which also restores the in-memory undo stack; an undo deletes the journal row
+it reverted. Sessions are verified against the current hash before reopening, so a stale
+cache entry is dropped instead of opening the wrong binary.

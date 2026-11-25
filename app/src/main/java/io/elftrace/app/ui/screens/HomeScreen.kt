@@ -16,6 +16,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -50,7 +51,10 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
     val elfInfo by viewModel.elfInfo.collectAsState()
     val currentFileName by viewModel.currentFileName.collectAsState()
+    val recentSessions by viewModel.recentSessions.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var showBookmarksDialog by remember { mutableStateOf(false) }
 
     var apkSoList by remember { mutableStateOf<List<ApkSoEntry>>(emptyList()) }
     var showApkPicker by remember { mutableStateOf(false) }
@@ -257,6 +261,139 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
+        if (recentSessions.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text(
+                        text = "Recent",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    recentSessions.forEach { session ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.openRecent(session) { ok ->
+                                        if (!ok) {
+                                            Toast.makeText(
+                                                context,
+                                                "That file is no longer cached — open it again",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+                                Text(
+                                    text = session.displayName,
+                                    fontSize = 12.sp,
+                                    color = colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (session.lastAddress != 0L) {
+                                        "0x%08X  %s".format(session.lastAddress, session.lastName)
+                                    } else {
+                                        "not opened yet"
+                                    },
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = colors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.forgetRecent(session.fileKey) },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove from recent",
+                                    tint = colors.textSecondary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+
+        if (showBookmarksDialog) {
+            AlertDialog(
+                onDismissRequest = { showBookmarksDialog = false },
+                title = { Text("Bookmarks", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    if (bookmarks.isEmpty()) {
+                        Text(
+                            "No bookmarks yet. Open a function and tap the star in the Code header.",
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        Column {
+                            bookmarks.forEach { bookmark ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showBookmarksDialog = false
+                                            viewModel.navigateTo(Screen.Code)
+                                            viewModel.selectFunction(bookmark.address, bookmark.name)
+                                        }
+                                        .padding(vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = bookmark.name,
+                                            fontSize = 12.sp,
+                                            color = colors.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "0x%08X".format(bookmark.address),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.removeBookmark(bookmark.id) },
+                                        modifier = Modifier.size(26.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove bookmark",
+                                            tint = colors.textSecondary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showBookmarksDialog = false }) { Text("Close") }
+                }
+            )
+        }
+
         if (elfInfo != null) {
             val info = elfInfo!!
 
@@ -296,6 +433,13 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             ) {
                                 Text("Il2Cpp JSON", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                             }
+                            OutlinedButton(
+                                onClick = { showBookmarksDialog = true },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Bookmarks", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -313,6 +457,29 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     Text("Entrypoint:    0x${"%08X".format(info.entry)}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.address)
                     if (info.libraries.isNotEmpty()) {
                         Text("Dependencies:  ${info.libraries.joinToString(", ")}", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.hexBytes)
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.recoverFunctions { res ->
+                                val msg = when {
+                                    res.error != null -> res.error
+                                    res.added == 0 -> "No new functions (${res.known} already known)"
+                                    else -> "Recovered ${res.added} functions" +
+                                        if (res.truncated) " (partial scan)" else ""
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().height(30.dp)
+                    ) {
+                        Text(
+                            "Recover functions (stripped binaries)",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }

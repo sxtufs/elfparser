@@ -806,36 +806,6 @@ impl ElfContext {
             }
         }
 
-        // Extract symbols (.dynsym and .symtab)
-        let mut syms_map = std::collections::HashMap::new();
-
-        // 1. Dynamic symbols
-        for sym in obj_file.dynamic_symbols() {
-            if let Ok(name) = sym.name() {
-                if !name.is_empty() {
-                    let addr = sym.address();
-                    let size = sym.size();
-                    let is_thumb = (addr & 1) != 0;
-                    let clean_addr = addr & !1;
-                    let demangled = demangle_name(name);
-                    let (jni_class, jni_method) = parse_jni_name(name);
-                    syms_map.insert(
-                        clean_addr,
-                        SymsDTO {
-                            sym: name.to_string(),
-                            value: clean_addr,
-                            size,
-                            thumb: is_thumb,
-                            demangled,
-                            jni_class,
-                            jni_method,
-                            json: None,
-                        },
-                    );
-                }
-            }
-        }
-
         let mut syms: Vec<SymsDTO> = self.syms_map.values().cloned().collect();
         syms.sort_by_key(|s| s.value);
 

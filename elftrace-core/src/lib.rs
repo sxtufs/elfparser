@@ -1,6 +1,7 @@
 #![allow(clippy::missing_safety_doc)]
 pub mod decompiler;
 pub mod disasm;
+pub mod discovery;
 pub mod elf_parser;
 pub mod il2cpp;
 pub mod jni_bridge;
@@ -13,6 +14,7 @@ pub mod scanner;
 pub mod xref;
 
 pub use elf_parser::ElfContext;
+pub use discovery::{discover, DiscoveryReport, DiscoveredFunction, MAX_SCANNED_BYTES};
 pub use il2cpp::{load_global_metadata, load_script_json};
 pub use jni_resolver::resolve_jni_offset;
 pub use model::{CodeIns, ElfInfo, SData};

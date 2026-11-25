@@ -612,6 +612,39 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_renameFunction(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_discoverFunctions(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    max_scanned: jlong,
+) -> jstring {
+    guard_jstring(
+        &mut env,
+        "{\"error\":\"panic during function discovery\"}",
+        |env| {
+            if handle == 0 {
+                return env
+                    .new_string("{\"error\":\"No binary loaded\"}")
+                    .map(|s| s.into_raw())
+                    .unwrap_or(std::ptr::null_mut());
+            }
+            let ctx = &mut *(handle as *mut ElfContext);
+            let budget = if max_scanned > 0 {
+                max_scanned as u64
+            } else {
+                crate::discovery::MAX_SCANNED_BYTES
+            };
+            let report = ctx.discover_functions(budget);
+            let json = report.to_summary_json();
+            match env.new_string(json) {
+                Ok(s) => s.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        },
+    )
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_runPlugin(
     mut env: JNIEnv,
     _class: JClass,

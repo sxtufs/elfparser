@@ -7,6 +7,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.elftrace.app.core.JNIBridge
+import io.elftrace.app.core.db.BookmarkRecord
+import io.elftrace.app.core.db.SessionRecord
+import io.elftrace.app.core.db.WorkspaceStore
 import io.elftrace.app.core.models.*
 import java.io.File
 import java.io.FileOutputStream
@@ -34,6 +37,33 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     /// its Unicorn engine are not thread-safe; one thread avoids data races and
     /// concurrent `&`/`&mut` aliasing.
     private val nativeDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+    /** Workspace storage: recent files, last position, renames, bookmarks, journal. */
+    private val store = WorkspaceStore.create(app)
+
+    /** Content-hash key of the open binary; empty until [loadElf] succeeds. */
+    private var sessionKey: String = ""
+
+    private val _recentSessions = MutableStateFlow<List<SessionRecord>>(emptyList())
+    val recentSessions: StateFlow<List<SessionRecord>> = _recentSessions.asStateFlow()
+
+    private val _bookmarks = MutableStateFlow<List<BookmarkRecord>>(emptyList())
+    val bookmarks: StateFlow<List<BookmarkRecord>> = _bookmarks.asStateFlow()
+
+    /** One entry of the in-session navigation history. */
+    data class NavPoint(val address: Long, val name: String)
+
+    private val _navStack = MutableStateFlow<List<NavPoint>>(emptyList())
+    val navStack: StateFlow<List<NavPoint>> = _navStack.asStateFlow()
+
+    private val _canGoBack = MutableStateFlow(false)
+    val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
+
+    init {
+        viewModelScope.launch(nativeDispatcher) {
+            _recentSessions.value = store.recentSessions()
+        }
+    }
 
     private val _bridge = MutableStateFlow<JNIBridge?>(null)
     val bridge: StateFlow<JNIBridge?> = _bridge.asStateFlow()
@@ -81,8 +111,16 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 launch(Dispatchers.Main) { onComplete(false) }
                 return@launch
             }
+            val original = if (sessionKey.isNotEmpty()) {
+                try { b.readBytes(address, bytes.size) } catch (_: Exception) { ByteArray(0) }
+            } else {
+                ByteArray(0)
+            }
             val ok = b.patchBytes(address, bytes)
-            if (ok) _undoDepth.value = b.undoLen()
+            if (ok) {
+                _undoDepth.value = b.undoLen()
+                recordJournal(address, "hex", original, bytes)
+            }
             // Refresh the hex window / views regardless: on failure nothing
             // changed, but re-reading keeps the display consistent with the
             // actual buffer. The caller now sees the real success status.
@@ -276,9 +314,10 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Throwable) {
         }
         _bridge.value = null
+        try { store.close() } catch (_: Throwable) {}
     }
 
-    fun loadElf(path: String, fileName: String = "") {
+    fun loadElf(path: String, fileName: String = "", knownKey: String? = null) {
         viewModelScope.launch(nativeDispatcher) {
             currentFileName.value = if (fileName.isNotEmpty()) fileName else File(path).name
             val newBridge = JNIBridge.open(path) ?: return@launch
@@ -288,21 +327,68 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             _bridge.value = newBridge
             try { old?.close() } catch (_: Throwable) {}
             val b = newBridge
+
+            _navStack.value = emptyList()
+            _canGoBack.value = false
+
+            // Key the workspace by content, not by path: the picker copies every
+            // file to the same cache path, so a path key would mix binaries.
+            sessionKey = knownKey ?: try {
+                WorkspaceStore.fileKey(File(path))
+            } catch (_: Exception) {
+                ""
+            }
+
+            // Restore this binary's workspace. Renames first, then the patch
+            // journal: replaying through the normal native path keeps undo and
+            // the views consistent with what the user left behind.
+            if (sessionKey.isNotEmpty()) {
+                for (r in store.renames(sessionKey)) b.renameFunction(r.address, r.name)
+                for (j in store.journal(sessionKey)) {
+                    if (j.patched.isNotEmpty()) b.patchBytes(j.address, j.patched)
+                }
+                _undoDepth.value = b.undoLen()
+            }
+
             val info = b.getInfo()
             _elfInfo.value = info
+            _bookmarks.value = if (sessionKey.isNotEmpty()) store.bookmarks(sessionKey) else emptyList()
+
+            val previous = if (sessionKey.isNotEmpty()) {
+                store.recentSessions(20).firstOrNull { it.fileKey == sessionKey }
+            } else {
+                null
+            }
+            if (sessionKey.isNotEmpty()) store.touchSession(sessionKey, path, currentFileName.value)
+            _recentSessions.value = store.recentSessions()
 
             // Pick the first symbol that is actually executable code. The symbol
             // table often starts with undefined imports (address 0, e.g. strchr).
             val firstSym = info.syms.firstOrNull { it.value != 0L }
-            val firstAddr = firstSym?.value ?: info.entry
-            val firstName = firstSym?.displayName ?: "entry"
-            selectFunction(firstAddr, firstName)
+            val restored = previous?.takeIf { it.lastAddress != 0L }
+            val firstAddr = restored?.lastAddress ?: firstSym?.value ?: info.entry
+            val firstName = restored?.lastName?.takeIf { it.isNotEmpty() }
+                ?: firstSym?.displayName ?: "entry"
+            selectFunction(firstAddr, firstName, pushHistory = false)
             _stringsList.value = b.getStrings()
             _entropyReport.value = b.getEntropyReport()
         }
     }
 
-    fun selectFunction(address: Long, name: String) {
+    /**
+     * Show [address]. A user-driven selection pushes the previous position onto
+     * the navigation stack so [goBack] can return to it; restoring a position
+     * (file open, back navigation) passes `pushHistory = false`.
+     */
+    fun selectFunction(address: Long, name: String, pushHistory: Boolean = true) {
+        if (pushHistory) {
+            val prevAddr = _currentAddress.value
+            if (prevAddr != 0L && prevAddr != address) {
+                _navStack.value = (_navStack.value + NavPoint(prevAddr, _selectedSymbolName.value))
+                    .takeLast(64)
+                _canGoBack.value = true
+            }
+        }
         // These are StateFlow writes — non-blocking, safe on the UI thread.
         _currentAddress.value = address
         _selectedSymbolName.value = name
@@ -334,7 +420,107 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 _decompileStructured.value = out
             }
             loadHexDump(address, 2048)
+            if (sessionKey.isNotEmpty()) store.savePosition(sessionKey, address, name)
         }
+    }
+
+    /** Leave the current function and show the previous one. */
+    fun goBack(): Boolean {
+        val stack = _navStack.value
+        if (stack.isEmpty()) return false
+        val prev = stack.last()
+        _navStack.value = stack.dropLast(1)
+        _canGoBack.value = _navStack.value.isNotEmpty()
+        selectFunction(prev.address, prev.name, pushHistory = false)
+        return true
+    }
+
+    /**
+     * Recover function starts in a stripped binary. The recovered functions are
+     * installed as `sub_XXXXXXXX` symbols, so the symbol list, xrefs and call
+     * hierarchy all see them; [getInfo] is refreshed on success.
+     */
+    fun recoverFunctions(onComplete: (DiscoveryResult) -> Unit = {}) {
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: run {
+                launch(Dispatchers.Main) { onComplete(DiscoveryResult(error = "No binary loaded")) }
+                return@launch
+            }
+            val res = b.discoverFunctions()
+            if (res.error == null && res.added > 0) {
+                _elfInfo.value = b.getInfo()
+            }
+            launch(Dispatchers.Main) { onComplete(res) }
+        }
+    }
+
+    fun toggleBookmark(address: Long, name: String) {
+        if (sessionKey.isEmpty() || address == 0L) return
+        viewModelScope.launch(nativeDispatcher) {
+            if (_bookmarks.value.any { it.address == address }) {
+                store.removeBookmark(sessionKey, address)
+            } else {
+                store.addBookmark(sessionKey, address, name)
+            }
+            _bookmarks.value = store.bookmarks(sessionKey)
+        }
+    }
+
+    fun removeBookmark(id: Long) {
+        if (sessionKey.isEmpty()) return
+        viewModelScope.launch(nativeDispatcher) {
+            val record = _bookmarks.value.firstOrNull { it.id == id } ?: return@launch
+            store.removeBookmark(record.fileKey, record.address)
+            _bookmarks.value = store.bookmarks(sessionKey)
+        }
+    }
+
+    /**
+     * Re-open a file from the Recent list. The picker copies every binary to the
+     * same cache path, so a session whose content hash no longer matches is
+     * dropped instead of opening the wrong binary under the wrong name.
+     */
+    fun openRecent(session: SessionRecord, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(nativeDispatcher) {
+            val file = File(session.path)
+            val key = if (file.exists()) {
+                try { WorkspaceStore.fileKey(file) } catch (_: Exception) { null }
+            } else {
+                null
+            }
+            val ok = key != null && key == session.fileKey
+            if (ok) {
+                loadElf(session.path, session.displayName, knownKey = key)
+            } else {
+                store.forgetSession(session.fileKey)
+                _recentSessions.value = store.recentSessions()
+            }
+            launch(Dispatchers.Main) { onComplete(ok) }
+        }
+    }
+
+    fun forgetRecent(fileKey: String) {
+        viewModelScope.launch(nativeDispatcher) {
+            store.forgetSession(fileKey)
+            _recentSessions.value = store.recentSessions()
+        }
+    }
+
+    private fun List<Int>.asBytes(): ByteArray = ByteArray(size) { this[it].toByte() }
+
+    /**
+     * Persist one applied patch so it survives a re-open and can be undone.
+     * The native undo stack is in-memory only; this table is the durable copy.
+     */
+    private suspend fun recordJournal(
+        address: Long,
+        kind: String,
+        original: ByteArray,
+        patched: ByteArray
+    ) {
+        if (sessionKey.isEmpty() || address == 0L) return
+        if (original.isEmpty() || patched.isEmpty()) return
+        store.appendJournal(sessionKey, address, kind, original, patched)
     }
 
     fun applyQuickPatch(address: Long, patchType: Int, isThumb: Boolean = false, onComplete: (PatchResult) -> Unit) {
@@ -343,6 +529,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val res = b.quickPatch(address, patchType, isThumb)
             if (res.success) {
                 _undoDepth.value = b.undoLen()
+                recordJournal(address, "quick", res.original_bytes.asBytes(), res.patched_bytes.asBytes())
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)
@@ -364,6 +551,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val addr = b.undoLast()
             _undoDepth.value = b.undoLen()
             if (addr >= 0) {
+                if (sessionKey.isNotEmpty()) store.removeLatestJournalAt(sessionKey, addr)
                 _hexBytes.value = b.readBytes(_hexStartAddress.value, 2048)
                 if (_currentAddress.value != 0L) {
                     _instructions.value = b.disassemble(_currentAddress.value, 256)
@@ -411,7 +599,12 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             var skipped = 0
             for (addr in addresses) {
                 val res = b.quickPatch(addr, 1 /* NOP */, false)
-                if (res.success) applied++ else skipped++
+                if (res.success) {
+                    recordJournal(addr, "nop-caller", res.original_bytes.asBytes(), res.patched_bytes.asBytes())
+                    applied++
+                } else {
+                    skipped++
+                }
             }
             _undoDepth.value = b.undoLen()
             if (_currentAddress.value != 0L) {
@@ -462,6 +655,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             }
             val ok = b.renameFunction(address, newName)
             if (ok) {
+                if (sessionKey.isNotEmpty()) store.saveRename(sessionKey, address, newName)
                 _selectedSymbolName.value = newName
                 val info = b.getInfo()
                 _elfInfo.value = info
@@ -481,6 +675,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             }
             val res = b.assemblePatch(address, text)
             if (res.success) {
+                _undoDepth.value = b.undoLen()
+                recordJournal(address, "assemble", res.original_bytes.asBytes(), res.patched_bytes.asBytes())
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)
                 _flowchartText.value = b.getFlowchartText(_currentAddress.value)
@@ -647,6 +843,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val res = b.applyPluginPatch(targetAddr, patch.mode, patch.value)
             if (res.success) {
                 _undoDepth.value = b.undoLen()
+                recordJournal(targetAddr, "plugin", res.original_bytes.asBytes(), res.patched_bytes.asBytes())
                 if (_currentAddress.value != 0L) {
                     _instructions.value = b.disassemble(_currentAddress.value, 256)
                     _decompileText.value = b.decompile(_currentAddress.value)
@@ -676,8 +873,14 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             var skipped = 0
             for (f in findings) {
                 val patch = f.patch ?: continue
-                val res = b.applyPluginPatch(f.address + patch.offset, patch.mode, patch.value)
-                if (res.success) applied++ else skipped++
+                val targetAddr = f.address + patch.offset
+                val res = b.applyPluginPatch(targetAddr, patch.mode, patch.value)
+                if (res.success) {
+                    recordJournal(targetAddr, "plugin", res.original_bytes.asBytes(), res.patched_bytes.asBytes())
+                    applied++
+                } else {
+                    skipped++
+                }
             }
             _undoDepth.value = b.undoLen()
             if (_currentAddress.value != 0L) {
@@ -711,6 +914,13 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val report = b.propagatePatch(seedAddr, mode, patchMode, patchValue, dryRun)
+            if (!dryRun && report.applied > 0) {
+                for (e in report.entries) {
+                    if (e.status == "applied") {
+                        recordJournal(e.address, "propagate", e.original_bytes.asBytes(), e.patched_bytes.asBytes())
+                    }
+                }
+            }
             if (!dryRun && report.applied > 0 && _currentAddress.value != 0L) {
                 _instructions.value = b.disassemble(_currentAddress.value, 256)
                 _decompileText.value = b.decompile(_currentAddress.value)

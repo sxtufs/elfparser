@@ -3,6 +3,7 @@ package io.elftrace.app
 import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -51,6 +52,10 @@ class MainActivity : ComponentActivity() {
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 val codeTab by viewModel.codeSubTab.collectAsState()
                 val analysisTab by viewModel.analysisSubTab.collectAsState()
+                val canGoBack by viewModel.canGoBack.collectAsState()
+                // System back walks the in-session function history before it
+                // leaves the app, so stepping into a caller is always reversible.
+                BackHandler(enabled = canGoBack) { viewModel.goBack() }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
