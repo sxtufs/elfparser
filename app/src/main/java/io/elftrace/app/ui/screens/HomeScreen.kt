@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.window.Dialog
@@ -40,7 +41,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
 
-data class ApkSoEntry(val entryName: String, val size: Long)
+data class ApkSoEntry(val entryName: String, val size: Long, val apkPath: String? = null)
+
+data class InstalledApp(val label: String, val pkg: String, val apkPaths: List<String>)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +64,9 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     var selectedApkUri by remember { mutableStateOf<Uri?>(null) }
     var isScanningApk by remember { mutableStateOf(false) }
     var isExtractingSo by remember { mutableStateOf(false) }
+    var showInstalledPicker by remember { mutableStateOf(false) }
+    var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
+    var isLoadingApps by remember { mutableStateOf(false) }
     var symFilter by remember { mutableStateOf("all") } // "all", "funcs", "jni"
     var showHeadersDialog by remember { mutableStateOf(false) }
     var headersTab by remember { mutableStateOf(0) } // 0 = Segments, 1 = Sections
@@ -236,6 +242,34 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         ThemeToggleIcon(isDark = colors.isDark, tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary)
                     }
                     Spacer(Modifier.width(4.dp))
+                    OutlinedButton(
+                        onClick = {
+                            isLoadingApps = true
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val apps = loadInstalledApps(context.packageManager)
+                                withContext(Dispatchers.Main) {
+                                    isLoadingApps = false
+                                    if (apps.isEmpty()) {
+                                        Toast.makeText(context, "No installed apps found", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        installedApps = apps
+                                        showInstalledPicker = true
+                                    }
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "Apps",
+                            color = colors.textPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Button(
                         onClick = { filePicker.launch(arrayOf("*/*")) },
                         colors = ButtonDefaults.buttonColors(
@@ -275,11 +309,19 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         color = colors.textSecondary,
                         fontWeight = FontWeight.SemiBold
                     )
-                    recentSessions.forEach { session ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                    // One scrollable line of chips instead of a full row per
+                    // session: the card keeps a fixed height no matter how
+                    // many recents are stored (capped at 10 in WorkspaceStore).
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(recentSessions, key = { it.fileKey }) { session ->
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = colors.card,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                modifier = Modifier.clickable {
                                     viewModel.openRecent(session) { ok ->
                                         if (!ok) {
                                             Toast.makeText(
@@ -290,39 +332,14 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                                         }
                                     }
                                 }
-                                .padding(vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+                            ) {
                                 Text(
                                     text = session.displayName,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = colors.textPrimary,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (session.lastAddress != 0L) {
-                                        "0x%08X  %s".format(session.lastAddress, session.lastName)
-                                    } else {
-                                        "not opened yet"
-                                    },
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = colors.textSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.forgetRecent(session.fileKey) },
-                                modifier = Modifier.size(26.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Remove from recent",
-                                    tint = colors.textSecondary,
-                                    modifier = Modifier.size(13.dp)
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                 )
                             }
                         }
@@ -651,7 +668,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                                             coroutineScope.launch(Dispatchers.IO) {
                                                 withContext(Dispatchers.Main) { isExtractingSo = true }
                                                 val extracted = File(context.cacheDir, "extracted_$simpleName")
-                                                val ok = extractSoFromUri(context, selectedApkUri!!, entry.entryName, extracted)
+                                                val ok = if (entry.apkPath != null) {
+                                                    extractSoFromFile(entry.apkPath, entry.entryName, extracted)
+                                                } else {
+                                                    extractSoFromUri(context, selectedApkUri!!, entry.entryName, extracted)
+                                                }
                                                 withContext(Dispatchers.Main) {
                                                     isExtractingSo = false
                                                     if (ok) {
@@ -681,6 +702,91 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         Spacer(Modifier.height(10.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { showApkPicker = false }) {
+                                Text("Cancel", color = colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Installed Apps Picker: choose an app, stream-scan its APK(s) for native .so
+        if (showInstalledPicker) {
+            Dialog(onDismissRequest = { showInstalledPicker = false }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(
+                            text = "Installed Apps",
+                            color = colors.primary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Tap an app to list its native libraries",
+                            color = colors.textSecondary,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        if (isLoadingApps) {
+                            Text("Loading…", color = colors.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 16.dp))
+                        }
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(installedApps, key = { it.pkg }) { app ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = colors.card),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                withContext(Dispatchers.Main) { isScanningApk = true }
+                                                val soList = mutableListOf<ApkSoEntry>()
+                                                try {
+                                                    for (apkPath in app.apkPaths) {
+                                                        java.util.zip.ZipFile(apkPath).use { zip ->
+                                                            val entries = zip.entries()
+                                                            while (entries.hasMoreElements()) {
+                                                                val entry = entries.nextElement()
+                                                                if (!entry.isDirectory && entry.name.endsWith(".so", ignoreCase = true)) {
+                                                                    soList.add(ApkSoEntry(entry.name, entry.size.coerceAtLeast(0), apkPath))
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                } catch (_: Exception) {}
+                                                withContext(Dispatchers.Main) {
+                                                    isScanningApk = false
+                                                    if (soList.isNotEmpty()) {
+                                                        apkSoList = soList.sortedByDescending { it.size }
+                                                        selectedApkUri = null
+                                                        showInstalledPicker = false
+                                                        showApkPicker = true
+                                                    } else {
+                                                        Toast.makeText(context, "No native .so libraries in ${app.label}", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        Text(app.label, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(app.pkg, color = colors.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showInstalledPicker = false }) {
                                 Text("Cancel", color = colors.textSecondary)
                             }
                         }
@@ -912,6 +1018,56 @@ private fun queryFileName(context: Context, uri: Uri): String {
         }
     }
     return name
+}
+
+/**
+ * Enumerates launchable installed apps with their APK paths. Readable without
+ * any permission: an app's own sourceDir/splitSourceDirs stay accessible to
+ * other apps on Android 11+ even without <queries> entries — only the *list*
+ * of other apps needs the queries declaration, which the manifest carries.
+ */
+private fun loadInstalledApps(pm: android.content.pm.PackageManager): List<InstalledApp> {
+    val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+        addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+    }
+    val resolved = pm.queryIntentActivities(intent, 0)
+    return resolved.asSequence()
+        .map { it.activityInfo.applicationInfo }
+        .filterNotNull()
+        .distinctBy { it.packageName }
+        .filter { it.packageName != "io.elftrace.app" }
+        .map { appInfo ->
+            val paths = buildList {
+                appInfo.sourceDir?.let { add(it) }
+                appInfo.splitSourceDirs?.let { addAll(it.filterNotNull()) }
+            }
+            InstalledApp(
+                label = pm.getApplicationLabel(appInfo)?.toString() ?: appInfo.packageName,
+                pkg = appInfo.packageName,
+                apkPaths = paths
+            )
+        }
+        .filter { it.apkPaths.isNotEmpty() }
+        .sortedBy { it.label.lowercase() }
+        .toList()
+}
+
+/**
+ * Extracts a .so entry straight from an installed APK path with ZipFile
+ * (random access — no full-archive copy).
+ */
+private fun extractSoFromFile(apkPath: String, entryName: String, outFile: File): Boolean {
+    return try {
+        java.util.zip.ZipFile(apkPath).use { zip ->
+            val entry = zip.getEntry(entryName) ?: return false
+            zip.getInputStream(entry).use { input ->
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            true
+        }
+    } catch (_: Exception) {
+        false
+    }
 }
 
 @Composable

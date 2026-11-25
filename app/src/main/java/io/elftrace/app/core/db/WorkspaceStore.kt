@@ -68,7 +68,7 @@ interface WorkspaceDao {
     @Upsert
     suspend fun upsertSession(session: SessionRecord)
 
-    @Query("DELETE FROM sessions WHERE fileKey NOT IN (SELECT fileKey FROM sessions ORDER BY lastOpened DESC LIMIT 20)")
+    @Query("DELETE FROM sessions WHERE fileKey NOT IN (SELECT fileKey FROM sessions ORDER BY lastOpened DESC LIMIT 10)")
     suspend fun trimSessions()
 
     @Query("UPDATE sessions SET lastAddress = :address, lastName = :name WHERE fileKey = :fileKey")
@@ -151,7 +151,7 @@ class WorkspaceStore private constructor(private val db: WorkspaceDatabase) {
     }
 
     suspend fun touchSession(fileKey: String, path: String, displayName: String) {
-        val existing = db.dao().recentSessions(20).firstOrNull { it.fileKey == fileKey }
+        val existing = db.dao().recentSessions(10).firstOrNull { it.fileKey == fileKey }
         db.dao().upsertSession(
             (existing ?: SessionRecord(fileKey, path, displayName, 0L)).copy(
                 path = path,
