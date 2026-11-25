@@ -66,7 +66,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun undoLen(handle: Long): Int
 
         // Function discovery for stripped binaries (recovers sub_XXXXXXXX).
-        @JvmStatic private external fun discoverFunctions0(handle: Long, maxScanned: Long): String
+        @JvmStatic private external fun discoverFunctions(handle: Long, maxScanned: Long): String
     }
 
     fun assemblePatch(address: Long, text: String): PatchResult {
@@ -198,7 +198,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
      * decoded (default 32 MiB). Call [getInfo] afterwards to see them.
      */
     fun discoverFunctions(maxScanned: Long = 32L * 1024 * 1024): DiscoveryResult {
-        val json = discoverFunctions0(handle, maxScanned)
+        val json = discoverFunctions(handle, maxScanned)
         return try {
             gson.fromJson(json, DiscoveryResult::class.java)
                 ?: DiscoveryResult(error = "Empty discovery response")

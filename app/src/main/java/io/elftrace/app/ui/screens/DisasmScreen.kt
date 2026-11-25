@@ -499,6 +499,8 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
+        }
+
         // Go-to-address dialog
         if (showGotoDialog) {
             AlertDialog(onDismissRequest = { showGotoDialog = false }) {
@@ -556,7 +558,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                 }
                 }
             }
-        }
 
         // Cross-reference dialog
         if (showXrefDialog) {

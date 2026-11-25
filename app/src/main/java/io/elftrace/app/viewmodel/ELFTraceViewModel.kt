@@ -726,22 +726,30 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             )
             emptyList()
         }
-        val loaded = builtInJsons.mapNotNull { raw ->
+        // LazyColumn keys rows on manifest.id; a duplicate would crash the
+        // Plugins tab, so later files with an already-seen id are skipped.
+        val loaded = mutableListOf<LoadedPlugin>()
+        builtInJsons.forEach { raw ->
             try {
                 val manifest = gson.fromJson(raw, PluginManifest::class.java)
-                LoadedPlugin(
-                    manifest = manifest,
-                    rawJson = raw,
-                    enabled = manifest.defaultEnabled,
-                    isBuiltIn = true
-                )
+                if (loaded.any { it.manifest.id == manifest.id }) {
+                    builtInLoadErrorsAccumulator.add("${manifest.id}: duplicate plugin id, skipped")
+                } else {
+                    loaded.add(
+                        LoadedPlugin(
+                            manifest = manifest,
+                            rawJson = raw,
+                            enabled = manifest.defaultEnabled,
+                            isBuiltIn = true
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 // Best-effort plugin id for the error message; the JSON is broken
                 // so gson can't produce a manifest, but the id often still parses.
                 val guessId = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
                     .find(raw)?.groupValues?.getOrNull(1) ?: "<unknown>"
                 builtInLoadErrorsAccumulator.add("$guessId: ${e.message ?: e.javaClass.simpleName}")
-                null
             }
         }
         // Publish the collected errors (field set happened during this init).
