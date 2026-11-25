@@ -3,6 +3,7 @@
 pub mod cfgraph;
 pub mod dominators;
 pub mod emit;
+pub mod jumptable;
 pub mod loops;
 pub mod regions;
 
@@ -35,11 +36,19 @@ pub enum StructuredNode {
     Return(Option<IrExpr>),
     Goto(u64),
     Label(u64),
+    /// Recovered jump-table dispatch. `cases` maps case value -> target block
+    /// address; `default` is the out-of-range/fall-through target. Emitted as a
+    /// real `switch` statement rather than a wall of gotos.
+    Switch {
+        selector: IrExpr,
+        cases: Vec<(i64, u64)>,
+        default: Option<u64>,
+    },
 }
 
-pub fn structure(func: &IrFunction, graph: &CfGraph) -> Vec<StructuredNode> {
+pub fn structure(ctx: &ElfContext, func: &IrFunction, graph: &CfGraph) -> Vec<StructuredNode> {
     let loop_info = detect_loops(graph);
-    structure_function(func, graph, &loop_info)
+    structure_function(ctx, func, graph, &loop_info)
 }
 
 pub fn decompile_to_c_structured(ctx: &ElfContext, address: u64) -> String {
@@ -63,7 +72,7 @@ pub fn decompile_to_c_structured(ctx: &ElfContext, address: u64) -> String {
     };
 
     let graph = CfGraph::from_blocks(ir_func.blocks.clone());
-    let nodes = structure(&ir_func, &graph);
+    let nodes = structure(ctx, &ir_func, &graph);
     let codegen = CodeGenerator::new(ctx, pipeline.arch);
     emit_structured_c(&ir_func, &nodes, &codegen)
 }

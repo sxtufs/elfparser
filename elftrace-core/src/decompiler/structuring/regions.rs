@@ -8,11 +8,21 @@ use crate::decompiler::ir::{BinaryOp, IrBlock, IrExpr, IrFunction, IrStmt, IrTyp
 use std::collections::HashSet;
 
 pub fn structure_function(
+    ctx: &crate::elf_parser::ElfContext,
     func: &IrFunction,
     graph: &CfGraph,
     loop_info: &LoopInfo,
 ) -> Vec<StructuredNode> {
-    if !loop_info.is_reducible || graph.has_indirect_branch {
+    // Attempt jump-table recovery for every indirect-branch block. If the
+    // function has indirect branches but ALL of them resolve to real tables,
+    // we can structure it like any other function (switches become `switch`
+    // statements) instead of bailing to goto-soup for the whole body. If any
+    // indirect branch is unresolved, keep the exact conservative fallback.
+    let jump_tables = recover_jump_tables(ctx, func);
+    let all_indirect_resolved =
+        !graph.has_indirect_branch || indirect_all_resolved(func, &jump_tables);
+
+    if !loop_info.is_reducible || !all_indirect_resolved {
         return fallback_to_gotos(func, graph);
     }
 
@@ -27,7 +37,38 @@ pub fn structure_function(
         graph.blocks.len(),
         None,
         &mut visited,
+        &jump_tables,
     )
+}
+
+/// Recover jump tables for blocks whose last statement is an `IndirectBranch`.
+fn recover_jump_tables(
+    ctx: &crate::elf_parser::ElfContext,
+    func: &IrFunction,
+) -> std::collections::HashMap<u64, super::jumptable::JumpTable> {
+    let mut out = std::collections::HashMap::new();
+    for b in &func.blocks {
+        if matches!(b.stmts.last(), Some(IrStmt::IndirectBranch { .. })) {
+            if let Some(jt) = super::jumptable::recover(ctx, b.start_address, b.end_address) {
+                out.insert(b.start_address, jt);
+            }
+        }
+    }
+    out
+}
+
+/// True when every block ending in an indirect branch has a recovered table.
+fn indirect_all_resolved(
+    func: &IrFunction,
+    tables: &std::collections::HashMap<u64, super::jumptable::JumpTable>,
+) -> bool {
+    func.blocks.iter().all(|b| {
+        if matches!(b.stmts.last(), Some(IrStmt::IndirectBranch { .. })) {
+            tables.contains_key(&b.start_address)
+        } else {
+            true
+        }
+    })
 }
 
 /// Maximum structuring recursion depth. Past this we stop recursing and emit
@@ -47,9 +88,10 @@ fn structure_sequence(
     end: usize,
     stop_idx: Option<usize>,
     visited: &mut [bool],
+    jump_tables: &std::collections::HashMap<u64, super::jumptable::JumpTable>,
 ) -> Vec<StructuredNode> {
     structure_sequence_d(
-        func, graph, loop_info, ipdom, start, end, stop_idx, visited, 0,
+        func, graph, loop_info, ipdom, start, end, stop_idx, visited, jump_tables, 0,
     )
 }
 
@@ -63,6 +105,7 @@ fn structure_sequence_d(
     end: usize,
     stop_idx: Option<usize>,
     visited: &mut [bool],
+    jump_tables: &std::collections::HashMap<u64, super::jumptable::JumpTable>,
     depth: usize,
 ) -> Vec<StructuredNode> {
     // Depth guard: degrade to a flat linear listing instead of recursing further.
@@ -207,6 +250,7 @@ fn structure_sequence_d(
                         end,
                         Some(exit_idx),
                         visited,
+                        jump_tables,
                         depth + 1,
                     );
                     body_nodes.append(&mut body_seq);
@@ -278,6 +322,7 @@ fn structure_sequence_d(
                         end,
                         Some(exit_idx),
                         visited,
+                        jump_tables,
                         depth + 1,
                     );
                     body_nodes.append(&mut body_seq);
@@ -335,7 +380,7 @@ fn structure_sequence_d(
                 // Case 1: Simple If-Then (fallthrough == join_idx)
                 if Some(fallthrough) == join_idx && tgt_idx < n {
                     let then_nodes = structure_sequence_d(
-                        func, graph, loop_info, ipdom, tgt_idx, end, join_idx, visited, depth + 1,
+                        func, graph, loop_info, ipdom, tgt_idx, end, join_idx, visited, jump_tables, depth + 1,
                     );
                     nodes.push(StructuredNode::If {
                         cond: c,
@@ -357,6 +402,7 @@ fn structure_sequence_d(
                         end,
                         join_idx,
                         visited,
+                        jump_tables,
                         depth + 1,
                     );
                     nodes.push(StructuredNode::If {
@@ -380,6 +426,7 @@ fn structure_sequence_d(
                             end,
                             Some(j),
                             visited,
+                            jump_tables,
                             depth + 1,
                         );
                         let else_nodes = structure_sequence_d(
@@ -391,6 +438,7 @@ fn structure_sequence_d(
                             end,
                             Some(j),
                             visited,
+                            jump_tables,
                             depth + 1,
                         );
                         nodes.push(StructuredNode::If {
@@ -402,6 +450,34 @@ fn structure_sequence_d(
                         continue;
                     }
                 }
+            }
+        }
+
+        // 2b. Recovered jump-table dispatch: emit the block's non-terminator
+        // statements, then a real `switch`. The structurer cannot follow the
+        // case edges as fall-through (they are labels reached via goto), so we
+        // emit the switch and advance past this block; the case targets are
+        // emitted later as labeled blocks by the normal sequential walk.
+        if let Some(IrStmt::IndirectBranch { .. }) = curr_block.stmts.last() {
+            if let Some(jt) = jump_tables.get(&curr_block.start_address) {
+                let mut prefix = curr_block.stmts.clone();
+                prefix.pop(); // drop the IndirectBranch terminator
+                if !prefix.is_empty() {
+                    nodes.push(StructuredNode::Block(IrBlock {
+                        id: curr_block.id,
+                        start_address: curr_block.start_address,
+                        end_address: curr_block.end_address,
+                        stmts: prefix,
+                    }));
+                }
+                nodes.push(StructuredNode::Switch {
+                    selector: IrExpr::reg(&jt.selector_reg, IrType::Int64),
+                    cases: jt.cases.clone(),
+                    default: jt.default_target,
+                });
+                visited[i] = true;
+                i += 1;
+                continue;
             }
         }
 

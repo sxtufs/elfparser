@@ -94,7 +94,12 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
     }
 
     fun decompile(address: Long): String {
-        return dec0(1, handle, address) // Mode 1: C pseudocode
+        return dec0(1, handle, address) // Mode 1: C pseudocode (linear)
+    }
+
+    /** Structured C pseudocode: real if/while and recovered `switch` (mode 4). */
+    fun decompileStructured(address: Long): String {
+        return dec0(4, handle, address)
     }
 
     fun getDisassemblyText(address: Long): String {

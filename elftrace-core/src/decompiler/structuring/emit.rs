@@ -349,6 +349,31 @@ fn emit_node_list(
                     out.push_str(&format!("\nloc_{:08x}:\n", addr));
                 }
             }
+            StructuredNode::Switch {
+                selector,
+                cases,
+                default,
+            } => {
+                let sel_str = codegen.format_expr(
+                    selector,
+                    param_map,
+                    func.base_stack_offset,
+                    func.inferred_params.len(),
+                );
+                out.push_str(&format!("{}switch ({}) {{\n", ind_str, sel_str));
+                for (val, tgt) in cases {
+                    out.push_str(&format!(
+                        "{}    case {}: goto loc_{:08x};\n",
+                        ind_str, val, tgt
+                    ));
+                }
+                if let Some(d) = default {
+                    out.push_str(&format!("{}    default: goto loc_{:08x};\n", ind_str, d));
+                } else {
+                    out.push_str(&format!("{}    default: break;\n", ind_str));
+                }
+                out.push_str(&format!("{}}}\n", ind_str));
+            }
         }
     }
 }
@@ -643,6 +668,9 @@ fn collect_local_regs(
                 collect_expr_regs(cond, assigned_regs, param_map);
                 collect_local_regs(body, assigned_regs, param_map);
             }
+            StructuredNode::Switch { selector, .. } => {
+                collect_expr_regs(selector, assigned_regs, param_map);
+            }
             _ => {}
         }
     }
@@ -755,6 +783,14 @@ fn collect_all_jump_targets(nodes: &[StructuredNode], targets: &mut HashSet<u64>
             }
             StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
                 collect_all_jump_targets(body, targets);
+            }
+            StructuredNode::Switch { cases, default, .. } => {
+                for (_, tgt) in cases {
+                    targets.insert(*tgt);
+                }
+                if let Some(d) = default {
+                    targets.insert(*d);
+                }
             }
             _ => {}
         }

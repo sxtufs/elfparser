@@ -161,6 +161,11 @@ unsafe fn handle_dec(env: &JNIEnv, mode: jint, handle: jlong, address: jlong) ->
         1 => decompile_to_c(ctx, vaddr),
         2 => generate_disassembly_text(ctx, vaddr),
         3 => generate_flowchart_text(ctx, vaddr),
+        // Mode 4: structured decompiler. Emits real if/while/do-while and (via
+        // jump-table recovery) `switch` statements instead of the linear
+        // per-block listing mode 1 produces. Kept as a separate mode so the
+        // existing Decompile output is unchanged for callers that expect it.
+        4 => crate::decompiler::decompile_to_c_structured(ctx, vaddr),
         _ => format!("// Unknown mode: {}\n", mode),
     };
     env.new_string(output).unwrap().into_inner()
