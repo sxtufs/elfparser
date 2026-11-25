@@ -620,5 +620,122 @@ fn fallback_to_gotos(func: &IrFunction, _graph: &CfGraph) -> Vec<StructuredNode>
         }
     }
 
-    nodes
+    collapse_early_exit_ladder(nodes)
+}
+
+/// Collapse the flat "early-exit ladder" pattern that `fallback_to_gotos`
+/// produces for long validation chains, e.g.:
+///
+/// ```text
+/// if (c) goto loc_NEXT;        // If{ cond:c, then:[Goto(NEXT)] }
+/// <fail stmts>                 // Block(s)
+/// goto loc_SHARED;             // still inside the fail region
+/// loc_NEXT:                    // Label(NEXT)
+/// if (c2) goto loc_NEXT2;
+/// ...
+/// ```
+/// into nested conditionals:
+///
+/// ```text
+/// if (!c) {
+///     <fail stmts>
+///     goto loc_SHARED;
+/// }
+/// if (c2) goto loc_NEXT2;
+/// ...
+/// ```
+///
+/// This is a *local, semantics-preserving* rewrite: `if (c) goto L; X; L:` is
+/// exactly `if (!c) { X; }`. It only fires on an EXACT node shape (the If's then
+/// arm is a single Goto, and a Label with that exact target follows the fail
+/// region) and otherwise returns the input untouched. It never changes which
+/// blocks execute, only how they nest — so it cannot break a function it
+/// mis-matches; worst case it does nothing.
+fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
+    // Count references to each label target so we never drop a Label that is
+    // jumped to from more than the one If we are folding.
+    let mut label_refs: std::collections::HashMap<u64, usize> =
+        std::collections::HashMap::new();
+    fn tally(nodes: &[StructuredNode], m: &mut std::collections::HashMap<u64, usize>) {
+        for n in nodes {
+            match n {
+                StructuredNode::Goto(t) => *m.entry(*t).or_insert(0) += 1,
+                StructuredNode::If { then, otherwise, .. } => {
+                    tally(then, m);
+                    tally(otherwise, m);
+                }
+                StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+                    tally(body, m)
+                }
+                _ => {}
+            }
+        }
+    }
+    tally(&nodes, &mut label_refs);
+
+    let mut out: Vec<StructuredNode> = Vec::with_capacity(nodes.len());
+    let mut i = 0usize;
+    while i < nodes.len() {
+        // Match: If { cond, then: [Goto(next)], otherwise: [] }
+        let matched = match &nodes[i] {
+            StructuredNode::If {
+                cond,
+                then,
+                otherwise,
+            } if otherwise.is_empty() && then.len() == 1 => {
+                if let StructuredNode::Goto(next) = &then[0] {
+                    Some((cond.clone(), *next))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some((cond, next)) = matched {
+            // The fail region is everything after the If up to a Label(next).
+            // It must be non-empty and reach a Label(next) before the next
+            // unrelated If of the same shape; we conservatively require the
+            // Label(next) to appear and no nested identical If in between.
+            let mut j = i + 1;
+            let mut fail_body: Vec<StructuredNode> = Vec::new();
+            let mut found_label = false;
+            while j < nodes.len() {
+                match &nodes[j] {
+                    StructuredNode::Label(a) if *a == next => {
+                        found_label = true;
+                        break;
+                    }
+                    // Stop if we run into another top-level If that jumps
+                    // elsewhere — that means the region boundary is unclear.
+                    StructuredNode::If { .. } => break,
+                    other => fail_body.push(other.clone()),
+                }
+                j += 1;
+            }
+
+            // Only fold when: a matching label closes the region, the fail
+            // body is non-empty, and the label is referenced exactly once
+            // (by this If) so dropping it is safe.
+            if found_label
+                && !fail_body.is_empty()
+                && label_refs.get(&next).copied().unwrap_or(0) == 1
+            {
+                out.push(StructuredNode::If {
+                    cond: negate_condition(cond),
+                    // Recurse so nested rungs inside the fail region collapse too;
+                    // otherwise rung 1 wraps a still-flat interior.
+                    then: collapse_early_exit_ladder(fail_body),
+                    otherwise: Vec::new(),
+                });
+                i = j + 1; // skip past the consumed Label(next)
+                continue;
+            }
+        }
+
+        out.push(nodes[i].clone());
+        i += 1;
+    }
+
+    out
 }
