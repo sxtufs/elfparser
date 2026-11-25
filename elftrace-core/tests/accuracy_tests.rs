@@ -194,10 +194,23 @@ fn test_item4_flag_state() {
         panic!("Expected conditional branch");
     }
 
-    // 2. reset_state clears last_cmp across block boundary / call
+    // 2. reset_state clears last_cmp across block boundary / call.
+    //    The branch edge must still be PRESERVED (we no longer degrade to Asm,
+    //    which dropped the control-flow edge and produced goto-soup), but the
+    //    condition must be the synthetic `flags_cond` placeholder — proving the
+    //    real `tst` condition was cleared and not reused.
     lifter.reset_state();
     let stmts_reset = lifter.lift(&ctx, 0x1008, "b.eq", "0x3000", &[0; 4]);
-    assert!(matches!(stmts_reset[0], IrStmt::Asm(_)));
+    match &stmts_reset[0] {
+        IrStmt::Branch { cond: Some(IrExpr::Reg(r, _)), target } => {
+            assert_eq!(r.as_str(), "flags_cond", "reset_state must clear the real condition");
+            assert_eq!(*target, 0x3000, "branch target must be preserved");
+        }
+        other => panic!(
+            "Expected Branch{{cond: flags_cond}} after reset (edge preserved, condition synthetic), got {:?}",
+            other
+        ),
+    }
 }
 
 #[test]
