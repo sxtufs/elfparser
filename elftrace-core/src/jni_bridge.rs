@@ -334,7 +334,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_save0(
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_readBytes0(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     address: jlong,

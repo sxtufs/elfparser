@@ -292,6 +292,35 @@ fn test_item6_signed_extensions() {
 }
 
 #[test]
+fn test_item6_sxtw_shift_pair_renders_at_64_bits() {
+    use std::collections::HashMap;
+
+    use elftrace::decompiler::arch::ArchKind;
+    use elftrace::decompiler::codegen::CodeGenerator;
+    use elftrace::decompiler::ir::IrStmt;
+    use elftrace::decompiler::lifters::arm64::Arm64Lifter;
+    use elftrace::decompiler::lifters::InstructionLifter;
+
+    let ctx = ElfContext::stub();
+    let mut lifter = Arm64Lifter::new();
+    let stmts = lifter.lift(&ctx, 0x1000, "sxtw", "x24, w23", &[0; 4]);
+    let src = match &stmts[0] {
+        IrStmt::Assign { src, .. } => src,
+        other => panic!("expected Assign, got {:?}", other),
+    };
+    let cg = CodeGenerator::new(&ctx, ArchKind::AArch64);
+    let c = cg.format_expr(src, &HashMap::new(), 0, 8);
+
+    // `w23` renders as `(uint32_t)x23`, so emitting the raw shift pair would
+    // shift a 32-bit value by 32 — undefined behaviour, rejected by -Werror.
+    assert_eq!(c, "(int64_t)((uint64_t)(uint32_t)x23 << 0x20) >> 0x20");
+    // The widening must happen on the left shift and the ShrS must stay signed.
+
+    let c_code = format!("int64_t probe(int64_t x23) {{ int64_t x24; x24 = {}; return x24; }}", c);
+    assert_compiles(&c_code, "sxtw_shift_pair");
+}
+
+#[test]
 fn test_item6_unsigned_extensions() {
     use elftrace::decompiler::ir::{BinaryOp, IrStmt};
     use elftrace::decompiler::lifters::arm64::Arm64Lifter;

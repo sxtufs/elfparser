@@ -866,6 +866,31 @@ impl<'a> CodeGenerator<'a> {
                         }
                     }
                 }
+                if matches!(op, BinaryOp::Shl | BinaryOp::ShrU | BinaryOp::ShrS) {
+                    let narrow_operand = l_str.starts_with("(uint32_t)")
+                        || l_str.starts_with("(uint16_t)")
+                        || l_str.starts_with("(uint8_t)");
+                    // Shifting a narrower value by its own width or more is undefined
+                    // behaviour in C. The sign/zero-extension lifts (sxtw/sxtb/sxth)
+                    // shift a 32-bit sub-register by 32 or more, so evaluate them at
+                    // 64 bits instead of letting the (uint32_t) cast shrink the shift.
+                    let mut widened = false;
+                    if let IrExpr::Const(count) = **rhs {
+                        if narrow_operand && count >= 32 {
+                            l_str = format!("(uint64_t){}", l_str);
+                            widened = true;
+                        }
+                    }
+                    // The sign-extension lifts read back through ShrS, which is only
+                    // arithmetic when the operand is signed. (uint32_t)/(uint64_t)
+                    // operands would make it a logical shift and lose the sign bits.
+                    let unsigned_operand = widened
+                        || l_str.starts_with("(uint64_t)")
+                        || l_str.starts_with("(uint32_t)");
+                    if *op == BinaryOp::ShrS && unsigned_operand {
+                        l_str = format!("(int64_t)({})", l_str);
+                    }
+                }
                 if is_unsigned {
                     let ucast = if self.arch.pointer_size() == 8 {
                         "(uint64_t)"
