@@ -124,8 +124,9 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             0 -> decompileCode.ifEmpty { "// Select a function to decompile" }
             else -> decompileCode.ifEmpty { "// Select a function to decompile" }
         }
-        // Linear-Clean (1) strips the (void)param; noise; the others show raw.
-        if (decompileMode == 1 && base.isNotEmpty()) cleanPseudoC(base) else base
+        // Strip (void)param; noise for both Clean (1) and Struct (2): the
+        // structured emitter also emits those lines and they only add clutter.
+        if (decompileMode != 0 && base.isNotEmpty()) cleanPseudoC(base) else base
     }
 
     val highlightedCode = remember(displayedText, searchQuery, colors) {

@@ -57,14 +57,28 @@ fn recover_jump_tables(
     out
 }
 
-/// True when every block ending in an indirect branch has a recovered table.
+/// True when every block ending in an indirect branch is either
+/// (a) a recovered jump table, or (b) a tail-call / return-like branch through
+/// the ABI intra-procedure scratch registers (x16/x17 = ip0/ip1 on AArch64),
+/// which are terminators, not switches. Treating (b) as "unresolved" would
+/// force goto-soup onto every function that ends with a PLT/tail `br x16`.
 fn indirect_all_resolved(
     func: &IrFunction,
     tables: &std::collections::HashMap<u64, super::jumptable::JumpTable>,
 ) -> bool {
     func.blocks.iter().all(|b| {
-        if matches!(b.stmts.last(), Some(IrStmt::IndirectBranch { .. })) {
-            tables.contains_key(&b.start_address)
+        if let Some(IrStmt::IndirectBranch { target }) = b.stmts.last() {
+            if tables.contains_key(&b.start_address) {
+                return true;
+            }
+            // Tail-call / PLT dispatch through ip0/ip1 -> terminator.
+            if let IrExpr::Reg(r, _) = target {
+                let rl = r.to_lowercase();
+                if matches!(rl.as_str(), "x16" | "x17" | "ip0" | "ip1") {
+                    return true;
+                }
+            }
+            false
         } else {
             true
         }

@@ -117,6 +117,21 @@ impl InstructionLifter for Arm64Lifter {
             self.prologue_done = true;
         }
 
+        // If a conditional branch arrives with no recorded compare (flags set
+        // by an instruction we don't model as a comparison, e.g. `tst`/`ands`
+        // in some forms, or a compare separated by a non-flag-clobbering
+        // instruction that reset last_cmp), the per-arm handlers would fall
+        // back to IrStmt::Asm("b.ne ..."). That DROPS the control-flow edge,
+        // which makes the structurer see an irreducible CFG and emit goto soup
+        // for the whole function. Seed an opaque predicate instead so the edge
+        // survives as a real Branch; the condition renders as a labeled local.
+        let is_cond_branch = mnem.starts_with("b.")
+            || mnem.starts_with("cb")
+            || mnem.starts_with("tb");
+        if is_cond_branch && self.last_cmp.is_none() {
+            self.last_cmp = Some(IrExpr::reg("flags_cond", IrType::Int32));
+        }
+
         let stmts = match mnem {
             // Control Flow
             "ret" | "bx" if ops == "lr" || ops.is_empty() => {

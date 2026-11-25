@@ -603,6 +603,19 @@ fn emit_block_stmts(
             IrStmt::Trap => {
                 out.push_str(&format!("{}__builtin_trap();\n", ind_str));
             }
+            IrStmt::IndirectBranch { target } => {
+                // Unrecovered indirect branch (e.g. a tail-call `br x16` that is
+                // a terminator, not a switch). We can't statically resolve the
+                // destination, but dropping it silently would hide a real
+                // control-flow transfer, so render it as an annotated asm line.
+                let t = codegen.format_expr(
+                    target,
+                    param_map,
+                    func.base_stack_offset,
+                    func.inferred_params.len(),
+                );
+                out.push_str(&format!("{}/* indirect branch -> {} */\n", ind_str, t));
+            }
             _ => {}
         }
     }
@@ -636,9 +649,17 @@ fn count_gotos(nodes: &[StructuredNode], count: &mut usize) {
 fn has_explicit_return(nodes: &[StructuredNode]) -> bool {
     nodes.iter().any(|n| match n {
         StructuredNode::Return(_) => true,
+        // The goto-fallback path puts Return inside a Block's stmt list rather
+        // than as a StructuredNode::Return. Without this, emit_structured_c
+        // appends a second implicit `return` after the fallback already ended
+        // the function -> "return a0; return a0;".
+        StructuredNode::Block(b) => b.stmts.iter().any(|s| matches!(s, IrStmt::Return(_))),
         StructuredNode::If {
             then, otherwise, ..
         } => has_explicit_return(then) && has_explicit_return(otherwise),
+        // A loop containing a return does NOT guarantee the function returns,
+        // so loops are intentionally excluded here (keeps the implicit
+        // trailing return for such functions, avoiding C fall-off errors).
         _ => false,
     })
 }

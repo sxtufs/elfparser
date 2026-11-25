@@ -27,13 +27,15 @@ pub fn detect_loops(g: &CfGraph) -> LoopInfo {
         };
     }
 
-    if g.has_indirect_branch {
-        return LoopInfo {
-            loops: Vec::new(),
-            is_reducible: false,
-        };
-    }
-
+    // NOTE: indirect branches do NOT automatically make the graph irreducible.
+    // Previously we hard-bailed here (`has_indirect_branch => is_reducible:false`),
+    // which forced EVERY function containing a `br xN` (jump table, computed
+    // goto, or even a tail-call thunk) into the goto fallback — even when the
+    // structurer had recovered all the tables and the visible CFG was perfectly
+    // reducible. An indirect-branch block simply has no statically-known succ
+    // edges (see CfGraph::from_blocks), so it behaves like a terminator here and
+    // contributes no spurious back-edges. The single authority for "did we lose
+    // control-flow edges" is now structure_function's all_indirect_resolved gate.
     let dom = dominators(g);
     let mut back_edges = Vec::new();
 
