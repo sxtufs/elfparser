@@ -620,7 +620,187 @@ fn fallback_to_gotos(func: &IrFunction, _graph: &CfGraph) -> Vec<StructuredNode>
         }
     }
 
-    collapse_early_exit_ladder(nodes)
+    collapse_early_exit_ladder(inline_shared_joins(nodes))
+}
+
+/// Eliminate gotos to *shared join blocks* (the classic error-tail pattern:
+/// `if (err) { args; goto loc_LOG; }` from many sites, where `loc_LOG:` is a
+/// small log/assert/return chain) by duplicating the join region into each
+/// goto site — "tail duplication". One original goto per join is kept so the
+/// label and its body stay reachable exactly as before; we only ever add
+/// copies and remove some gotos, never labels or bodies, so the rewrite is
+/// semantics-preserving by construction.
+///
+/// A join region is inlinable when, from its label, a linear scan reaches an
+/// explicit terminator (Return or unconditional Goto) through Blocks and
+/// label-free Ifs only; falling into a further label splices that label's
+/// region (recursively, depth/size capped). Labels inside the inlined copies
+/// are dropped — the copies' gotos still target the *real* labels, which stay
+/// in place at the original region.
+const MAX_JOIN_DEPTH: usize = 6;
+const MAX_JOIN_STMTS: usize = 64;
+
+fn goto_refs(nodes: &[StructuredNode], refs: &mut std::collections::HashMap<u64, usize>) {
+    for n in nodes {
+        match n {
+            StructuredNode::Goto(t) => *refs.entry(*t).or_insert(0) += 1,
+            StructuredNode::If { then, otherwise, .. } => {
+                goto_refs(then, refs);
+                goto_refs(otherwise, refs);
+            }
+            StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+                goto_refs(body, refs)
+            }
+            _ => {}
+        }
+    }
+}
+
+fn contains_label(nodes: &[StructuredNode]) -> bool {
+    nodes.iter().any(|n| match n {
+        StructuredNode::Label(_) => true,
+        StructuredNode::If { then, otherwise, .. } => {
+            contains_label(then) || contains_label(otherwise)
+        }
+        StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+            contains_label(body)
+        }
+        _ => false,
+    })
+}
+
+/// Walk the region that starts at `label_idx` (a Label node in `top`) and clone
+/// it up to an explicit terminator, splicing fall-through-into-next-label
+/// chains. Returns None when the region is not safely inlinable.
+fn try_region(
+    top: &[StructuredNode],
+    label_idx: usize,
+    regions: &std::collections::HashMap<u64, usize>,
+    depth: usize,
+    budget: &mut usize,
+) -> Option<Vec<StructuredNode>> {
+    if depth > MAX_JOIN_DEPTH {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut i = label_idx + 1;
+    while i < top.len() {
+        match &top[i] {
+            StructuredNode::Block(b) => {
+                *budget = budget.checked_sub(b.stmts.len().max(1))?;
+                out.push(top[i].clone());
+            }
+            StructuredNode::If { then, otherwise, .. } => {
+                if contains_label(then) || contains_label(otherwise) {
+                    return None;
+                }
+                *budget = budget.checked_sub(1)?;
+                out.push(top[i].clone());
+            }
+            StructuredNode::Label(u) => {
+                // Fall-through into the next join: splice its region (labels
+                // dropped; the real label stays at its original position).
+                let &ui = regions.get(u)?;
+                let spliced = try_region(top, ui, regions, depth + 1, budget)?;
+                out.extend(spliced);
+            }
+            StructuredNode::Return(_) | StructuredNode::Goto(_) => {
+                out.push(top[i].clone());
+                return Some(out);
+            }
+            // While/DoWhile/Switch/Break/Continue: not a linear tail.
+            _ => return None,
+        }
+        i += 1;
+    }
+    // Ran off the end without a terminator: control would fall out of the
+    // copy into unknown code. Refuse.
+    None
+}
+
+pub(crate) fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
+    // Top-level label -> index of its Label node (first occurrence wins).
+    let mut regions: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    for (i, n) in nodes.iter().enumerate() {
+        if let StructuredNode::Label(a) = n {
+            regions.entry(*a).or_insert(i);
+        }
+    }
+    if regions.is_empty() {
+        return nodes;
+    }
+    let mut refs = std::collections::HashMap::new();
+    goto_refs(&nodes, &mut refs);
+
+    // Expand every shared join (refs >= 2) once; memoize.
+    let mut memo: std::collections::HashMap<u64, Option<Vec<StructuredNode>>> =
+        std::collections::HashMap::new();
+    for (&addr, &n) in &refs {
+        if n >= 2 {
+            if let Some(&idx) = regions.get(&addr) {
+                let mut budget = MAX_JOIN_STMTS;
+                memo.insert(addr, try_region(&nodes, idx, &regions, 0, &mut budget));
+            }
+        }
+    }
+    // Replace all refs to an inlinable join except the LAST one (in walk
+    // order), so the label stays referenced and its body reachable as before.
+    let mut remaining: std::collections::HashMap<u64, usize> = refs
+        .into_iter()
+        .filter(|(a, _)| matches!(memo.get(a), Some(Some(_))))
+        .collect();
+
+    fn subst(
+        nodes: Vec<StructuredNode>,
+        memo: &std::collections::HashMap<u64, Option<Vec<StructuredNode>>>,
+        remaining: &mut std::collections::HashMap<u64, usize>,
+    ) -> Vec<StructuredNode> {
+        nodes
+            .into_iter()
+            .flat_map(|n| match n {
+                StructuredNode::Goto(t) => {
+                    if remaining.get_mut(&t).map(|r| {
+                        let keep = *r <= 1;
+                        if !keep {
+                            *r -= 1;
+                        }
+                        keep
+                    }) == Some(true)
+                    {
+                        vec![StructuredNode::Goto(t)]
+                    } else if let Some(Some(exp)) = memo.get(&t) {
+                        exp.clone()
+                    } else {
+                        vec![StructuredNode::Goto(t)]
+                    }
+                }
+                StructuredNode::If {
+                    cond,
+                    then,
+                    otherwise,
+                } => vec![StructuredNode::If {
+                    cond,
+                    then: subst(then, memo, remaining),
+                    otherwise: subst(otherwise, memo, remaining),
+                }],
+                StructuredNode::While { cond, body } => {
+                    vec![StructuredNode::While {
+                        cond,
+                        body: subst(body, memo, remaining),
+                    }]
+                }
+                StructuredNode::DoWhile { cond, body } => {
+                    vec![StructuredNode::DoWhile {
+                        cond,
+                        body: subst(body, memo, remaining),
+                    }]
+                }
+                other => vec![other],
+            })
+            .collect()
+    }
+
+    subst(nodes, &memo, &mut remaining)
 }
 
 /// Collapse the flat "early-exit ladder" pattern that `fallback_to_gotos`

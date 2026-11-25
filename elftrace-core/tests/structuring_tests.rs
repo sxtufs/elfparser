@@ -683,6 +683,94 @@ fn test_structural_equivalence_traverse_linked_list() {
 }
 
 #[test]
+fn test_shared_join_error_ladder_has_no_gotos() {
+    // The JNI_OnLoad pattern: many validation arms jumping to one small shared
+    // log/return join. The join-inlining pass (tail duplication) must expand
+    // the join at every goto site except the last, so no `goto loc_` remains.
+    use elftrace::decompiler::arch::ArchKind;
+    use elftrace::decompiler::codegen::CodeGenerator;
+    use elftrace::decompiler::ir::*;
+    use elftrace::decompiler::structuring::cfgraph::CfGraph;
+    use elftrace::decompiler::structuring::emit::emit_structured_c;
+    use elftrace::decompiler::structuring::{structure, StructuredNode};
+    use elftrace::elf_parser::ElfContext;
+
+    // Blocks 0..4: one validation arm each; block 5: shared log join;
+    // block 6: epilogue. Conditional `Branch` falls through to the next block.
+    let blocks: Vec<IrBlock> = (0..5)
+        .map(|i| IrBlock {
+            id: i,
+            start_address: i as u64 * 0x10,
+            end_address: i as u64 * 0x10 + 4,
+            stmts: vec![
+                IrStmt::Call {
+                    target: IrExpr::Const(0),
+                    name: Some(format!("check_{}", i)),
+                    args: vec![],
+                    ret_dst: None,
+                },
+                IrStmt::Branch {
+                    cond: Some(IrExpr::Reg(format!("w{}", i), IrType::Int32)),
+                    target: 0x50, // loc_SHARED
+                },
+            ],
+        })
+        .chain(std::iter::once(IrBlock {
+            id: 5,
+            start_address: 0x50,
+            end_address: 0x54,
+            stmts: vec![
+                IrStmt::Call {
+                    target: IrExpr::Const(0),
+                    name: Some("log_fail".to_string()),
+                    args: vec![],
+                    ret_dst: None,
+                },
+                IrStmt::Branch { cond: None, target: 0x60 },
+            ],
+        }))
+        .chain(std::iter::once(IrBlock {
+            id: 6,
+            start_address: 0x60,
+            end_address: 0x64,
+            stmts: vec![IrStmt::Return(Some(IrExpr::Const(0)))],
+        }))
+        .collect();
+
+    let func = IrFunction {
+        name: "error_ladder".to_string(),
+        start_address: 0,
+        size: 0x64,
+        blocks,
+        ret_type: IrType::Int64,
+        ret_reg: "x0".to_string(),
+        base_stack_offset: 0,
+        inferred_params: vec![],
+    };
+    let ctx = ElfContext::stub();
+    let graph = CfGraph::from_blocks(func.blocks.clone());
+    let nodes: Vec<StructuredNode> = structure(&ctx, &func, &graph);
+    let codegen = CodeGenerator::new(&ctx, ArchKind::AArch64);
+    let rendered = emit_structured_c(&func, &nodes, &codegen);
+    assert!(
+        !rendered.contains("goto loc_00000050"),
+        "shared log join must be inlined at every ladder arm, got:\n{}",
+        rendered
+    );
+    // One goto to the epilogue label remains (deliberately kept reference so
+    // the label/body stay reachable), and the join body is still present.
+    assert!(
+        rendered.matches("goto loc_00000060").count() == 1,
+        "exactly one kept goto to the epilogue expected, got:\n{}",
+        rendered
+    );
+    assert!(
+        rendered.contains("log_fail"),
+        "join body must remain in output"
+    );
+}
+
+#[test]
 fn test_structural_equivalence_realworld_suite() {
     let mut structured_count = 0;
     let mut total_count = 0;
