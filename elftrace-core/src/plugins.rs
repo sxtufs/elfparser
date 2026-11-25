@@ -522,6 +522,72 @@ fn execute_rhai_script(
         -1
     });
 
+    // 64-bit load. Rhai's i64 can hold the full value; a value that would
+    // overflow the signed range is returned as the wrapped i64 (bit-identical),
+    // so plugin bit-twiddling on masks remains correct.
+    engine.register_fn("read_u64", move |addr: i64| -> i64 {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        if let Some(off) = ctx_ref.vaddr_to_offset(addr as u64) {
+            let off = off as usize;
+            if off + 8 <= ctx_ref.raw.len() {
+                return u64::from_le_bytes(ctx_ref.raw[off..off + 8].try_into().unwrap()) as i64;
+            }
+        }
+        -1
+    });
+
+    // Read a NUL-terminated C string at a virtual address. Bounded to 4 KiB so
+    // a missing terminator cannot scan the whole file. Returns "" when the
+    // address is unmapped. Ideal for recovering format strings / paths that a
+    // `string` rule can't reach because they are built in code, not .rodata.
+    engine.register_fn("read_cstr", move |addr: i64| -> String {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        ctx_ref.read_string_at(addr as u64, 4096)
+    });
+
+    // Name of the section containing a virtual address (e.g. ".text").
+    // Returns "" when unmapped. Lets scripts skip findings in .eh_frame,
+    // .rodata, etc.
+    engine.register_fn("section_of", move |addr: i64| -> String {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        ctx_ref
+            .get_section_name_for_vaddr(addr as u64)
+            .unwrap_or_default()
+    });
+
+    // Symbol name whose range encloses the address, or "" if none.
+    // O(log n) via the shared sorted symbol index.
+    engine.register_fn("symbol_at", move |addr: i64| -> String {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        ctx_ref.enclosing_symbol(addr as u64).unwrap_or_default()
+    });
+
+    // True when the address maps to an executable segment. Lets scripts avoid
+    // reporting data as a callable target.
+    engine.register_fn("is_executable", move |addr: i64| -> bool {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        ctx_ref.is_executable_address(addr as u64)
+    });
+
+    // Shannon entropy (0.0..=8.0) of the section containing the address.
+    // Reuses the same section-entropy report as the Entropy tab so plugin
+    // verdicts match it exactly. -1.0 when the address is unmapped or the
+    // section is not present in the report.
+    engine.register_fn("entropy_of", move |addr: i64| -> f64 {
+        let ctx_ref = unsafe { &*(ctx_ptr as *const ElfContext) };
+        let section = match ctx_ref.get_section_name_for_vaddr(addr as u64) {
+            Some(s) => s,
+            None => return -1.0,
+        };
+        let report = crate::scanner::calculate_entropy_report(ctx_ref);
+        report
+            .sections
+            .iter()
+            .find(|s| s.name == section)
+            .map(|s| s.entropy)
+            .unwrap_or(-1.0)
+    });
+
     let collected: Arc<Mutex<Vec<PluginFinding>>> = Arc::new(Mutex::new(Vec::new()));
 
     let c1 = Arc::clone(&collected);

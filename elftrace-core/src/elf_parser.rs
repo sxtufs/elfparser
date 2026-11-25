@@ -946,6 +946,37 @@ impl ElfContext {
         }
     }
 
+    /// Return the smallest symbol start address strictly greater than `vaddr`.
+    /// Used to bound a function's extent so a size-0 / unknown symbol cannot
+    /// decode into the following function before hitting a terminator.
+    /// Reuses the same lazily-built sorted symbol index as `enclosing_symbol`.
+    pub fn next_symbol_start(&self, vaddr: u64) -> Option<u64> {
+        if let Ok(mut guard) = self.symbol_index.write() {
+            if guard.is_none() {
+                let mut v: Vec<(u64, u64, String)> = self
+                    .syms_map
+                    .iter()
+                    .filter(|(addr, _)| **addr != 0)
+                    .map(|(&addr, sym)| {
+                        let end = if sym.size > 0 {
+                            addr.saturating_add(sym.size)
+                        } else {
+                            addr.saturating_add(0x1000)
+                        };
+                        (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
+                    })
+                    .collect();
+                v.sort_by_key(|e| e.0);
+                *guard = Some(v);
+            }
+        }
+        let index_guard = self.symbol_index.read().ok()?;
+        let index = index_guard.as_ref()?;
+        // First entry whose start is strictly greater than vaddr.
+        let pos = index.partition_point(|e| e.0 <= vaddr);
+        index.get(pos).map(|e| e.0)
+    }
+
     /// Invalidate the memoized `get_info()` result and the sorted symbol index.
     /// MUST be called after any mutation of `syms_map` (rename_function, Il2Cpp
     /// symbol injection) so the next `get_info()` / `enclosing_symbol()` rebuild

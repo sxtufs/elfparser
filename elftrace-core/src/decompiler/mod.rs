@@ -81,9 +81,24 @@ fn scan_function_extent(ctx: &ElfContext, address: u64, thumb: bool, fallback: u
     if start_off >= ctx.raw.len() {
         return fallback.min(MAX_SCAN);
     }
+
+    // Upper bound for the scan: the next symbol's start address. A size-0 or
+    // unknown symbol frequently ends WITHOUT a conventional terminator (tail
+    // call, thunk, fallthrough into a shared epilogue). Without this clamp the
+    // scan would decode into the following function and either (a) report a
+    // bogus size, or (b) stop at the NEIGHBOUR's `ret`, mis-attributing it here.
+    // We still keep MAX_SCAN as a hard ceiling so a lone huge function can't
+    // make this unbounded.
+    let next_bound = ctx
+        .next_symbol_start(address)
+        .map(|n| n.saturating_sub(address))
+        .filter(|d| *d > 0)
+        .unwrap_or(u64::MAX);
+    let cap = MAX_SCAN.min(next_bound);
+
     let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
     let slice = &ctx.raw[start_off..];
-    let limit = (MAX_SCAN as usize).min(slice.len());
+    let limit = (cap as usize).min(slice.len());
     match disassemble(slice, address, limit as u64, e_machine, thumb) {
         Ok(code) => {
             for ins in code.data {
@@ -98,13 +113,13 @@ fn scan_function_extent(ctx: &ElfContext, address: u64, thumb: bool, fallback: u
                 if is_ret {
                     let end = ins.address + ins.bytes.len() as u64;
                     if end > address {
-                        return (end - address).max(4);
+                        return (end - address).max(4).min(cap.max(4));
                     }
                 }
             }
-            fallback.min(MAX_SCAN)
+            fallback.min(cap)
         }
-        Err(_) => fallback.min(MAX_SCAN),
+        Err(_) => fallback.min(cap),
     }
 }
 
