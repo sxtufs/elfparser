@@ -24,6 +24,7 @@ capstone = { version = "0.14", default-features = false, features = [
 ] }
 cpp_demangle = "0.5"
 rhai = "1.26"
+memmap2 = "0.9"
 
 [profile.release]
 # Remove internal symbol names (Rust function/type names).

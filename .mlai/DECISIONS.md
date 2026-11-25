@@ -52,3 +52,21 @@ stored renames are re-applied and the journal is replayed through the normal nat
 patch path, which also restores the in-memory undo stack; an undo deletes the journal row
 it reverted. Sessions are verified against the current hash before reopening, so a stale
 cache entry is dropped instead of opening the wrong binary.
+
+## 2026-11-25 — Binary image is a private memory map, not a heap read
+`ElfContext::raw` is `RawImage` (`src/elf_parser.rs`): a `memmap2` `mapped_copy`
+(MAP_PRIVATE) of the file, falling back to `fs::read` only for empty files. Patching
+writes into the mapping, so a patch copies just the touched pages into memory and never
+reaches the file on disk; resident cost tracks pages actually read instead of the whole
+file. `RawImage` derefs to `[u8]` so parser code is unchanged, and `Clone` produces a
+detached `Owned` copy (only tests clone a context). Pinned by
+`tests/mapped_image_tests.rs`, which patches a mapped synthetic ELF and asserts the
+on-disk bytes are untouched, `undo_last()` restores the mapping, and the image is
+`Mapped`.
+
+## 2026-11-25 — `ElfInfo.yara` removed
+The field (and `YaraDTO` in both `model.rs` and `ElfModels.kt`) was always empty:
+`scanner.rs` does the real signature matching into `syms`. Removed from the DTO on both
+sides, so the Kotlin deserializer no longer declares a field the native side never fills.
+The `evaluateYara` flag on `getInfo`/`info0` stays, because removing it would change the
+JNI signature for no functional gain.

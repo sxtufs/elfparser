@@ -2,7 +2,78 @@ use crate::model::{ElfInfo, ElfSectionDTO, ElfSegmentDTO, SData, SDataItem, Syms
 use object::{Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::HashMap;
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
+
+/// File image of the open ELF.
+///
+/// A private (copy-on-write) memory map keeps the resident cost to the pages
+/// actually touched, so an 80 MB `.so` no longer needs 80 MB of heap before the
+/// first byte is inspected. Patches are written into the mapping, which copies
+/// only those pages in memory and never reaches the file on disk.
+pub enum RawImage {
+    Owned(Vec<u8>),
+    Mapped(memmap2::MmapMut),
+}
+
+impl RawImage {
+    pub fn open(path: &str) -> Result<Self, String> {
+        let file =
+            fs::File::open(Path::new(path)).map_err(|e| format!("Failed to read file: {}", e))?;
+        if file.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+            // SAFETY: the mapping is private (MAP_PRIVATE); all access goes through
+            // this type and patched pages are overlays that are never flushed.
+            if let Ok(map) = unsafe { memmap2::MmapOptions::new().map_copy(&file) } {
+                return Ok(RawImage::Mapped(map));
+            }
+        }
+        let bytes = fs::read(Path::new(path)).map_err(|e| format!("Failed to read file: {}", e))?;
+        Ok(RawImage::Owned(bytes))
+    }
+}
+
+impl PartialEq for RawImage {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl std::fmt::Debug for RawImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match self {
+            RawImage::Owned(_) => "Owned",
+            RawImage::Mapped(_) => "Mapped",
+        };
+        write!(f, "RawImage::{}({} bytes)", kind, self.len())
+    }
+}
+
+impl Clone for RawImage {
+    /// Detached heap copy. Only tests clone a context; the live app never does,
+    /// so this does not reintroduce the whole-file read on the hot path.
+    fn clone(&self) -> Self {
+        RawImage::Owned(self.to_vec())
+    }
+}
+
+impl Deref for RawImage {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            RawImage::Owned(v) => v,
+            RawImage::Mapped(m) => m,
+        }
+    }
+}
+
+impl DerefMut for RawImage {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        match self {
+            RawImage::Owned(v) => v,
+            RawImage::Mapped(m) => m,
+        }
+    }
+}
 
 struct DynamicTables<'a> {
     dynamic: &'a [u8],
@@ -270,7 +341,7 @@ fn extract_elf_segments(raw: &[u8], is_64: bool) -> Vec<ElfSegmentDTO> {
 
 pub struct ElfContext {
     pub path: String,
-    pub raw: Vec<u8>,
+    pub raw: RawImage,
     pub syms_map: HashMap<u64, SymsDTO>,
     /// Memoized result of `get_info()`. `get_info` re-parses the whole ELF and
     /// rebuilds the symbol/section/segment tables on every call; the UI used to
@@ -301,7 +372,7 @@ impl ElfContext {
     pub fn stub() -> Self {
         Self {
             path: String::from("<stub>"),
-            raw: Vec::new(),
+            raw: RawImage::Owned(Vec::new()),
             syms_map: HashMap::new(),
             info_cache: std::sync::RwLock::new(None),
             symbol_index: std::sync::RwLock::new(None),
@@ -310,7 +381,7 @@ impl ElfContext {
     }
 
     pub fn open(path: &str) -> Result<Self, String> {
-        let raw = fs::read(Path::new(path)).map_err(|e| format!("Failed to read file: {}", e))?;
+        let raw = RawImage::open(path)?;
         if raw.len() < 4 || &raw[0..4] != b"\x7fELF" {
             return Err("Not a valid ELF file".to_string());
         }
@@ -844,7 +915,6 @@ impl ElfContext {
             interpreter,
             libraries,
             syms,
-            yara: Vec::new(),
             segments,
             sections,
         };

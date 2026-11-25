@@ -28,7 +28,6 @@ data class ElfInfo(
     val interpreter: String? = null,
     val libraries: List<String> = emptyList(),
     val syms: List<SymsDTO> = emptyList(),
-    val yara: List<YaraDTO> = emptyList(),
     val segments: List<ElfSegmentDTO> = emptyList(),
     val sections: List<ElfSectionDTO> = emptyList()
 )
@@ -56,11 +55,6 @@ data class DiscoveryResult(
     @SerializedName("scanned_bytes") val scannedBytes: Long = 0,
     val truncated: Boolean = false,
     val error: String? = null
-)
-
-data class YaraDTO(
-    val name: String = "",
-    val info: String = ""
 )
 
 data class PatchResult(

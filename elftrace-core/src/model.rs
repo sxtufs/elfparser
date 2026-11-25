@@ -17,12 +17,6 @@ pub struct SymsDTO {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YaraDTO {
-    pub name: String,
-    pub info: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElfSegmentDTO {
     pub p_type: String,
     pub flags: String,
@@ -52,7 +46,6 @@ pub struct ElfInfo {
     pub interpreter: Option<String>,
     pub libraries: Vec<String>,
     pub syms: Vec<SymsDTO>,
-    pub yara: Vec<YaraDTO>,
     #[serde(default)]
     pub segments: Vec<ElfSegmentDTO>,
     #[serde(default)]
