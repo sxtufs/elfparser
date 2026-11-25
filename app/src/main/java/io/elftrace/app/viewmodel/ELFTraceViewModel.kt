@@ -214,6 +214,38 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     private val _decompileText = MutableStateFlow("")
     val decompileText: StateFlow<String> = _decompileText.asStateFlow()
 
+    /// Structured decompiler output (mode 4). Fetched lazily the first time the
+    /// user selects Structured, and refreshed whenever the selected function
+    /// changes while Structured is active, so we never pay the extra native
+    /// cost for users who stay on the linear view.
+    private val _decompileStructured = MutableStateFlow("")
+    val decompileStructured: StateFlow<String> = _decompileStructured.asStateFlow()
+
+    /// 0 = Linear-Raw, 1 = Linear-Clean, 2 = Structured.
+    private val _decompileMode = MutableStateFlow(1)
+    val decompileMode: StateFlow<Int> = _decompileMode.asStateFlow()
+
+    /// Address the structured text currently corresponds to; used to avoid
+    /// re-fetching when the mode is re-selected without an address change.
+    private var structuredForAddress: Long = -1
+
+    fun setDecompileMode(mode: Int) {
+        _decompileMode.value = mode.coerceIn(0, 2)
+        if (mode == 2) ensureStructuredForCurrent()
+    }
+
+    /// Fetch mode-4 output for the current address if it is stale/missing.
+    private fun ensureStructuredForCurrent() {
+        val addr = _currentAddress.value
+        if (addr == 0L || addr == structuredForAddress) return
+        viewModelScope.launch(nativeDispatcher) {
+            val b = _bridge.value ?: return@launch
+            val out = b.decompileStructured(addr)
+            structuredForAddress = addr
+            _decompileStructured.value = out
+        }
+    }
+
     private val _flowchartText = MutableStateFlow("")
     val flowchartText: StateFlow<String> = _flowchartText.asStateFlow()
 
@@ -281,6 +313,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 // Address 0 is an undefined import, not executable code.
                 _instructions.value = emptyList()
                 _decompileText.value = "// selected symbol is an unresolved import (address 0)"
+                _decompileStructured.value = ""
+                structuredForAddress = -1
                 _flowchartText.value = ""
                 return@launch
             }
@@ -288,6 +322,17 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             _instructions.value = b.disassemble(address, 256)
             _decompileText.value = b.decompile(address)
             _flowchartText.value = b.getFlowchartText(address)
+            // Structured output is address-specific; invalidate and refetch if
+            // the user is currently viewing the Structured mode.
+            if (structuredForAddress != address) {
+                structuredForAddress = -1
+                _decompileStructured.value = ""
+            }
+            if (_decompileMode.value == 2) {
+                val out = b.decompileStructured(address)
+                structuredForAddress = address
+                _decompileStructured.value = out
+            }
             loadHexDump(address, 2048)
         }
     }

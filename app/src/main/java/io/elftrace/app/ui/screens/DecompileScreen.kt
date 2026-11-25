@@ -103,10 +103,10 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
     val colors = LocalELFTraceColors.current
     val clipboardManager = LocalClipboardManager.current
     val decompileCode by viewModel.decompileText.collectAsState()
+    val decompileStructured by viewModel.decompileStructured.collectAsState()
+    val decompileMode by viewModel.decompileMode.collectAsState()
     val symbolName by viewModel.selectedSymbolName.collectAsState()
     val currentAddr by viewModel.currentAddress.collectAsState()
-
-    var cleanMode by remember { mutableStateOf(true) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var currentMatchIdx by remember { mutableStateOf(0) }
@@ -118,9 +118,14 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
         symbolName.ifEmpty { "sub_%08X".format(currentAddr) }
     }
 
-    val displayedText = remember(decompileCode, cleanMode) {
-        val base = decompileCode.ifEmpty { "// Select a function to decompile" }
-        if (cleanMode && decompileCode.isNotEmpty()) cleanPseudoC(base) else base
+    val displayedText = remember(decompileCode, decompileStructured, decompileMode) {
+        val base = when (decompileMode) {
+            2 -> decompileStructured.ifEmpty { "// Structuring… (or no structured output for this function)" }
+            0 -> decompileCode.ifEmpty { "// Select a function to decompile" }
+            else -> decompileCode.ifEmpty { "// Select a function to decompile" }
+        }
+        // Linear-Clean (1) strips the (void)param; noise; the others show raw.
+        if (decompileMode == 1 && base.isNotEmpty()) cleanPseudoC(base) else base
     }
 
     val highlightedCode = remember(displayedText, searchQuery, colors) {
@@ -193,19 +198,26 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             )
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (cleanMode) colors.primary.copy(alpha = 0.18f) else colors.card,
-                    border = BorderStroke(1.dp, if (cleanMode) colors.primary else colors.border),
-                    modifier = Modifier.clickable { cleanMode = !cleanMode }
-                ) {
-                    Text(
-                        text = if (cleanMode) "Clean" else "Raw",
-                        color = if (cleanMode) colors.primary else colors.textSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                // Three-way engine/filter switch:
+                //   Raw   (0) = linear pseudocode, untouched
+                //   Clean (1) = linear, minus (void)param; noise
+                //   Struct(2) = structured emitter (if/while/switch)
+                listOf(0 to "Raw", 1 to "Clean", 2 to "Struct").forEach { (mode, label) ->
+                    val active = decompileMode == mode
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (active) colors.primary.copy(alpha = 0.18f) else colors.card,
+                        border = BorderStroke(1.dp, if (active) colors.primary else colors.border),
+                        modifier = Modifier.clickable { viewModel.setDecompileMode(mode) }
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (active) colors.primary else colors.textSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
                 IconButton(
