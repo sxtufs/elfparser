@@ -700,18 +700,30 @@ fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode>
             let mut j = i + 1;
             let mut fail_body: Vec<StructuredNode> = Vec::new();
             let mut found_label = false;
+            // If we hit ANY label other than `next`, or any nested If, the fail
+            // region is not a clean fall-through skip (it contains another join
+            // point that other code may jump into). Folding would drag that
+            // label — and its inbound gotos — inside the if-block, producing
+            // mis-nested output. Abort the fold in that case (safe: no change).
+            let mut aborted = false;
             while j < nodes.len() {
                 match &nodes[j] {
                     StructuredNode::Label(a) if *a == next => {
                         found_label = true;
                         break;
                     }
-                    // Stop if we run into another top-level If that jumps
-                    // elsewhere — that means the region boundary is unclear.
-                    StructuredNode::If { .. } => break,
+                    StructuredNode::Label(_) | StructuredNode::If { .. } => {
+                        aborted = true;
+                        break;
+                    }
                     other => fail_body.push(other.clone()),
                 }
                 j += 1;
+            }
+            if aborted {
+                out.push(nodes[i].clone());
+                i += 1;
+                continue;
             }
 
             // Only fold when: a matching label closes the region, the fail

@@ -74,11 +74,46 @@ fn test_poweramp_jni_onload_baseline() {
     );
 
     // Hard ceiling: a structurer regression that turns this into a pathological
-    // jumble of gotos should be caught. 92 is today's baseline; allow some
-    // headroom so unrelated small changes don't flake, but catch blow-ups.
+    // jumble of gotos should be caught. Baseline was ~92; the ladder-collapse
+    // pass brought it down. Allow headroom so unrelated small changes don't
+    // flake, but catch blow-ups.
     assert!(
         gotos < 400,
         "structured goto count exploded to {} (baseline ~92)",
         gotos
     );
+
+    // Structural sanity (no compiler needed): the emitted C must have balanced
+    // braces and every `goto loc_X;` must have a matching `loc_X:` label. A
+    // mis-nested fold that drags a label inside an if-block produces either an
+    // imbalance or an undefined-label reference — both caught here deterministically.
+    let opens = structured.matches('{').count();
+    let closes = structured.matches('}').count();
+    assert_eq!(
+        opens, closes,
+        "unbalanced braces in structured output ({} open, {} close) — structurer produced invalid C",
+        opens, closes
+    );
+
+    // Every referenced goto label must be defined.
+    let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in structured.lines() {
+        if let Some(pos) = line.find("goto loc_") {
+            let rest = &line[pos + "goto loc_".len()..];
+            let end = rest
+                .find(|c: char| !c.is_ascii_hexdigit())
+                .unwrap_or(rest.len());
+            if end > 0 {
+                referenced.insert(rest[..end].to_string());
+            }
+        }
+    }
+    for label in &referenced {
+        let def = format!("loc_{}:", label);
+        assert!(
+            structured.contains(&def),
+            "goto references undefined label `loc_{}` — structurer dropped a label",
+            label
+        );
+    }
 }
