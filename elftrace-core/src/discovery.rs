@@ -55,6 +55,10 @@ pub struct DiscoveryReport {
     /// Exact sizes from `.eh_frame` FDEs, keyed by function start. Used to
     /// backfill sizes onto pre-existing symbols.
     pub fde_sizes: std::collections::HashMap<u64, u64>,
+    /// (stub_address, import name) for every PLT stub that resolves to a
+    /// dynamic symbol. Lets the UI label `bl` targets into `.plt` with the
+    /// real imported name instead of a synthetic `sub_`.
+    pub plt_imports: Vec<(u64, String)>,
     pub functions: Vec<DiscoveredFunction>,
 }
 
@@ -427,6 +431,18 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     report.added = functions.len();
     report.functions = functions;
     report.fde_sizes = fde_sizes;
+    // PLT imports: every named stub in .plt range, sorted by address.
+    if let Some(plt) = obj_file.section_by_name(".plt") {
+        let plt_lo = plt.address();
+        let plt_hi = plt_lo + plt.size();
+        report.plt_imports = ctx
+            .syms_map
+            .iter()
+            .filter(|(a, s)| **a >= plt_lo && **a < plt_hi && !s.sym.starts_with('.') && !s.sym.is_empty())
+            .map(|(a, s)| (*a, s.sym.clone()))
+            .collect();
+        report.plt_imports.sort_by_key(|(a, _)| *a);
+    }
     report
 }
 
