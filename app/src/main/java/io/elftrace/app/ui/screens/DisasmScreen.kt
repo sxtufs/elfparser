@@ -246,10 +246,10 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             Row(modifier = Modifier.padding(start = 86.dp, top = 1.dp)) {
                                 Text(
                                     text = ins.comment,
-                                    color = Color(0xFFF59E0B), // Vibrant Amber Glow
+                                    color = colors.annotation, // theme annotation: gold in dark, bronze in light
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.Normal
                                 )
                             }
                         }
@@ -295,20 +295,15 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = ins.comment,
-                            color = Color(0xFFF59E0B),
+                            color = colors.annotation,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Normal
                         )
                     }
 
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        "ONE-TAP QUICK PATCH",
-                        color = colors.textSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    SectionLabel("PATCH", colors)
                     Spacer(Modifier.height(6.dp))
 
                     // Quick patch: one compact row of 4 chips (was a 2x2 grid of
@@ -342,6 +337,8 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                     }
 
                     Spacer(Modifier.height(10.dp))
+                    SectionLabel("NAVIGATE", colors)
+                    Spacer(Modifier.height(6.dp))
 
                     // Analyze row: Jump (if a branch target exists) + XREF side by side.
                     Row(
@@ -381,9 +378,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
+                    SectionLabel("EDIT", colors)
+                    Spacer(Modifier.height(6.dp))
 
-                    // Utility actions (2x2 grid avoids label truncation)
+                    // Edit actions: Assemble + Propagate side by side.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -415,24 +414,6 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
                             Text("Propagate", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.undoLastPatch { addr ->
-                                    Toast.makeText(
-                                        context,
-                                        if (addr >= 0) "Undid patch at 0x${addr.toString(16)}" else "Nothing to undo",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            },
-                            enabled = undoDepth > 0,
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, if (undoDepth > 0) colors.primary else colors.border),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f).height(42.dp)
-                        ) {
-                            Text(if (undoDepth > 0) "Undo $undoDepth" else "Undo", color = if (undoDepth > 0) colors.primary else colors.textSecondary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -466,11 +447,46 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.annotation),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.annotation, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    SectionLabel("RISKY", colors)
+                    Spacer(Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.undoLastPatch { addr ->
+                                    Toast.makeText(
+                                        context,
+                                        if (addr >= 0) "Undid patch at 0x${addr.toString(16)}" else "Nothing to undo",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            enabled = undoDepth > 0,
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (undoDepth > 0) colors.changedReg else colors.border),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Text(
+                                if (undoDepth > 0) "Undo $undoDepth" else "Undo",
+                                color = if (undoDepth > 0) colors.changedReg else colors.textSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         OutlinedButton(
@@ -1066,6 +1082,17 @@ private fun parseBranchTarget(mnemonic: String, opStr: String): Long? {
  * checkbox -> "Apply N" re-runs propagation for the confirmed subset.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SectionLabel(text: String, colors: ELFTraceColors) {
+    Text(
+        text,
+        color = colors.textSecondary,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp
+    )
+}
+
 @Composable
 private fun PropagationReviewDialog(
     viewModel: ELFTraceViewModel,

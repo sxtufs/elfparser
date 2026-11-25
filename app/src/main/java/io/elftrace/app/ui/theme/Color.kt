@@ -18,6 +18,7 @@ data class ELFTraceColors(
     val register: Color,
     val changedReg: Color,
     val changedRegBg: Color,
+    val annotation: Color,
     val isDark: Boolean
 )
 
@@ -37,6 +38,7 @@ val DarkThemeColors = ELFTraceColors(
     register = Color(0xFFFFD54F),    // Soft amber
     changedReg = Color(0xFFFF5252),
     changedRegBg = Color(0x33FF5252),
+    annotation = Color(0xFFD4A72C),  // Desaturated gold — reads as a comment, not a headline
     isDark = true
 )
 
@@ -56,6 +58,7 @@ val LightThemeColors = ELFTraceColors(
     register = Color(0xFFD97706),    // Warm deep amber/brown
     changedReg = Color(0xFFDC2626),  // Crimson red
     changedRegBg = Color(0xFFFFEBE9),// Soft pink-red highlight
+    annotation = Color(0xFF92702A),  // Muted bronze, readable on white
     isDark = false
 )
 
