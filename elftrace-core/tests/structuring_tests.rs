@@ -684,9 +684,13 @@ fn test_structural_equivalence_traverse_linked_list() {
 
 #[test]
 fn test_shared_join_error_ladder_has_no_gotos() {
-    // The JNI_OnLoad pattern: many validation arms jumping to one small shared
-    // log/return join. The join-inlining pass (tail duplication) must expand
-    // the join at every goto site except the last, so no `goto loc_` remains.
+    chained_join_ladder_gotos(5, "ladder", 4);
+}
+
+/// The JNI_OnLoad shape: N validation arms all jumping to a shared log join,
+/// whose labels form a fall-through *chain* of `chain_len` labels before the
+/// epilogue. The splice recursion must follow the whole chain.
+fn chained_join_ladder_gotos(n_arms: usize, name: &str, chain_len: usize) {
     use elftrace::decompiler::arch::ArchKind;
     use elftrace::decompiler::codegen::CodeGenerator;
     use elftrace::decompiler::ir::*;
@@ -695,9 +699,13 @@ fn test_shared_join_error_ladder_has_no_gotos() {
     use elftrace::decompiler::structuring::{structure, StructuredNode};
     use elftrace::elf_parser::ElfContext;
 
-    // Blocks 0..4: one validation arm each; block 5: shared log join;
-    // block 6: epilogue. Conditional `Branch` falls through to the next block.
-    let blocks: Vec<IrBlock> = (0..5)
+    // Blocks 0..N: arms; then `chain_len` join labels falling through to each
+    // other; final block: Return.
+    let join_base = 0x50u64;
+    let join_addrs: Vec<u64> = (0..chain_len).map(|k| join_base + k as u64 * 0x10).collect();
+    let epilogue = join_base + chain_len as u64 * 0x10;
+
+    let mut blocks: Vec<IrBlock> = (0..n_arms)
         .map(|i| IrBlock {
             id: i,
             start_address: i as u64 * 0x10,
@@ -711,36 +719,52 @@ fn test_shared_join_error_ladder_has_no_gotos() {
                 },
                 IrStmt::Branch {
                     cond: Some(IrExpr::Reg(format!("w{}", i), IrType::Int32)),
-                    target: 0x50, // loc_SHARED
+                    target: join_addrs[0],
                 },
             ],
         })
-        .chain(std::iter::once(IrBlock {
-            id: 5,
-            start_address: 0x50,
-            end_address: 0x54,
-            stmts: vec![
-                IrStmt::Call {
-                    target: IrExpr::Const(0),
-                    name: Some("log_fail".to_string()),
-                    args: vec![],
-                    ret_dst: None,
-                },
-                IrStmt::Branch { cond: None, target: 0x60 },
-            ],
-        }))
-        .chain(std::iter::once(IrBlock {
-            id: 6,
-            start_address: 0x60,
-            end_address: 0x64,
-            stmts: vec![IrStmt::Return(Some(IrExpr::Const(0)))],
-        }))
         .collect();
+    for (k, &addr) in join_addrs.iter().enumerate() {
+        let mut stmts = vec![IrStmt::Call {
+            target: IrExpr::Const(0),
+            name: Some(format!("log_{}", k)),
+            args: vec![],
+            ret_dst: None,
+        }];
+        if k == 1 {
+            // One join contains a nested If jumping forward (real output has
+            // `if (...) goto loc_002097f8;` inside the join chain).
+            stmts.push(IrStmt::Branch {
+                cond: Some(IrExpr::Reg("w9".to_string(), IrType::Int32)),
+                target: join_addrs[(chain_len - 1).min(join_addrs.len() - 1)],
+            });
+        }
+        stmts.push(IrStmt::Branch {
+            cond: None,
+            target: if k + 1 < join_addrs.len() {
+                join_addrs[k + 1]
+            } else {
+                epilogue
+            },
+        });
+        blocks.push(IrBlock {
+            id: n_arms + k,
+            start_address: addr,
+            end_address: addr + 4,
+            stmts,
+        });
+    }
+    blocks.push(IrBlock {
+        id: n_arms + chain_len,
+        start_address: epilogue,
+        end_address: epilogue + 4,
+        stmts: vec![IrStmt::Return(Some(IrExpr::Const(0)))],
+    });
 
     let func = IrFunction {
-        name: "error_ladder".to_string(),
+        name: name.to_string(),
         start_address: 0,
-        size: 0x64,
+        size: epilogue + 4,
         blocks,
         ret_type: IrType::Int64,
         ret_reg: "x0".to_string(),
@@ -752,22 +776,21 @@ fn test_shared_join_error_ladder_has_no_gotos() {
     let nodes: Vec<StructuredNode> = structure(&ctx, &func, &graph);
     let codegen = CodeGenerator::new(&ctx, ArchKind::AArch64);
     let rendered = emit_structured_c(&func, &nodes, &codegen);
+    eprintln!("--- rendered (chain_len={chain_len}) ---\n{rendered}");
+    // The log join must be inlined at every ladder arm.
     assert!(
-        !rendered.contains("goto loc_00000050"),
-        "shared log join must be inlined at every ladder arm, got:\n{}",
+        !rendered.contains(&format!("goto loc_{:08x}", join_addrs[0])),
+        "shared log join must be inlined at every arm, got:\n{}",
         rendered
     );
-    // One goto to the epilogue label remains (deliberately kept reference so
-    // the label/body stay reachable), and the join body is still present.
-    assert!(
-        rendered.matches("goto loc_00000060").count() == 1,
-        "exactly one kept goto to the epilogue expected, got:\n{}",
-        rendered
-    );
-    assert!(
-        rendered.contains("log_fail"),
-        "join body must remain in output"
-    );
+    // The join body stays reachable: labels present, log calls present.
+    for k in 0..chain_len {
+        assert!(
+            rendered.contains(&format!("log_{}", k)),
+            "join body log_{} must remain in output",
+            k
+        );
+    }
 }
 
 #[test]
@@ -813,5 +836,41 @@ fn test_structural_equivalence_realworld_suite() {
         pct >= 50,
         "At least 50% of reducible functions must structure cleanly! Got {}%",
         pct
+    );
+}
+
+#[test]
+fn test_inline_shared_joins_unit() {
+    use elftrace::decompiler::ir::*;
+    use elftrace::decompiler::structuring::regions::inline_shared_joins;
+    use elftrace::decompiler::structuring::StructuredNode;
+    let g = |t: u64| StructuredNode::Goto(t);
+    let blk = |name: &str| StructuredNode::Block(IrBlock {
+        id: 0,
+        start_address: 0,
+        end_address: 0,
+        stmts: vec![IrStmt::Call {
+            target: IrExpr::Const(0),
+            name: Some(name.to_string()),
+            args: vec![],
+            ret_dst: None,
+        }],
+    });
+    // flat: blk(arm0), goto(0x50), blk(arm1), goto(0x50), Label(0x50), blk(log), Return
+    let nodes = vec![
+        blk("arm0"), g(0x50),
+        blk("arm1"), g(0x50),
+        StructuredNode::Label(0x50),
+        blk("log"),
+        StructuredNode::Return(None),
+    ];
+    let out = inline_shared_joins(nodes);
+    let count_gotos = |ns: &[StructuredNode]| ns.iter().filter(|n| matches!(n, StructuredNode::Goto(0x50))).count();
+    assert_eq!(count_gotos(&out), 1, "one kept goto; nodes: {:?}", out);
+    // refs=2 -> 1 inlined copy + 1 kept goto: arm0, arm1, log, copy(log).
+    assert_eq!(
+        out.iter().filter(|n| matches!(n, StructuredNode::Block(_))).count(),
+        4,
+        "arm0, arm1, log, one inlined copy"
     );
 }

@@ -718,7 +718,7 @@ fn try_region(
     None
 }
 
-pub(crate) fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
+pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
     // Top-level label -> index of its Label node (first occurrence wins).
     let mut regions: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
     for (i, n) in nodes.iter().enumerate() {
