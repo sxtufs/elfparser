@@ -14,3 +14,15 @@ disassemblers and pushed the .so to 13.4 MB. Those three architectures are the o
 `disasm.rs` can select (e_machine 183/40/62/3); `tests/accuracy_tests.rs`
 `test_disasm_supported_architectures_still_decode` pins that they still decode.
 Measured: 13,441,816 -> 8,327,960 bytes (-38%) for `aarch64-unknown-linux-gnu`.
+
+## 2026-11-25 — Unsupported architectures error, never decode as AArch64
+`disasm.rs` used to build an ARM64 Capstone for any unknown `e_machine`, and the
+decompiler fell through to `Arm64Lifter`, so RISC-V (243) and other ELFs produced
+confident-looking wrong output. Now `disasm::disassemble` returns
+`Unsupported architecture (e_machine = N)` for anything outside 183/40/62/3, and
+`DecompilerPipeline::analyze_function` returns an error for `ArchKind::RiscV64` /
+`ArchKind::Unknown` before reading any bytes. A missing ELF header is an error instead
+of defaulting to 183. `ArchKind::RiscV64` stays in the enum (register/calling-convention
+data is kept) as the socket for a future lifter. Pinned by
+`test_disasm_unsupported_architecture_is_rejected` and
+`test_decompiler_rejects_riscv_and_unknown_arch`.

@@ -28,6 +28,21 @@ impl DecompilerPipeline {
         size: u64,
         thumb: bool,
     ) -> Result<IrFunction, String> {
+        // Architecture must have a lifter before any bytes are read: decoding an
+        // unsupported ELF as AArch64 would produce confident-looking wrong IR.
+        let mut lifter: Box<dyn InstructionLifter> = match self.arch {
+            ArchKind::AArch64 => Box::new(Arm64Lifter::new()),
+            ArchKind::Arm32 => Box::new(Arm32Lifter::new()),
+            ArchKind::X86_64 => Box::new(X86_64Lifter::new()),
+            ArchKind::X86_32 => Box::new(X86_32Lifter::new()),
+            ArchKind::RiscV64 => {
+                return Err("RISC-V (e_machine 243) is not supported by the decompiler".to_string())
+            }
+            ArchKind::Unknown => {
+                return Err("Unknown architecture: cannot select a decompiler lifter".to_string())
+            }
+        };
+
         let offset = match ctx.vaddr_to_offset(address) {
             Some(off) => off as usize,
             None => {
@@ -43,8 +58,12 @@ impl DecompilerPipeline {
         }
 
         let code_slice = &ctx.raw[offset..];
-        let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+        let e_machine = ctx
+            .get_info()
+            .map(|i| i.e_machine)
+            .map_err(|e| format!("Failed to read ELF header: {}", e))?;
 
+        // 1. Decode instructions
         let insns = disassemble(code_slice, address, size, e_machine, thumb)
             .map_err(|e| format!("Disassembly error: {}", e))?
             .data;
@@ -52,15 +71,6 @@ impl DecompilerPipeline {
         if insns.is_empty() {
             return Err(format!("No instructions decoded at 0x{:08x}", address));
         }
-
-        // 1. Instantiate architecture-specific lifter
-        let mut lifter: Box<dyn InstructionLifter> = match self.arch {
-            ArchKind::AArch64 => Box::new(Arm64Lifter::new()),
-            ArchKind::Arm32 => Box::new(Arm32Lifter::new()),
-            ArchKind::X86_64 => Box::new(X86_64Lifter::new()),
-            ArchKind::X86_32 => Box::new(X86_32Lifter::new()),
-            _ => Box::new(Arm64Lifter::new()),
-        };
 
         // 2. Identify basic block leaders
         let mut block_starts = HashSet::new();

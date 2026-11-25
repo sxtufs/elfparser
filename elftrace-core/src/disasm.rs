@@ -81,11 +81,12 @@ pub fn disassemble_with_resolver(
             .mode(arch::x86::ArchMode::Mode32)
             .build()
             .map_err(|e| format!("Failed to create X86 Capstone: {}", e))?,
-        _ => Capstone::new()
-            .arm64()
-            .mode(arch::arm64::ArchMode::Arm)
-            .build()
-            .map_err(|e| format!("Failed to create default Capstone: {}", e))?,
+        other => {
+            return Err(format!(
+                "Unsupported architecture (e_machine = {}); supported: AArch64 (183), ARM (40), x86-64 (62), i386 (3)",
+                other
+            ))
+        }
     };
 
     // Clamp the requested size to what we actually have. If the caller asks for

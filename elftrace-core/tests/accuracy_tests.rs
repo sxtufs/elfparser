@@ -1920,3 +1920,68 @@ fn test_disasm_supported_architectures_still_decode() {
         );
     }
 }
+
+/// Unsupported machines must fail loudly. They used to fall through to an
+/// ARM64 Capstone, so RISC-V (e_machine 243, which `get_info` reports) and any
+/// other unknown ELF disassembled as garbage AArch64 instructions.
+#[test]
+fn test_disasm_unsupported_architecture_is_rejected() {
+    // 0x00000013 is the RISC-V `nop`; 0x90 is x86 `nop`.
+    let cases: &[(&str, u32, &[u8])] = &[
+        ("riscv64", 243, &[0x13, 0x00, 0x00, 0x00]),
+        ("unknown-0", 0, &[0x90]),
+        ("mips", 8, &[0x00, 0x00, 0x00, 0x00]),
+    ];
+    for (name, e_machine, bytes) in cases {
+        let err = elftrace::disasm::disassemble(
+            bytes,
+            0x1000,
+            bytes.len() as u64,
+            *e_machine,
+            false,
+        )
+        .err()
+        .unwrap_or_else(|| panic!("{} (e_machine {}) must not disassemble", name, e_machine));
+        assert!(
+            err.contains("Unsupported architecture"),
+            "{} error should say the architecture is unsupported, got: {}",
+            name,
+            err
+        );
+        assert!(
+            err.contains(&e_machine.to_string()),
+            "{} error should name e_machine {}, got: {}",
+            name,
+            e_machine,
+            err
+        );
+    }
+}
+
+/// The decompiler must refuse an architecture it has no lifter for instead of
+/// falling back to the AArch64 lifter and emitting wrong IR.
+#[test]
+fn test_decompiler_rejects_riscv_and_unknown_arch() {
+    use elftrace::decompiler::analysis::DecompilerPipeline;
+    use elftrace::decompiler::arch::ArchKind;
+
+    let ctx = ElfContext::stub();
+    let cases = [
+        (ArchKind::RiscV64, "RISC-V"),
+        (ArchKind::Unknown, "Unknown architecture"),
+    ];
+    for (arch, expected) in cases {
+        let pipeline = DecompilerPipeline::new(arch);
+        let err = pipeline
+            .analyze_function(&ctx, "f".to_string(), 0x1000, 4, false)
+            .err()
+            .unwrap_or_else(|| panic!("{:?} must not decompile", arch));
+        assert!(
+            err.contains(expected),
+            "{:?} error should mention `{}`, got: {}",
+            arch,
+            expected,
+            err
+        );
+    }
+}
