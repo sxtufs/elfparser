@@ -465,7 +465,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             viewModel.recoverFunctions { res ->
                                 val msg = when {
                                     res.error != null -> res.error
-                                    res.added == 0 -> "No new functions (${res.known} already known)"
+                                    res.added == 0 -> "No new functions — ${res.known} already known"
                                     else -> "Recovered ${res.added} functions" +
                                         if (res.truncated) " (partial scan)" else ""
                                 }
@@ -476,7 +476,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         modifier = Modifier.fillMaxWidth().height(30.dp)
                     ) {
                         Text(
-                            "Recover functions (stripped binaries)",
+                            "Recover Functions — Stripped Binaries",
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )

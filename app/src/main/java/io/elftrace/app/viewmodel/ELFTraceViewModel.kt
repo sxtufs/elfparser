@@ -74,7 +74,9 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
     val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Entropy Radar
 
-    val isDarkMode = MutableStateFlow(true) // Light / Dark mode toggle
+    /** Persisted across launches in a private SharedPreferences file. */
+    private val prefs = app.getSharedPreferences("elftrace_prefs", Context.MODE_PRIVATE)
+    val isDarkMode = MutableStateFlow(prefs.getBoolean(KEY_DARK_MODE, true)) // Light / Dark mode toggle
 
     val currentFileName = MutableStateFlow("")
 
@@ -236,6 +238,11 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleTheme() {
         isDarkMode.value = !isDarkMode.value
+        prefs.edit().putBoolean(KEY_DARK_MODE, isDarkMode.value).apply()
+    }
+
+    private companion object {
+        const val KEY_DARK_MODE = "dark_mode"
     }
 
     private val _elfInfo = MutableStateFlow<ElfInfo?>(null)
