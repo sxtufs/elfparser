@@ -409,7 +409,8 @@ private fun PluginCard(
                 if (patchable > 0) {
                     Button(
                         onClick = onPatchAll,
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.card, contentColor = colors.primary),
+                        border = BorderStroke(1.dp, colors.primary),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
