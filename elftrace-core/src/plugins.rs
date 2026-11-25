@@ -824,21 +824,22 @@ fn word_boundary_contains(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
     }
-    let is_word = |c: char| c.is_ascii_alphanumeric();
+    let is_word = |b: u8| b.is_ascii_alphanumeric();
     let h_bytes = haystack.as_bytes();
-    let mut start = 0usize;
-    while let Some(pos) = haystack[start..].find(needle) {
-        let abs = start + pos;
-        let before_ok = abs == 0 || !is_word(h_bytes[abs - 1] as char);
-        let end = abs + needle.len();
-        let after_ok = end >= haystack.len() || !is_word(h_bytes[end] as char);
-        if before_ok && after_ok {
+    let n_bytes = needle.as_bytes();
+    // Scan every byte position: overlapping candidates ("aa" in "aaa") must
+    // not be skipped, and multi-byte UTF-8 neighbors are handled for free —
+    // non-ASCII bytes (>= 0x80) are never `is_ascii_alphanumeric`, so they
+    // always count as boundaries.
+    let mut abs = 0usize;
+    while abs + n_bytes.len() <= h_bytes.len() {
+        let before_ok = abs == 0 || !is_word(h_bytes[abs - 1]);
+        let end = abs + n_bytes.len();
+        let after_ok = end >= h_bytes.len() || !is_word(h_bytes[end]);
+        if before_ok && after_ok && &h_bytes[abs..end] == n_bytes {
             return true;
         }
-        start = abs + needle.len().max(1);
-        if start >= haystack.len() {
-            break;
-        }
+        abs += 1;
     }
     false
 }
@@ -1062,6 +1063,22 @@ mod tests {
         assert!(rule_matches("Connect", "connect", false, "word_boundary"));
         // Case-sensitive: "Connect" must not match lowercase needle.
         assert!(!rule_matches("Connect", "connect", true, "word_boundary"));
+    }
+
+    #[test]
+    fn word_boundary_finds_match_overlapping_rejected_one() {
+        // Regression: after rejecting the occurrence at 1 (preceded by 'x'),
+        // the old scan jumped past it and missed the valid one at 3.
+        assert!(word_boundary_contains("xa.a.a", "a.a"));
+        assert!(rule_matches("x/su/su", "/su", true, "word_boundary") == false);
+        assert!(!word_boundary_contains("aa", "aaa"));
+    }
+
+    #[test]
+    fn word_boundary_multibyte_haystack_does_not_panic() {
+        assert!(word_boundary_contains("日本 connect", "connect"));
+        assert!(word_boundary_contains("é.connect", "connect"));
+        assert!(!word_boundary_contains("日本xconnect", "connect"));
     }
 
     #[test]
