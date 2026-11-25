@@ -73,6 +73,9 @@ impl DiscoveryReport {
             "known": self.known,
             "scanned_bytes": self.scanned_bytes,
             "truncated": self.truncated,
+            "string_refs": self.string_refs.iter()
+                .map(|(s, c)| serde_json::json!({"str": s, "code": c}))
+                .collect::<Vec<_>>(),
         })
         .to_string()
     }

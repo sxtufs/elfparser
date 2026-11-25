@@ -453,6 +453,23 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
      * installed as `sub_XXXXXXXX` symbols, so the symbol list, xrefs and call
      * hierarchy all see them; [getInfo] is refreshed on success.
      */
+    /** String xrefs from function discovery: string vaddr -> referencing code addr. */
+    private val _stringXrefs = MutableStateFlow<List<StringXref>>(emptyList())
+    val stringXrefs: StateFlow<List<StringXref>> = _stringXrefs.asStateFlow()
+
+    /**
+     * Jump to the function containing the code that references [stringAddr].
+     * Falls back to selecting the code address directly when no function
+     * contains it.
+     */
+    fun jumpToStringReference(stringAddr: Long) {
+        val code = _stringXrefs.value.firstOrNull { it.strAddr == stringAddr }?.codeAddr ?: return
+        val fn = _elfInfo.value?.syms
+            ?.filter { it.value <= code && it.value + (it.size.takeIf { s -> s > 0 } ?: 1) > code && it.value != 0L }
+            ?.maxByOrNull { it.value }
+        selectFunction(fn?.value ?: code, fn?.displayName ?: "sub_%08X".format(code))
+    }
+
     fun recoverFunctions(onComplete: (DiscoveryResult) -> Unit = {}) {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: run {
@@ -460,8 +477,11 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val res = b.discoverFunctions()
-            if (res.error == null && res.added > 0) {
-                _elfInfo.value = b.getInfo()
+            if (res.error == null) {
+                _stringXrefs.value = res.stringRefs
+                if (res.added > 0) {
+                    _elfInfo.value = b.getInfo()
+                }
             }
             launch(Dispatchers.Main) { onComplete(res) }
         }

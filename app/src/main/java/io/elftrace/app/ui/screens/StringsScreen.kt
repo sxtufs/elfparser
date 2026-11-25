@@ -32,6 +32,10 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
     var search by remember { mutableStateOf("") }
     var selectedString by remember { mutableStateOf<StringItem?>(null) }
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
+    val stringXrefs by viewModel.stringXrefs.collectAsState()
+    val xrefFor = remember(stringXrefs) {
+        stringXrefs.associate { it.strAddr to it.codeAddr }
+    }
 
     val cleanHex = search.trim().removePrefix("0x").removePrefix("0X")
     val filtered = remember(search, stringsList) {
@@ -87,9 +91,14 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            selectedString = item
-                            viewModel.loadXrefsFor(item.vaddr) { list ->
-                                xrefsList = list
+                            val codeAddr = xrefFor[item.vaddr]
+                            if (codeAddr != null) {
+                                viewModel.jumpToStringReference(item.vaddr)
+                            } else {
+                                selectedString = item
+                                viewModel.loadXrefsFor(item.vaddr) { list ->
+                                    xrefsList = list
+                                }
                             }
                         }
                 ) {

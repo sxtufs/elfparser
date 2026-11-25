@@ -49,11 +49,17 @@ data class SymsDTO(
 }
 
 /** Result of a stripped-binary function discovery pass. */
+data class StringXref(
+    @SerializedName("str") val strAddr: Long,
+    @SerializedName("code") val codeAddr: Long
+)
+
 data class DiscoveryResult(
     val added: Int = 0,
     val known: Int = 0,
     @SerializedName("scanned_bytes") val scannedBytes: Long = 0,
     val truncated: Boolean = false,
+    @SerializedName("string_refs") val stringRefs: List<StringXref> = emptyList(),
     val error: String? = null
 )
 
