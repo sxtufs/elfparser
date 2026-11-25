@@ -172,3 +172,36 @@ fn test_discover_functions_recovers_bl_target() {
     let info = ctx.get_info().expect("info after discovery");
     assert!(info.syms.iter().any(|s| s.sym == "local_helper"));
 }
+
+#[test]
+fn test_scan_eh_frame_extracts_fde_starts_and_sizes() {
+    use elftrace::discovery::scan_eh_frame;
+
+    // One CIE (length 0x10) then one FDE whose pc_begin is pcrel to its own
+    // pc_begin field. Layout at section offset 0:
+    //   CIE: len=0x10, id=0, version, aug, ...
+    //   FDE at 0x14: len=0x0c, cie_ptr=0x14, pc_begin_pcrel, pc_range
+    let cie_ptr = 0x14u32;
+    let fde_field_pos: i64 = (cie_ptr + 4 + 4) as i64; // file offset of pc_begin field
+    let func_start: i64 = 0x2000;
+    let pcrel = (func_start - fde_field_pos) as i32;
+    let range: u32 = 0x40;
+
+    let mut data = Vec::new();
+    // CIE
+    data.extend_from_slice(&0x10u32.to_le_bytes());
+    data.extend_from_slice(&0u32.to_le_bytes()); // CIE id
+    data.extend_from_slice(&[3u8, 0, 0, 0]); // version + aug
+    data.extend_from_slice(&[0u8, 0, 0, 0]); // code align etc.
+    data.extend_from_slice(&[0u8, 0, 0, 0]);
+    // FDE
+    data.extend_from_slice(&0x0cu32.to_le_bytes());
+    data.extend_from_slice(&cie_ptr.to_le_bytes());
+    data.extend_from_slice(&pcrel.to_le_bytes());
+    data.extend_from_slice(&range.to_le_bytes());
+    // terminator
+    data.extend_from_slice(&0u32.to_le_bytes());
+
+    let out = scan_eh_frame(&data);
+    assert_eq!(out, vec![(0x2000u64, 0x40u64)]);
+}

@@ -52,6 +52,9 @@ pub struct DiscoveryReport {
     pub scanned_bytes: u64,
     /// True when a bound was hit and discovery is partial.
     pub truncated: bool,
+    /// Exact sizes from `.eh_frame` FDEs, keyed by function start. Used to
+    /// backfill sizes onto pre-existing symbols.
+    pub fde_sizes: std::collections::HashMap<u64, u64>,
     pub functions: Vec<DiscoveredFunction>,
 }
 
@@ -225,6 +228,51 @@ fn synthesized_name(addr: u64) -> String {
     format!("sub_{:08X}", addr)
 }
 
+/// Recover function starts from `.eh_frame` FDEs.
+///
+/// Release builds keep `.eh_frame` for stack unwinding, and every FDE's
+/// `pc_begin` is the exact start of a real function — no heuristic, no
+/// false positives. The FDE also encodes the function's size (`pc_range`),
+/// so a function recovered here gets a precise span instead of the
+/// distance-to-next-start guess. Returns `(pc_begin, size)` pairs.
+/// Only the DWARF32, 64-bit little-endian layout Android ships is parsed;
+/// anything else stops the walk cleanly.
+pub fn scan_eh_frame(data: &[u8]) -> Vec<(u64, u64)> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 12 <= data.len() {
+        let length = u32::from_le_bytes(data[i..i + 4].try_into().unwrap()) as u64;
+        if length == 0 {
+            break; // terminator
+        }
+        if length == 0xFFFF_FFFF {
+            break; // DWARF64: not shipped on Android, stop parsing
+        }
+        let entry_len = length as usize;
+        if i + 4 + entry_len > data.len() {
+            break;
+        }
+        let entry = &data[i + 4..i + 4 + entry_len];
+        let cie_id = u32::from_le_bytes(entry[0..4].try_into().unwrap());
+        if cie_id != 0 {
+            // FDE: pc_begin is a 4-byte pcrel sdata4 right after the id,
+            // pc_range the 4 bytes after it. The pcrel base is the file
+            // offset of the pc_begin field itself.
+            if entry.len() >= 12 {
+                let off = i32::from_le_bytes(entry[4..8].try_into().unwrap());
+                let range = u32::from_le_bytes(entry[8..12].try_into().unwrap()) as u64;
+                let field_pos = (i + 4 + 4) as i64;
+                let pc_begin = field_pos.wrapping_add(off as i64);
+                if pc_begin >= 0 && range > 0 {
+                    out.push((pc_begin as u64, range));
+                }
+            }
+        }
+        i += 4 + entry_len;
+    }
+    out
+}
+
 /// Discover function starts without mutating the context.
 pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     use object::{Object, ObjectSection};
@@ -274,6 +322,25 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
                 seeds.insert(a);
             }
         }
+    }
+    report.known = seeds.len();
+
+    // `.eh_frame` FDEs: exact function starts and sizes, no heuristics. These
+    // are trusted over anything the call scan infers.
+    let mut fde_sizes: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    for sec in obj_file.sections() {
+        if sec.name().unwrap_or("") == ".eh_frame" {
+            if let Ok(data) = sec.data() {
+                for (start, size) in scan_eh_frame(data) {
+                    if in_exec_regions(&regions, start) {
+                        fde_sizes.insert(align(start), size);
+                    }
+                }
+            }
+        }
+    }
+    for &start in fde_sizes.keys() {
+        seeds.insert(start);
     }
     report.known = seeds.len();
 
@@ -333,10 +400,19 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     let mut functions: Vec<DiscoveredFunction> = new_starts
         .iter()
         .map(|(&addr, &thumb)| {
-            let size = next_start(addr)
-                .or_else(|| region_end(addr))
-                .map(|next| next.saturating_sub(addr))
-                .filter(|s| *s >= 4)
+            // An FDE size is exact and beats the distance-to-next-start guess;
+            // an FDE-covered address is a seed, so this only fires when a
+            // discovered start coincides with an FDE function's middle, which
+            // cannot happen. Distance guess otherwise.
+            let size = fde_sizes
+                .get(&addr)
+                .copied()
+                .or_else(|| {
+                    next_start(addr)
+                        .or_else(|| region_end(addr))
+                        .map(|next| next.saturating_sub(addr))
+                        .filter(|s| *s >= 4)
+                })
                 .map(|s| s.min(MAX_FUNCTION_SPAN))
                 .unwrap_or(0);
             DiscoveredFunction {
@@ -350,6 +426,7 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     functions.sort_by_key(|f| f.address);
     report.added = functions.len();
     report.functions = functions;
+    report.fde_sizes = fde_sizes;
     report
 }
 
@@ -373,6 +450,15 @@ impl ElfContext {
                 jni_method: None,
                 json: None,
             });
+        }
+        // FDE functions that were already symbol-named still get their exact
+        // size backfilled when the existing entry has none.
+        for (addr, size) in &report.fde_sizes {
+            if let Some(sym) = self.syms_map.get_mut(addr) {
+                if sym.size == 0 {
+                    sym.size = *size;
+                }
+            }
         }
         self.invalidate_symbol_caches();
         report
