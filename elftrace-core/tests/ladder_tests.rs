@@ -67,10 +67,10 @@ fn test_poweramp_jni_onload_baseline() {
     assert!(!structured.is_empty(), "structured decompile must be non-empty");
 
     let gotos = count_occurrences(&structured, "goto loc_");
-    let irreducible = structured.contains("irreducible CFG");
+    let partial = structured.contains("partial structure");
     eprintln!(
-        "JNI_OnLoad @ 0x{:x}: structured gotos = {}, irreducible = {}",
-        addr, gotos, irreducible
+        "JNI_OnLoad @ 0x{:x}: structured gotos = {}, partial = {}",
+        addr, gotos, partial
     );
 
     // Hard ceiling: a structurer regression that turns this into a pathological
@@ -116,4 +116,54 @@ fn test_poweramp_jni_onload_baseline() {
             label
         );
     }
+
+    // Compiler-verified gate (best-effort): when an AArch64 cross-compiler is
+    // available (CI installs gcc-aarch64-linux-gnu), the real function's
+    // structured output MUST compile. If no such compiler is present (e.g. on
+    // the Android device itself) we skip silently — the brace/label checks
+    // above still gate correctness deterministically.
+    if let Some((cc, target_args)) = aarch64_compiler() {
+        let tu = format!(
+            "#include <stdint.h>\n#include <stddef.h>\n{}\n",
+            structured
+        );
+        let tmp = std::env::temp_dir().join("elftrace_poweramp_jni_onload.c");
+        std::fs::write(&tmp, &tu).unwrap();
+        let out = std::process::Command::new(cc)
+            .args(target_args)
+            .arg("-std=c11")
+            .arg("-Werror")
+            .arg("-w") // suppress warnings about unused locals from decompiled noise
+            .arg("-c")
+            .arg(&tmp)
+            .arg("-o")
+            .arg("\/dev\/null")
+            .output()
+            .expect("run cross-compiler");
+        assert!(
+            out.status.success(),
+            "structured JNI_OnLoad failed to compile:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    } else {
+        eprintln!("SKIP compile gate: no AArch64 cross-compiler on this host");
+    }
+}
+
+/// Return an available AArch64 C compiler and its target args, or None.
+fn aarch64_compiler() -> Option<(&'static str, &'static [&'static str])> {
+    for (cc, args) in [
+        ("aarch64-linux-gnu-gcc", &[][..]),
+        ("clang", &["--target=aarch64-linux-gnu"][..]),
+    ] {
+        if std::process::Command::new(cc)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Some((cc, args));
+        }
+    }
+    None
 }

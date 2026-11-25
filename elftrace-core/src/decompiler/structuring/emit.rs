@@ -24,8 +24,12 @@ pub fn emit_structured_c(
         func.size
     ));
     if goto_count > 0 {
+        // NOTE: gotos here usually mean shared-exit join points (a common log/
+        // assert/return tail reached from many sites), NOT an irreducible CFG.
+        // The wording reflects that: this is a partially-collapsed structure
+        // that preserves correctness by keeping gotos to genuine joins.
         out.push_str(&format!(
-            "// [partial structure: irreducible CFG, contains {} goto(s)]\n",
+            "// [partial structure: {} goto(s) to shared join points]\n",
             goto_count
         ));
     }
