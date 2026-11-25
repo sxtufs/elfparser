@@ -65,6 +65,9 @@ fn fixture_elf() -> Vec<u8> {
     buf
 }
 
+/// Pins the `RawImage` doc in `src/elf_parser.rs`: a `Mapped` image keeps
+/// patches in memory only and the file on disk stays byte-identical; undo
+/// restores the original bytes in the mapping.
 #[test]
 fn elf_context_maps_and_keeps_patches_in_memory() {
     let dir = std::env::temp_dir();

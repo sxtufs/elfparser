@@ -638,8 +638,10 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        // APK Native Library Selection Dialog (Zero-Copy Stream Extraction)
-        if (showApkPicker && selectedApkUri != null) {
+        // APK Native Library Selection Dialog (Zero-Copy Stream Extraction).
+        // Entries from an installed app carry an apkPath and selectedApkUri is
+        // null, so the guard accepts either source.
+        if (showApkPicker && (selectedApkUri != null || apkSoList.any { it.apkPath != null })) {
             Dialog(onDismissRequest = { showApkPicker = false }) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),

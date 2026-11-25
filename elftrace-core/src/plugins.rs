@@ -817,9 +817,11 @@ fn rule_matches(haystack: &str, needle: &str, case_sensitive: bool, match_mode: 
 
 /// Case-sensitive word-boundary containment: `needle` must not be immediately
 /// preceded or followed by an alphanumeric character (`[A-Za-z0-9]`).
-/// Underscore is treated as a boundary so a rule for `connect` matches the
+/// Underscore is treated as a boundary, so a rule for `connect` matches the
 /// C-style wrapper/call site `posix_connect`, while still rejecting the
 /// embedded substrings `disconnect` / `reconnect` / `connectivity`.
+///
+/// Pinned by the `plugins::tests::word_boundary_*` unit tests in this file.
 fn word_boundary_contains(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
@@ -1018,6 +1020,9 @@ fn find_enclosing_symbol(ctx: &ElfContext, vaddr: u64) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The `word_boundary_*` tests pin the doc on `word_boundary_contains`
+    // (underscore counts as a boundary); keep them in sync with it.
 
     #[test]
     fn contains_is_case_insensitive_by_default() {

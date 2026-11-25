@@ -7,10 +7,14 @@ use std::path::Path;
 
 /// File image of the open ELF.
 ///
-/// A private (copy-on-write) memory map keeps the resident cost to the pages
-/// actually touched, so an 80 MB `.so` no longer needs 80 MB of heap before the
-/// first byte is inspected. Patches are written into the mapping, which copies
-/// only those pages in memory and never reaches the file on disk.
+/// A private (`MAP_PRIVATE`, copy-on-write) memory map keeps the resident cost
+/// to the pages actually touched, so an 80 MB `.so` no longer needs 80 MB of
+/// heap before the first byte is inspected. Patches are written into the
+/// mapping, which copies only those pages in memory and never reaches the file
+/// on disk. An empty file falls back to an in-heap [`RawImage::Owned`] buffer.
+///
+/// Pinned by `tests/mapped_image_tests.rs`
+/// (`elf_context_maps_and_keeps_patches_in_memory`).
 pub enum RawImage {
     Owned(Vec<u8>),
     Mapped(memmap2::MmapMut),
