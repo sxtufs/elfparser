@@ -114,6 +114,146 @@
       "pattern": "dlsym",
       "severity": "LOW",
       "description": "Dynamic symbol resolver"
+    },
+    {
+      "name": "Frida Detection Log",
+      "type": "string",
+      "pattern": "FRIDA DETECTED",
+      "severity": "HIGH",
+      "description": "Explicit anti-Frida detection branch (APKiD: protector)"
+    },
+    {
+      "name": "Frida Port Scan",
+      "type": "string",
+      "pattern": "run_frida_port_scan",
+      "severity": "HIGH",
+      "description": "Protector-side Frida TCP port scanner (APKiD)"
+    },
+    {
+      "name": "Frida File Scan Thread",
+      "type": "string",
+      "pattern": "frida tcp file scan thread",
+      "severity": "HIGH",
+      "description": "Protector Frida file-scan thread (APKiD)"
+    },
+    {
+      "name": "GDB Detection",
+      "type": "string",
+      "pattern": "GDB detected",
+      "severity": "HIGH",
+      "description": "Explicit GDB detection branch (APKiD)"
+    },
+    {
+      "name": "Emulator Check",
+      "type": "string",
+      "pattern": "startEmulatorCheck",
+      "severity": "MEDIUM",
+      "description": "Emulator/environment check entry (APKiD: protector)"
+    },
+    {
+      "name": "Debugger Check",
+      "type": "string",
+      "pattern": "start_debugger_check",
+      "severity": "MEDIUM",
+      "description": "Debugger check entry (APKiD: protector)"
+    },
+    {
+      "name": "App Integrity Check",
+      "type": "string",
+      "pattern": "app_integrity_check_jni",
+      "severity": "HIGH",
+      "description": "Native integrity self-check (APKiD: protector)"
+    },
+    {
+      "name": "Ptrace Self-Attach",
+      "type": "string",
+      "pattern": "ptrace myself",
+      "severity": "HIGH",
+      "description": "Self-ptrace anti-debug idiom (APKiD: protector)"
+    },
+    {
+      "name": "freeRASP/Talsec",
+      "type": "string",
+      "pattern": "package:freerasp",
+      "severity": "MEDIUM",
+      "description": "freeRASP (Talsec) RASP SDK markers (APKiD: protector)"
+    },
+    {
+      "name": "Promon SHIELD Loader",
+      "type": "string",
+      "pattern": "libloader.so",
+      "severity": "MEDIUM",
+      "description": "Promon SHIELD packed loader name (APKiD: protector)"
+    },
+    {
+      "name": "Promon Root Check",
+      "type": "string",
+      "pattern": "engmgr_startRootCheck",
+      "severity": "HIGH",
+      "description": "Promon SHIELD root-check manager (APKiD: protector)"
+    },
+    {
+      "name": "Dexprotector",
+      "type": "string",
+      "pattern": "libdpt.so",
+      "severity": "MEDIUM",
+      "description": "DexProtector native library (APKiD: protector)"
+    },
+    {
+      "name": "VMProtect Compact",
+      "type": "string",
+      "pattern": "libvmpc.so",
+      "severity": "MEDIUM",
+      "description": "VMProtect compact runtime (APKiD: protector)"
+    },
+    {
+      "name": "Protectt",
+      "type": "string",
+      "pattern": "libprotectt",
+      "severity": "MEDIUM",
+      "description": "Protectt AI app-protection SDK (APKiD: protector)"
+    },
+    {
+      "name": "Arxan/Digital.ai adinit",
+      "type": "string",
+      "pattern": "__start_adinit",
+      "severity": "MEDIUM",
+      "description": "Arxan/Digital.ai protection init symbol (APKiD: protector)"
+    },
+    {
+      "name": "OneSpan hook symbols",
+      "type": "string",
+      "pattern": "__start_hook",
+      "severity": "MEDIUM",
+      "description": "OneSpan/Vasco protection hook region symbols (APKiD)"
+    },
+    {
+      "name": "IP Centric Protection",
+      "type": "string",
+      "pattern": "__start_ipcent",
+      "severity": "MEDIUM",
+      "description": "IP-centric protection region symbols (APKiD: protector)"
+    },
+    {
+      "name": "whiteCryption SKB",
+      "type": "string",
+      "pattern": "whiteCryptionSecureKeyBox",
+      "severity": "MEDIUM",
+      "description": "whiteCryption Secure KeyBox (APKiD: protector)"
+    },
+    {
+      "name": "AppSealing",
+      "type": "string",
+      "pattern": "appsealing",
+      "severity": "MEDIUM",
+      "description": "AppSealing protection runtime (APKiD: protector)"
+    },
+    {
+      "name": "Zimperium zDefend",
+      "type": "string",
+      "pattern": "libZDefend.so",
+      "severity": "MEDIUM",
+      "description": "Zimperium zDefend library (APKiD: protector)"
     }
   ]
 }

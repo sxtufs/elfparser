@@ -1,0 +1,65 @@
+{
+  "id": "builtin-packers",
+  "name": "Packers & Packed Stubs",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "Detects UPX and commercial packer stubs (Bangcle SecNeo, Ijiami, Qihoo 360 jiagu) in native libraries. Signatures derived from APKiD's ELF packer rules (https://github.com/rednaga/APKiD).",
+  "rules": [
+    {
+      "name": "UPX Magic",
+      "type": "string",
+      "pattern": "UPX!",
+      "severity": "HIGH",
+      "description": "UPX packer magic marker (APKiD: upx_sharedlib_unmodifed)"
+    },
+    {
+      "name": "UPX Copyright Stub",
+      "type": "string",
+      "pattern": "UPX 3.",
+      "severity": "HIGH",
+      "description": "UPX version copyright string in stub (APKiD: upx_elf_3_xx)"
+    },
+    {
+      "name": "Bangcle SecNeo Magic",
+      "type": "byte_pattern",
+      "pattern": "41 4a 4d 21",
+      "severity": "HIGH",
+      "description": "Bangcle SecNeo 'AJM!' packed-library magic (APKiD)"
+    },
+    {
+      "name": "Bangcle SecNeo URL",
+      "type": "string",
+      "pattern": "androidrepublic.org",
+      "severity": "HIGH",
+      "description": "Bangcle SecNeo embedded vendor URL (APKiD)"
+    },
+    {
+      "name": "Qihoo 360 jiagu Lib",
+      "type": "string",
+      "pattern": "libjiagu",
+      "severity": "HIGH",
+      "description": "Qihoo 360 jiagu packer runtime (APKiD: upx_elf_bangcle/ijiami family)"
+    },
+    {
+      "name": "jiagu App Name Key",
+      "type": "string",
+      "pattern": "JIAGU_APP_NAME",
+      "severity": "HIGH",
+      "description": "jiagu packed-app metadata key (APKiD)"
+    },
+    {
+      "name": "jiagu Encrypted DEX Key",
+      "type": "string",
+      "pattern": "JIAGU_ENCRYPTED_DEX_NAME",
+      "severity": "HIGH",
+      "description": "jiagu encrypted-dex metadata key (APKiD)"
+    },
+    {
+      "name": "Ijiami Secneo SEC Magic",
+      "type": "byte_pattern",
+      "pattern": "53 45 43 21",
+      "severity": "HIGH",
+      "description": "Ijiami/SecNeo 'SEC!' magic (APKiD)"
+    }
+  ]
+}
