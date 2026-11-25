@@ -55,10 +55,11 @@ pub struct DiscoveryReport {
     /// Exact sizes from `.eh_frame` FDEs, keyed by function start. Used to
     /// backfill sizes onto pre-existing symbols.
     pub fde_sizes: std::collections::HashMap<u64, u64>,
-    /// (stub_address, import name) for every PLT stub that resolves to a
-    /// dynamic symbol. Lets the UI label `bl` targets into `.plt` with the
-    /// real imported name instead of a synthetic `sub_`.
+    /// PLT imports, as (stub address, resolved import name).
     pub plt_imports: Vec<(u64, String)>,
+    /// (rodata string address, code address referencing it) from AArch64
+    /// `adrp+add/ldr` scanning over executable regions.
+    pub string_refs: Vec<(u64, u64)>,
     pub functions: Vec<DiscoveredFunction>,
 }
 
@@ -113,6 +114,124 @@ pub fn in_exec_regions(regions: &[(u64, &[u8])], addr: u64) -> bool {
     regions
         .iter()
         .any(|(base, data)| addr >= *base && addr < base.saturating_add(data.len() as u64))
+}
+
+/// Detect one AArch64 frame-pointer prologue: `stp x29, x30, [sp, #imm]!`
+/// (pre-index) or `stp x29, x30, [sp, #imm]` (signed offset). This is the
+/// canonical first instruction of a frame-setting function on ARM64, so its
+/// presence at a candidate start marks a real function beginning.
+pub fn is_aarch64_fp_prologue(word: u32) -> bool {
+    // STP (64-bit): opc 10 = pre-index, 01 = signed offset; Rt=29 (x29),
+    // Rt2=30 (x30), Rn=31 (sp).
+    let rt = word & 0x1F;
+    let rn = (word >> 5) & 0x1F;
+    let rt2 = (word >> 10) & 0x1F;
+    let opc = (word >> 22) & 0x3;
+    rt == 29 && rt2 == 30 && rn == 31 && (opc == 0b10 || opc == 0b01)
+}
+
+/// Bound the function that starts at `start`: scan forward to the first `ret`
+/// (D65F03C0) at instruction granularity, never past `next_start`. Returns
+/// the end address (exclusive), or `None` when no `ret` appears first.
+pub fn scan_for_function_end_aarch64(
+    base: u64,
+    data: &[u8],
+    start: u64,
+    next_start: Option<u64>,
+) -> Option<u64> {
+    let limit = next_start
+        .map(|n| n.min(base + data.len() as u64))
+        .unwrap_or(base + data.len() as u64);
+    let mut addr = start;
+    while addr + 4 <= limit {
+        let i = (addr - base) as usize;
+        let word = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
+        if word == 0xD65F_03C0 {
+            return Some((addr + 4).min(limit));
+        }
+        addr += 4;
+    }
+    None
+}
+
+/// Scan an executable region for references into `rodata`, decoding the
+/// canonical AArch64 `adrp Xn, #page` + `add Xn, Xn, #off` (and
+/// `ldr Xn, [Xn, #off]`) idiom. Returns `(string_addr, code_addr)` pairs —
+/// the code address is the `add`/`ldr` instruction that completes the
+/// reference, which the UI can attribute to the function containing it.
+/// `is_string` decides whether a rodata address holds a printable string.
+pub fn scan_string_refs_aarch64(
+    base: u64,
+    data: &[u8],
+    rodata: (u64, u64),
+    is_string: impl Fn(u64) -> bool,
+) -> Vec<(u64, u64)> {
+    use std::collections::HashMap;
+    let mut out = Vec::new();
+    let mut adrp_regs: HashMap<u32, u64> = HashMap::new();
+    let (ro_lo, ro_hi) = rodata;
+    let mut addr = base & !3;
+    let end = base + data.len() as u64;
+    while addr + 8 <= end {
+        let i = (addr - base) as usize;
+        let word = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
+
+        // ADRP Xn, #imm: opc=1 (bit 31), bits 28-24 = 10000
+        if (word >> 31) == 1 && ((word >> 24) & 0x1F) == 0b10000 {
+            let rd = word & 0x1F;
+            let immlo = (word >> 29) & 0x3;
+            let immhi = (word >> 5) & 0x7_FFFF;
+            let imm = ((immhi << 2) | immlo) as i64;
+            let imm = if imm & (1 << 20) != 0 { imm - (1 << 21) } else { imm };
+            let page = (addr & !0xFFF).wrapping_add((imm << 12) as u64);
+            adrp_regs.insert(rd, page);
+            addr += 4;
+            continue;
+        }
+
+        // ADD Xd, Xn, #imm (M=0, shift=00): sf 00 100010
+        if (word >> 23) == 0b0_0010_0010 && (word >> 22) & 1 == 0 {
+            let rd = word & 0x1F;
+            let rn = (word >> 5) & 0x1F;
+            let imm12 = (word >> 10) & 0xFFF;
+            if let Some(&page) = adrp_regs.get(&rn) {
+                let target = page + imm12 as u64;
+                if target >= ro_lo && target < ro_hi && is_string(target) {
+                    out.push((target, addr));
+                }
+            }
+            adrp_regs.remove(&rd); // conservative: rd overwritten
+            // rd now holds page+off; keep mapping for ldr Xt,[rd] usage:
+            let combined = adrp_regs.get(&rn).map(|p| p + imm12 as u64);
+            adrp_regs.remove(&rd);
+            if let Some(c) = combined {
+                adrp_regs.insert(rd, c);
+            }
+            addr += 4;
+            continue;
+        }
+
+        // LDR Xt, [Xn, #imm12] (size=11, V=0, opc=01, imm12 scaled by 8)
+        if (word >> 22) == 0b11_1_11_01_01 {
+            let rt = word & 0x1F;
+            let rn = (word >> 5) & 0x1F;
+            let imm12 = ((word >> 10) & 0xFFF) as u64 * 8;
+            if let Some(&page) = adrp_regs.get(&rn) {
+                let target = page + imm12;
+                if target >= ro_lo && target < ro_hi && is_string(target) {
+                    out.push((target, addr));
+                }
+            }
+            adrp_regs.remove(&rt);
+            addr += 4;
+            continue;
+        }
+
+        // Unknown instruction: assume it may clobber tracked registers is too
+        // aggressive; branch/ret targets rarely reuse adrp scratch regs. Keep.
+        addr += 4;
+    }
+    out
 }
 
 /// Decode one executable region and collect the targets of *direct calls*.
@@ -404,13 +523,19 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     let mut functions: Vec<DiscoveredFunction> = new_starts
         .iter()
         .map(|(&addr, &thumb)| {
-            // An FDE size is exact and beats the distance-to-next-start guess;
-            // an FDE-covered address is a seed, so this only fires when a
-            // discovered start coincides with an FDE function's middle, which
-            // cannot happen. Distance guess otherwise.
+            // Priority: FDE size (exact) > prologue-bounded scan (good) >
+            // distance-to-next-start guess (last resort).
             let size = fde_sizes
                 .get(&addr)
                 .copied()
+                .or_else(|| {
+                    next_start(addr).and_then(|next| {
+                        let region = regions.iter().find(|(b, d)| addr >= *b && addr < b.saturating_add(d.len() as u64));
+                        region.and_then(|(b, d)| scan_for_function_end_aarch64(*b, d, addr, Some(next)))
+                            .filter(|end| end > &addr)
+                            .map(|end| end - addr)
+                    })
+                })
                 .or_else(|| {
                     next_start(addr)
                         .or_else(|| region_end(addr))
@@ -443,6 +568,57 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
             .collect();
         report.plt_imports.sort_by_key(|(a, _)| *a);
     }
+    // String refs: adrp+add/ldr into .rodata (and .data.rel.ro) where a
+    // NUL-terminated printable string lives.
+    let ro_sections: Vec<(u64, Vec<u8>)> = obj_file
+        .sections()
+        .filter_map(|s| {
+            let n = s.name().unwrap_or("");
+            if matches!(n, ".rodata" | ".data.rel.ro" | ".data") {
+                s.data().ok().map(|d| (s.address(), d.to_vec()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let looks_like_string = |addr: u64| -> bool {
+        for (base, data) in &ro_sections {
+            if addr >= *base && addr < base + data.len() as u64 {
+                let off = (addr - base) as usize;
+                let bytes = &data[off..];
+                if bytes.len() < 2 {
+                    return false;
+                }
+                let take = bytes.len().min(256);
+                let s = &bytes[..take];
+                let nul = s.iter().position(|&b| b == 0);
+                let len = nul.unwrap_or(take);
+                return len >= 2
+                    && s[..len]
+                        .iter()
+                        .all(|&b| (0x20..0x7F).contains(&b) || b == b'\t' || b == b'\n');
+            }
+        }
+        false
+    };
+    let mut string_refs = Vec::new();
+    for (base, data) in &regions {
+        if *base as usize + data.len() > u32::MAX as usize {
+            continue; // bound 32-bit decoding to 32-bit address spaces
+        }
+        string_refs.extend(scan_string_refs_aarch64(
+            *base,
+            data,
+            (
+                ro_sections.first().map(|(b, _)| *b).unwrap_or(0),
+                ro_sections.last().map(|(b, d)| b + d.len() as u64).unwrap_or(0),
+            ),
+            looks_like_string,
+        ));
+    }
+    string_refs.sort();
+    string_refs.dedup();
+    report.string_refs = string_refs;
     report
 }
 

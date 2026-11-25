@@ -174,6 +174,59 @@ fn test_discover_functions_recovers_bl_target() {
 }
 
 #[test]
+fn test_scan_for_function_end_aarch64_bounds_at_ret() {
+    use elftrace::discovery::{scan_for_function_end_aarch64, is_aarch64_fp_prologue};
+
+    // Prologue check: stp x29, x30, [sp, #-16]! => 0xA9BF7BFD (little-endian
+    // encoding: opc=10, imm7=-2, Rt2=30, Rn=31, Rt=29).
+    assert!(is_aarch64_fp_prologue(0xA9BF_7BFD));
+    assert!(!is_aarch64_fp_prologue(0xD65F_03C0)); // ret
+
+    // Function at 0x1000: stp prologue, add, ret, then junk (another prologue).
+    let mut code = Vec::new();
+    code.extend_from_slice(&0xA9BF_7BFDu32.to_le_bytes()); // stp x29,x30
+    code.extend_from_slice(&0x9100_4000u32.to_le_bytes()); // add x0, x0, #0x10
+    code.extend_from_slice(&0xD65F_03C0u32.to_le_bytes()); // ret
+    code.extend_from_slice(&0xA9BF_7BFDu32.to_le_bytes()); // next prologue
+
+    let end = scan_for_function_end_aarch64(0x1000, &code, 0x1000, None);
+    assert_eq!(end, Some(0x1000 + 12), "end should be just past the ret");
+
+    // With a next_start before the ret, no ret is seen in range: None, and
+    // the caller falls back to the distance-to-next-start size.
+    let end2 = scan_for_function_end_aarch64(0x1000, &code, 0x1000, Some(0x1008));
+    assert_eq!(end2, None);
+}
+
+#[test]
+fn test_scan_string_refs_aarch64_finds_rodata_reference() {
+    use elftrace::discovery::scan_string_refs_aarch64;
+
+    // Code at 0x1000:
+    //   adrp x0, page(0x2000)   ; page of the string
+    //   add  x0, x0, #0x34      ; -> 0x2034
+    // then junk.
+    // adrp x0, imm = ((0x2000>>12) - (0x1000>>12)) = 1 => immhi=0<<2|immlo=1
+    let adrp_imm_lo = 1u32; // immlo bits 29-30
+    let adrp: u32 = (1u32 << 31) | (adrp_imm_lo << 29) | (0b10000 << 24) | (0u32 << 5) | 0;
+    let add: u32 = (0b0_0010_0010u32 << 23) | (0x34 << 10) | (0 << 5) | 0;
+
+    let mut code = Vec::new();
+    code.extend_from_slice(&adrp.to_le_bytes());
+    code.extend_from_slice(&add.to_le_bytes());
+    code.extend_from_slice(&0xD65F_03C0u32.to_le_bytes()); // ret
+
+    // rodata range [0x2000, 0x2100): a string at 0x2034.
+    let mut ro = vec![0u8; 0x100];
+    ro[0x34..0x34 + 6].copy_from_slice(b"hello\0");
+
+    let out = scan_string_refs_aarch64(0x1000, &code, (0x2000, 0x2100), |a| {
+        a == 0x2034
+    });
+    assert_eq!(out, vec![(0x2034u64, 0x1004u64)]);
+}
+
+#[test]
 fn test_scan_eh_frame_extracts_fde_starts_and_sizes() {
     use elftrace::discovery::scan_eh_frame;
 
