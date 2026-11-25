@@ -137,7 +137,7 @@ fn test_poweramp_jni_onload_baseline() {
             .arg("-c")
             .arg(&tmp)
             .arg("-o")
-            .arg("\/dev\/null")
+            .arg("/dev/null")
             .output()
             .expect("run cross-compiler");
         assert!(
