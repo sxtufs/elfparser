@@ -448,7 +448,17 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_quickPatch(
                 .into_inner()
         }
     };
-    let is_thumb = thumb == JNI_TRUE;
+    // The Kotlin `thumb` flag is only a hint: both UI call sites default it to
+    // false, so auto-detect Thumb here (same rule as apply_plugin_patch) or an
+    // ARM32 Thumb binary gets A32 encodings written into its Thumb code.
+    let is_thumb = {
+        let ctx = &*(handle as *const ElfContext);
+        let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+        e_machine == 40
+            && (thumb == JNI_TRUE
+                || (address & 1) != 0
+                || crate::decompiler::find_function_range(ctx, address as u64).thumb)
+    };
     guard_jstring(&env, "{\"success\":false,\"error\":\"panic while patching\"}", || {
         let ctx = &mut *(handle as *mut ElfContext);
         let res = crate::patcher::apply_quick_patch(ctx, address as u64, ptype, is_thumb);
@@ -702,13 +712,23 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_propagatePatch(
         || {
             let ctx = &mut *(handle as *mut ElfContext);
             let seed = seed_addr as u64;
+            // Detect Thumb the same way apply_plugin_patch / propagate_exact do:
+            // bit 0 of the address or the enclosing symbol's Thumb flag. Without
+            // this a Thumb binary's quick seed is encoded as A32 bytes and
+            // propagated as garbage into every clone site.
+            let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
+            let is_thumb = if e_machine == 40 {
+                (seed & 1) != 0 || crate::decompiler::find_function_range(ctx, seed).thumb
+            } else {
+                false
+            };
             let prop_mode = crate::propagation::PropagationMode::from_i32(mode as i32);
             let seed_patch = match crate::propagation::resolve_seed_patch(
                 ctx,
                 &p_mode,
                 &p_value,
                 seed,
-                false,
+                is_thumb,
             ) {
                 Ok(b) => b,
                 Err(e) => {

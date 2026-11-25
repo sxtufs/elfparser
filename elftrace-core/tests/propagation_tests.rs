@@ -107,6 +107,32 @@ fn arm32_thumb_is_exact() {
 }
 
 #[test]
+fn thumb_seed_patch_uses_thumb_encoding() {
+    // Regression guard for the propagatePatch JNI handler: the seed must be
+    // resolved with the Thumb flag when the seed lives in Thumb code, or every
+    // propagated clone receives A32 bytes (8-byte mov pc-relative encoding)
+    // instead of the 4-byte Thumb sequence.
+    use elftrace::patcher::QuickPatchType;
+    use elftrace::patcher::quick_patch_bytes;
+
+    assert_eq!(
+        quick_patch_bytes(40, QuickPatchType::ReturnTrue, true),
+        Some(vec![0x01, 0x20, 0x70, 0x47]),
+        "Thumb ret_true must be movs r0,#1; bx lr"
+    );
+    assert_eq!(
+        quick_patch_bytes(40, QuickPatchType::ReturnTrue, false),
+        Some(vec![0x01, 0x00, 0xa0, 0xe3, 0x1e, 0xff, 0x2f, 0xe1]),
+        "A32 ret_true must be mov r0,#1; bx lr"
+    );
+    assert_eq!(
+        quick_patch_bytes(40, QuickPatchType::ReturnVoid, true),
+        Some(vec![0x70, 0x47]),
+        "Thumb ret_void must be bx lr"
+    );
+}
+
+#[test]
 fn arm32_register_differences_still_match() {
     // Two A32 `mov rd, rm` words that differ only in Rd/Rm must compare equal
     // under the ARM32 mask (i.e. they are treated as the same clone).
