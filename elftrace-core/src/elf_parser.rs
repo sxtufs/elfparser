@@ -844,7 +844,8 @@ impl ElfContext {
         for sec in obj_file.sections() {
             let name = sec.name().unwrap_or("").to_string();
             let (offset, _) = sec.file_range().unwrap_or((0, 0));
-            let flags = if let object::SectionFlags::Elf { sh_flags } = sec.flags() {
+            let flags = if let object::SectionFlags::Elf { sh_flags, .. } = sec.flags() {
+                let sh_flags = sh_flags.0;
                 format!(
                     "{}{}{}",
                     if (sh_flags & 0x2) != 0 { "A" } else { "-" },
@@ -1148,9 +1149,9 @@ impl ElfContext {
                 {
                     return true;
                 }
-                if let object::SectionFlags::Elf { sh_flags } = section.flags() {
+                if let object::SectionFlags::Elf { sh_flags, .. } = section.flags() {
                     let shf_execinstr = 0x4u64;
-                    if (sh_flags & shf_execinstr) != 0 {
+                    if (sh_flags.0 & shf_execinstr) != 0 {
                         return true;
                     }
                 }
@@ -1163,8 +1164,8 @@ impl ElfContext {
             let start = segment.address();
             let size = segment.size();
             if size > 0 && address >= start && address < start.saturating_add(size) {
-                if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
-                    return (p_flags & 1) != 0; // PF_X = 1
+                if let object::SegmentFlags::Elf { p_flags, .. } = segment.flags() {
+                    return (p_flags.0 & 1) != 0; // PF_X = 1
                 }
                 // Segment found but flags are non-ELF: cannot prove executable.
                 return false;
@@ -1367,7 +1368,7 @@ impl ElfContext {
                     let (seg_paddr, _) = segment.file_range();
                     let is_exec = matches!(
                         segment.flags(),
-                        object::SegmentFlags::Elf { p_flags } if (p_flags & 1) != 0
+                        object::SegmentFlags::Elf { p_flags, .. } if (p_flags.0 & 1) != 0
                     );
                     let mut i = 0usize;
                     while i < data.len() {
@@ -1487,7 +1488,7 @@ fn parse_jni_name(sym: &str) -> (Option<String>, Option<String>) {
 fn demangle_name(sym: &str) -> Option<String> {
     if sym.starts_with("_Z") {
         if let Ok(sym_obj) = cpp_demangle::Symbol::new(sym) {
-            return Some(sym_obj.to_string());
+            return Some(sym_obj.demangle().unwrap_or_else(|_| sym.to_string()));
         }
     }
     None

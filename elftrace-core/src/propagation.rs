@@ -160,8 +160,8 @@ fn exec_regions(ctx: &ElfContext) -> Vec<(u64, Vec<u8>)> {
     };
     use object::{Object, ObjectSection, ObjectSegment};
     for segment in obj.segments() {
-        if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
-            if (p_flags & 1) != 0 {
+        if let object::SegmentFlags::Elf { p_flags, .. } = segment.flags() {
+            if (p_flags.0 & 1) != 0 {
                 if let Ok(data) = segment.data() {
                     if !data.is_empty() {
                         out.push((segment.address(), data.to_vec()));

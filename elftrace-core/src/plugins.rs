@@ -881,8 +881,8 @@ fn scan_jni_native_methods(ctx: &ElfContext) -> Array {
     }
     if exec_ranges.is_empty() {
         for seg in obj.segments() {
-            if let object::SegmentFlags::Elf { p_flags } = seg.flags() {
-                if (p_flags & 1) != 0 && seg.size() > 0 {
+            if let object::SegmentFlags::Elf { p_flags, .. } = seg.flags() {
+                if (p_flags.0 & 1) != 0 && seg.size() > 0 {
                     let start = seg.address();
                     let end = start.saturating_add(seg.size());
                     if end > start {

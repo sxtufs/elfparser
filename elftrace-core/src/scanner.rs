@@ -361,7 +361,7 @@ pub fn calculate_entropy_report(ctx: &ElfContext) -> EntropyReport {
                     let ent = calculate_entropy(data);
                     let is_exec = matches!(
                         seg.flags(),
-                        object::SegmentFlags::Elf { p_flags } if (p_flags & 1) != 0
+                        object::SegmentFlags::Elf { p_flags, .. } if (p_flags.0 & 1) != 0
                     );
                     let is_high = ent > 7.1;
                     let status = if is_high {

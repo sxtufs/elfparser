@@ -160,8 +160,8 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
     // protectors like LIAPP strip/corrupt section headers), falling back to .text/.plt sections.
     let mut exec_regions: Vec<(u64, &[u8])> = Vec::new();
     for segment in obj_file.segments() {
-        if let object::SegmentFlags::Elf { p_flags } = segment.flags() {
-            if (p_flags & 1) != 0 {
+        if let object::SegmentFlags::Elf { p_flags, .. } = segment.flags() {
+            if (p_flags.0 & 1) != 0 {
                 if let Ok(data) = segment.data() {
                     if !data.is_empty() {
                         exec_regions.push((segment.address(), data));
