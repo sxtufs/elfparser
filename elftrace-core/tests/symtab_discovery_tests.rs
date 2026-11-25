@@ -199,6 +199,44 @@ fn test_scan_for_function_end_aarch64_bounds_at_ret() {
 }
 
 #[test]
+fn test_scan_vtables_recovers_class_names_and_slots() {
+    use elftrace::discovery::scan_vtables;
+
+    // .data.rel.ro layout at 0x3000:
+    //   0x2ff0: _ZTS8MyWidget string ptr -> 0x2040 (in .rodata)
+    //   0x2ff8: typeinfo ptr (unknown, ignored)
+    //   0x3000: fn ptr 1 -> 0x1000 (exec)
+    //   0x3008: fn ptr 2 -> 0x2000 (exec)
+    //   0x3010: 0 (ends the run)
+    let ro = 0x2000u64;
+    let mut rodata = vec![0u8; 0x100];
+    let ts = b"_ZTS8MyWidget\0";
+    rodata[0x40..0x40 + ts.len()].copy_from_slice(ts);
+    let ts_addr = ro + 0x40;
+
+    let mut drr = vec![0u8; 0x40];
+    let drr_base = 0x3000u64;
+    // i starts at 2, so slots live at offsets 0..; header at -16/-8.
+    drr[0x00..0x08].copy_from_slice(&(drr_base + 0x10).to_le_bytes()); // fn1
+    drr[0x08..0x10].copy_from_slice(&(drr_base + 0x20).to_le_bytes()); // fn2
+    drr[0x10..0x18].copy_from_slice(&0u64.to_le_bytes());              // end run
+    drr[0x20..0x28].copy_from_slice(&ts_addr.to_le_bytes());           // _ZTS ptr (i=4? no—
+    // header must sit at vt_addr-16, so rewrite: put header right before slots.
+    let mut drr2 = vec![0u8; 0x40];
+    drr2[0x00..0x08].copy_from_slice(&ts_addr.to_le_bytes());           // _ZTS ptr
+    drr2[0x08..0x10].copy_from_slice(&(ro + 0x80).to_le_bytes());       // typeinfo ptr
+    drr2[0x10..0x18].copy_from_slice(&(0x1000u64).to_le_bytes());       // vf0
+    drr2[0x18..0x20].copy_from_slice(&(0x2000u64).to_le_bytes());       // vf1
+    // 0x20.. zeros end the run.
+
+    let out = scan_vtables((drr_base, &drr2), &[(0x1000, 0x2000)], (ro, &rodata));
+    assert!(out.contains(&(drr_base, "vtable for MyWidget".to_string())), "got {:?}", out);
+    assert!(out.contains(&(drr_base + 0x10, "MyWidget::vf0".to_string())));
+    assert!(out.contains(&(drr_base + 0x18, "MyWidget::vf1".to_string())));
+    let _ = drr; // unused variant kept minimal
+}
+
+#[test]
 fn test_scan_string_refs_aarch64_finds_rodata_reference() {
     use elftrace::discovery::scan_string_refs_aarch64;
 

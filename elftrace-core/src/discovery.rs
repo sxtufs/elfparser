@@ -60,6 +60,9 @@ pub struct DiscoveryReport {
     /// (rodata string address, code address referencing it) from AArch64
     /// `adrp+add/ldr` scanning over executable regions.
     pub string_refs: Vec<(u64, u64)>,
+    /// C++ vtable slots and class symbols recovered from `.data.rel.ro`
+    /// (Itanium ABI: typeinfo/type-string header + run of code pointers).
+    pub vtables: Vec<(u64, String)>,
     pub functions: Vec<DiscoveredFunction>,
 }
 
@@ -233,6 +236,94 @@ pub fn scan_string_refs_aarch64(
         // Unknown instruction: assume it may clobber tracked registers is too
         // aggressive; branch/ret targets rarely reuse adrp scratch regs. Keep.
         addr += 4;
+    }
+    out
+}
+
+/// Recover C++ vtables and class names from `.data.rel.ro`.
+///
+/// Itanium ABI layout: a `-8` from a vtable pointer sits a `typeinfo` pointer,
+/// and before that a pointer to a `_ZTS<N>ClassName...` type-string in
+/// `.rodata` (or `.data.rel.ro`). A run of 2+ consecutive pointers into
+/// executable sections after that header is a vtable; each entry becomes a
+/// named virtual function `ClassName::vfN`, and the class name is recovered
+/// from the type string. Returns (address, name) pairs for both the vtable
+/// slots and the class symbol at the vtable base.
+pub fn scan_vtables(
+    data_rel_ro: (u64, &[u8]),
+    exec: &[(u64, u64)],
+    rodata: (u64, &[u8]),
+) -> Vec<(u64, String)> {
+    use std::collections::HashMap;
+    let (base, data) = data_rel_ro;
+    let (ro_base, ro_data) = rodata;
+    let in_exec = |a: u64| exec.iter().any(|(b, len)| a >= *b && a < b + *len as u64);
+    let read_ptr = |off: usize| -> Option<u64> {
+        if off + 8 <= data.len() {
+            Some(u64::from_le_bytes(data[off..off + 8].try_into().unwrap()))
+        } else {
+            None
+        }
+    };
+    // typeinfo type-string name: "_ZTS" prefix, class name up to ".." or NUL.
+    let class_name_from_ts = |addr: u64| -> Option<String> {
+        if addr < ro_base || addr >= ro_base + ro_data.len() as u64 {
+            return None;
+        }
+        let bytes = &ro_data[(addr - ro_base) as usize..];
+        let take = bytes.len().min(256);
+        let end = bytes[..take].iter().position(|&b| b == 0).unwrap_or(take);
+        let s = std::str::from_utf8(&bytes[..end]).ok()?;
+        let rest = s.strip_prefix("_ZTS")?;
+        let name_len: Option<usize> = rest
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .try_fold(0usize, |acc, c| {
+                c.to_digit(10).map(|d| acc * 10 + d as usize)
+            });
+        let name_len = name_len?;
+        Some(rest.chars().skip_while(|c| c.is_ascii_digit()).take(name_len).collect())
+    };
+
+    let mut out = Vec::new();
+    let mut seen_classes: HashMap<u64, String> = HashMap::new();
+    let n = data.len() / 8;
+    for i in 0..n {
+        let off = i * 8;
+        // Candidate vtable header: [i-2] = type-string ptr, [i-1] = typeinfo
+        // ptr (skip: unknown pointee), [i..] = fn pointers.
+        if i < 2 {
+            continue;
+        }
+        let ts_ptr = match read_ptr(off - 16) {
+            Some(p) => p,
+            None => continue,
+        };
+        let class = match class_name_from_ts(ts_ptr) {
+            Some(c) => c,
+            None => continue,
+        };
+        // Count consecutive exec pointers from slot i.
+        let mut slots = 0usize;
+        while let Some(p) = read_ptr(off + slots * 8) {
+            if p != 0 && in_exec(p) {
+                slots += 1;
+            } else {
+                break;
+            }
+        }
+        if slots < 2 {
+            continue;
+        }
+        let vt_addr = base + off as u64;
+        seen_classes.insert(vt_addr, class.clone());
+        out.push((vt_addr.wrapping_sub(16), format!("vtable for {}", class)));
+        for s in 0..slots {
+            out.push((
+                base + (off + s * 8) as u64,
+                format!("{}::vf{}", class, s),
+            ));
+        }
     }
     out
 }
@@ -622,6 +713,20 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     string_refs.sort();
     string_refs.dedup();
     report.string_refs = string_refs;
+    // Vtables: `.data.rel.ro` + `.rodata` for the _ZTS type strings.
+    if let (Some(drr), Some(ro)) = (
+        obj_file
+            .sections()
+            .find(|s| s.name().unwrap_or("") == ".data.rel.ro")
+            .and_then(|s| s.data().ok().map(|d| (s.address(), d.to_vec()))),
+        obj_file
+            .sections()
+            .find(|s| s.name().unwrap_or("") == ".rodata")
+            .and_then(|s| s.data().ok().map(|d| (s.address(), d.to_vec()))),
+    ) {
+        let exec: Vec<(u64, u64)> = regions.iter().map(|(b, d)| (*b, d.len() as u64)).collect();
+        report.vtables = scan_vtables((drr.0, &drr.1), &exec, (ro.0, &ro.1));
+    }
     report
 }
 

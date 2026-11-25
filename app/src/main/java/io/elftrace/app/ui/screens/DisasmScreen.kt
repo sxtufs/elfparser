@@ -447,16 +447,16 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.annotation.copy(alpha = 0.6f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.annotation, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    SectionLabel("RISKY", colors)
+                    SectionLabel("GLOBAL", colors)
                     Spacer(Modifier.height(6.dp))
 
                     Row(
@@ -475,7 +475,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             },
                             enabled = undoDepth > 0,
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.changedReg.copy(alpha = 0.45f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
