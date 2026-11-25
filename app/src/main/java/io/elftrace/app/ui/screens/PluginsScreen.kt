@@ -40,7 +40,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     val bridge by viewModel.bridge.collectAsState()
     val loadErrors by viewModel.builtInLoadErrors.collectAsState()
 
-    var expandedPluginId by remember { mutableStateOf<String?>(null) }
+    val expandedPluginId by viewModel.expandedPluginId.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var ruleType by remember { mutableStateOf("symbol") }
     var rulePattern by remember { mutableStateOf("") }
@@ -141,6 +141,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
+            state = viewModel.pluginsListState,
             flingBehavior = rememberMomentumFlingBehavior(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -153,7 +154,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                     isExpanded = expandedPluginId == plugin.manifest.id,
                     onToggleExpand = {
                         val willExpand = expandedPluginId != plugin.manifest.id
-                        expandedPluginId = if (willExpand) plugin.manifest.id else null
+                        viewModel.expandedPluginId.value = if (willExpand) plugin.manifest.id else null
                         if (willExpand && bridge != null && plugin.lastReport == null) {
                             viewModel.runPlugin(plugin.manifest.id)
                         }
@@ -293,7 +294,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                                     if (bridge != null) {
                                         viewModel.runPlugin(manifest.id)
                                     }
-                                    expandedPluginId = manifest.id
+                                    viewModel.expandedPluginId.value = manifest.id
                                     rulePattern = ""
                                     rulePatch = "none"
                                     showAddDialog = false

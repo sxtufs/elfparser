@@ -74,6 +74,12 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
     val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Entropy Radar
 
+    // Plugins tab scroll position and expanded card live here, not in the screen:
+    // jumping to a finding swaps PluginsScreen out of composition, which would
+    // otherwise reset the list to the top on return.
+    val pluginsListState = androidx.compose.foundation.lazy.LazyListState()
+    val expandedPluginId = MutableStateFlow<String?>(null)
+
     /** Persisted across launches in a private SharedPreferences file. */
     private val prefs = app.getSharedPreferences("elftrace_prefs", Context.MODE_PRIVATE)
     val isDarkMode = MutableStateFlow(prefs.getBoolean(KEY_DARK_MODE, true)) // Light / Dark mode toggle
