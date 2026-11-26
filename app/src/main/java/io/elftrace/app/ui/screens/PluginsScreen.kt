@@ -101,7 +101,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         if (isRunning) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = colors.primary)
                         } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Run All", tint = AmberAccent)
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Run All", tint = colors.primary)
                         }
                     }
                 }
@@ -703,15 +703,20 @@ private fun RhaiEditorDialog(
     var template by rememberSaveable { mutableStateOf(RHAI_TEMPLATES[0].title) }
     var autoRun by rememberSaveable { mutableStateOf(true) }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = colors.surface,
             border = BorderStroke(1.dp, colors.border),
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .padding(16.dp)
+                .fillMaxHeight(0.78f)
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+                .navigationBarsPadding()
+                .imePadding()
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text(
