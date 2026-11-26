@@ -22,7 +22,7 @@ use crate::elf_parser::ElfContext;
 use crate::model::SymsDTO;
 use crate::xref::decode_arm64_branch_insn;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Refuse to scan more than this many bytes of executable code per call.
 pub const MAX_SCANNED_BYTES: u64 = 32 * 1024 * 1024;
@@ -253,6 +253,7 @@ pub fn scan_vtables(
     data_rel_ro: (u64, &[u8]),
     exec: &[(u64, u64)],
     rodata: (u64, &[u8]),
+    relocs: &HashMap<u64, u64>,
 ) -> Vec<(u64, String)> {
     use std::collections::HashMap;
     let (base, data) = data_rel_ro;
@@ -260,7 +261,13 @@ pub fn scan_vtables(
     let in_exec = |a: u64| exec.iter().any(|(b, len)| a >= *b && a < b + *len as u64);
     let read_ptr = |off: usize| -> Option<u64> {
         if off + 8 <= data.len() {
-            Some(u64::from_le_bytes(data[off..off + 8].try_into().unwrap()))
+            let raw = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
+            if raw == 0 {
+                // Unloaded file image: RELATIVE relocations carry the real
+                // pointer values in their addends.
+                return relocs.get(&(base + off as u64)).copied();
+            }
+            Some(raw)
         } else {
             None
         }
@@ -295,11 +302,28 @@ pub fn scan_vtables(
         if i < 2 {
             continue;
         }
-        let ts_ptr = match read_ptr(off - 16) {
-            Some(p) => p,
-            None => continue,
-        };
-        let class = match class_name_from_ts(ts_ptr) {
+        // Class name: try the direct _ZTS pointer at [i-16] first, then the
+        // standard Itanium layout where [i-8] is a typeinfo pointer whose
+        // first word points at the _ZTS string.
+        let class = read_ptr(off - 16)
+            .and_then(|p| class_name_from_ts(p))
+            .or_else(|| {
+                read_ptr(off - 8).and_then(|ti| {
+                    let ti_off = (ti as usize).checked_sub(base as usize)?;
+                    let zts = if ti_off + 8 <= data.len() {
+                        let raw = u64::from_le_bytes(data[ti_off..ti_off + 8].try_into().ok()?);
+                        if raw != 0 {
+                            Some(raw)
+                        } else {
+                            relocs.get(&ti).copied()
+                        }
+                    } else {
+                        None
+                    }?;
+                    class_name_from_ts(zts)
+                })
+            });
+        let class = match class {
             Some(c) => c,
             None => continue,
         };
@@ -725,7 +749,25 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
             .and_then(|s| s.data().ok().map(|d| (s.address(), d.to_vec()))),
     ) {
         let exec: Vec<(u64, u64)> = regions.iter().map(|(b, d)| (*b, d.len() as u64)).collect();
-        report.vtables = scan_vtables((drr.0, &drr.1), &exec, (ro.0, &ro.1));
+        // RELATIVE relocation addends: in the file image .data.rel.ro pointers
+        // are zero; the loader fills them from these addends at load time.
+        let mut relocs: HashMap<u64, u64> = HashMap::new();
+        for sec in obj_file.sections() {
+            if sec.name().unwrap_or("") == ".rela.dyn" {
+                if let Ok(data) = sec.data() {
+                    for chunk in data.chunks_exact(24) {
+                        let r_off = u64::from_le_bytes(chunk[0..8].try_into().unwrap());
+                        let r_info = u64::from_le_bytes(chunk[8..16].try_into().unwrap());
+                        let r_add = i64::from_le_bytes(chunk[16..24].try_into().unwrap());
+                        // R_AARCH64_RELATIVE = 1027; addend-based, type must be RELATIVE
+                        if r_info & 0xffffffff == 1027 && r_add > 0 {
+                            relocs.insert(r_off, r_add as u64);
+                        }
+                    }
+                }
+            }
+        }
+        report.vtables = scan_vtables((drr.0, &drr.1), &exec, (ro.0, &ro.1), &relocs);
     }
     report
 }

@@ -229,7 +229,19 @@ fn test_scan_vtables_recovers_class_names_and_slots() {
     drr2[0x18..0x20].copy_from_slice(&(0x2000u64).to_le_bytes());       // vf1
     // 0x20.. zeros end the run.
 
-    let out = scan_vtables((drr_base, &drr2), &[(0x1000, 0x2000)], (ro, &rodata));
+    // Same layout but with zeroed file-image pointers filled by RELATIVE
+    // relocations — how real shared libraries look on disk (AArch64 RELA).
+    let mut relocs = std::collections::HashMap::new();
+    relocs.insert(drr_base + 0x00, ts_addr);
+    relocs.insert(drr_base + 0x08, ro + 0x80);
+    relocs.insert(drr_base + 0x10, 0x1000u64);
+    relocs.insert(drr_base + 0x18, 0x2000u64);
+    let mut drr3 = vec![0u8; 0x40]; // all zeros in the file image
+    let out3 = scan_vtables((drr_base, &drr3), &[(0x1000, 0x2000)], (ro, &rodata), &relocs);
+    assert!(out3.contains(&(drr_base, "vtable for MyWidget".to_string())), "got {:?}", out3);
+    assert!(out3.contains(&(drr_base + 0x10, "MyWidget::vf0".to_string())));
+
+    let out = scan_vtables((drr_base, &drr2), &[(0x1000, 0x2000)], (ro, &rodata), &std::collections::HashMap::new());
     assert!(out.contains(&(drr_base, "vtable for MyWidget".to_string())), "got {:?}", out);
     assert!(out.contains(&(drr_base + 0x10, "MyWidget::vf0".to_string())));
     assert!(out.contains(&(drr_base + 0x18, "MyWidget::vf1".to_string())));

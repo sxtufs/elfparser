@@ -447,11 +447,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.annotation.copy(alpha = 0.6f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.annotation, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -475,13 +475,13 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             },
                             enabled = undoDepth > 0,
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.changedReg.copy(alpha = 0.45f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
                             Text(
                                 if (undoDepth > 0) "Undo $undoDepth" else "Undo",
-                                color = if (undoDepth > 0) colors.textPrimary else colors.textSecondary,
+                                color = if (undoDepth > 0) colors.primary else colors.textSecondary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
                                 maxLines = 1,
@@ -502,11 +502,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 }
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Export .so", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Export .so", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
