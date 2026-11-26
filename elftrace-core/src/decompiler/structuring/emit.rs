@@ -9,6 +9,7 @@ pub fn emit_structured_c(
     func: &IrFunction,
     nodes: &[StructuredNode],
     codegen: &CodeGenerator,
+    helpers: &[super::regions::TailHelper],
 ) -> String {
     let mut out = String::new();
 
@@ -93,6 +94,67 @@ pub fn emit_structured_c(
         out.push('\n');
     }
 
+    // 2a. Static helper functions for shared exit tails. Each helper holds the
+    // tail body ONCE (the inliner kept it because duplicating it per site
+    // would blow up output size); goto sites became `return tail_...(...)` or
+    // a call followed by return. Emitted before the main body so no forward
+    // declaration is needed.
+    for h in helpers {
+        let mut h_param_map: HashMap<String, String> = HashMap::new();
+        for (name, _is_ptr) in &h.params {
+            h_param_map.insert(name.clone(), name.clone());
+        }
+        let h_sig = if h.params.is_empty() {
+            "void".to_string()
+        } else {
+            h.params
+                .iter()
+                .map(|(name, is_ptr)| {
+                    if *is_ptr {
+                        format!("uint8_t* {}", name)
+                    } else {
+                        format!("int64_t {}", name)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        out.push_str(&format!("static int64_t {}({}) {{\n", h.name, h_sig));
+        for l in &h.locals {
+            let ty = if super::regions::STACK_PTR_REGS.contains(&l.as_str()) {
+                "uint8_t*"
+            } else {
+                "int64_t"
+            };
+            out.push_str(&format!("    {ty} {l} = 0;\n"));
+        }
+        // Same -Werror suppression the main body uses: a tail can write an
+        // epilogue register it never reads (dead store kept for fidelity).
+        for l in &h.locals {
+            out.push_str(&format!("    (void){};\n", l));
+        }
+        emit_node_list(
+            &h.body,
+            1,
+            &mut out,
+            codegen,
+            func,
+            &h_param_map,
+            &HashSet::new(),
+            &mut HashSet::new(),
+        );
+        // A tail whose every path ends in a noreturn call (e.g. a bare
+        // `__stack_chk_fail()`) has no explicit return; falling off the end of
+        // a non-void helper trips -Wreturn-type, so give it a dead `return 0;`.
+        if !super::regions::has_plain_return(&h.body) {
+            out.push_str("    return 0;\n");
+        }
+        out.push_str("}\n");
+    }
+    if !helpers.is_empty() {
+        out.push('\n');
+    }
+
     let ret_c = func.ret_type.to_c_type();
     // JNI entrypoints (JNI_OnLoad, Java_*) reuse x0 freely across pointer and
     // integer values (JNIEnv*, then jint returns), so type params as int64_t —
@@ -128,6 +190,9 @@ pub fn emit_structured_c(
     // 2. Declare local variables
     let mut assigned_regs: HashMap<String, IrType> = HashMap::new();
     collect_local_regs(nodes, &mut assigned_regs, &param_reg_map);
+    // Registers passed as helper-call arguments must be declared in the
+    // caller even if the rewrite moved their only assignment into a helper.
+    collect_tail_call_arg_regs(nodes, &mut assigned_regs);
 
     let mut has_stack_mem = false;
     let mut stack_ptrs = Vec::new();
@@ -1014,5 +1079,82 @@ fn collect_extern_calls(nodes: &[StructuredNode], out: &mut Vec<String>) {
             }
             _ => {}
         }
+    }
+}
+
+/// Registers passed as arguments to tail-helper calls (`return
+/// tail_XXXXXXXX(x19, ...)`): they must be declared in the caller even though
+/// the assignments that produced them may have moved into the helper body.
+fn collect_tail_call_arg_regs(nodes: &[StructuredNode], assigned_regs: &mut HashMap<String, IrType>) {
+    fn expr_args(e: &IrExpr, out: &mut Vec<String>) {
+        match e {
+            IrExpr::Call { name: Some(n), args, .. } if n.starts_with("tail_") => {
+                for a in args {
+                    if let IrExpr::Reg(r, _) = a {
+                        out.push(r.to_lowercase());
+                    }
+                }
+            }
+            IrExpr::Unary(_, inner, _) => expr_args(inner, out),
+            IrExpr::Binary(_, l, r, _) => {
+                expr_args(l, out);
+                expr_args(r, out);
+            }
+            IrExpr::Ternary { cond, true_val, false_val, .. } => {
+                expr_args(cond, out);
+                expr_args(true_val, out);
+                expr_args(false_val, out);
+            }
+            _ => {}
+        }
+    }
+    fn walk(n: &StructuredNode, assigned_regs: &mut HashMap<String, IrType>) {
+        match n {
+            StructuredNode::Block(b) => {
+                for s in &b.stmts {
+                    let mut names: Vec<String> = Vec::new();
+                    match s {
+                        IrStmt::Return(Some(e)) => expr_args(e, &mut names),
+                        IrStmt::Call { target, args, .. } => {
+                            let mut push_call = |c: &IrExpr| {
+                                if let IrExpr::Call { name: Some(cn), args: cargs, .. } = c {
+                                    if cn.starts_with("tail_") {
+                                        for ca in cargs {
+                                            if let IrExpr::Reg(r, _) = ca {
+                                                names.push(r.to_lowercase());
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            push_call(target);
+                            for a in args {
+                                push_call(a);
+                            }
+                        }
+                        _ => {}
+                    }
+                    for r in names {
+                        if r != "sp" && !assigned_regs.contains_key(&r) {
+                            assigned_regs.insert(r, IrType::Int64);
+                        }
+                    }
+                }
+            }
+            StructuredNode::If { then, otherwise, .. } => {
+                for n in then.iter().chain(otherwise.iter()) {
+                    walk(n, assigned_regs);
+                }
+            }
+            StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+                for n in body.iter() {
+                    walk(n, assigned_regs);
+                }
+            }
+            _ => {}
+        }
+    }
+    for n in nodes {
+        walk(n, assigned_regs);
     }
 }

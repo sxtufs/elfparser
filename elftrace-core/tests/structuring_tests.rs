@@ -775,7 +775,7 @@ fn chained_join_ladder_gotos(n_arms: usize, name: &str, chain_len: usize) {
     let graph = CfGraph::from_blocks(func.blocks.clone());
     let nodes: Vec<StructuredNode> = structure(&ctx, &func, &graph);
     let codegen = CodeGenerator::new(&ctx, ArchKind::AArch64);
-    let rendered = emit_structured_c(&func, &nodes, &codegen);
+    let rendered = emit_structured_c(&func, &nodes, &codegen, &[]);
     eprintln!("--- rendered (chain_len={chain_len}) ---\n{rendered}");
     // The log join must be inlined at every ladder arm.
     assert!(
@@ -873,4 +873,75 @@ fn test_inline_shared_joins_unit() {
         4,
         "arm0, arm1, log, one inlined copy"
     );
+}
+
+/// Regression: shared exit tails the join-inliner deliberately kept (cyclic
+/// canary-epilogue chains too big to duplicate per site under
+/// MAX_INLINE_STMTS) are extracted into `static int64_t tail_XXXXXXXX(...)`
+/// helper functions; each goto site becomes `return tail_XXXXXXXX(...)` and
+/// the remaining goto count drops without the expansion blowup that capped
+/// inlining. Poweramp JNI_OnLoad: 11 gotos -> 4.
+#[test]
+fn test_shared_exit_tails_become_helper_functions() {
+    use elftrace::decompiler::decompile_to_c_structured;
+    use elftrace::elf_parser::ElfContext;
+
+    let rel = "test_fixtures/accuracy/libpowerampcore.so";
+    let Some(path) = fixture(rel) else {
+        eprintln!("SKIP: libpowerampcore.so not found");
+        return;
+    };
+    let ctx = ElfContext::open(&path).unwrap();
+    let code = decompile_to_c_structured(&ctx, 0x209478); // JNI_OnLoad
+
+    // Helper functions were extracted.
+    assert!(
+        code.contains("static int64_t tail_"),
+        "shared exit tails must be extracted into static helper functions, got:\n{}",
+        code
+    );
+    // Goto sites were rewritten into tail calls.
+    assert!(
+        code.contains("return tail_"),
+        "goto sites must become `return tail_...(...)` calls, got:\n{}",
+        code
+    );
+    // And the goto count actually dropped below the 11 the inliner kept.
+    let gotos = code.matches("goto loc_").count();
+    assert!(
+        gotos < 11,
+        "helper extraction must reduce gotos below the 11 kept by the inliner, got {}",
+        gotos
+    );
+    // The result still compiles under the same gate ladder_tests uses for this
+    // fixture (cross-compiler, -Werror, -w for decompiled-noise locals).
+    if let Some(cc) = ["aarch64-linux-gnu-gcc", "clang"].iter().find(|c| {
+        std::process::Command::new(c)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }) {
+        let tu = format!("#include <stdint.h>\n#include <stddef.h>\n{}\n", code);
+        let tmp = std::env::temp_dir().join("elftrace_tail_helpers_jni_onload.c");
+        std::fs::write(&tmp, &tu).unwrap();
+        let mut cmd = std::process::Command::new(cc);
+        if cc.ends_with("clang") {
+            cmd.args(["--target=aarch64-linux-gnu"]);
+        }
+        let out = cmd
+            .args(["-std=c11", "-Werror", "-w", "-c"])
+            .arg(&tmp)
+            .arg("-o")
+            .arg("/dev/null")
+            .output()
+            .expect("run cross-compiler");
+        assert!(
+            out.status.success(),
+            "structured JNI_OnLoad with tail helpers failed to compile:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    } else {
+        eprintln!("SKIP compile gate: no AArch64 cross-compiler on this host");
+    }
 }

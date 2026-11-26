@@ -760,8 +760,7 @@ fn try_region(
     None
 }
 
-fn has_plain_return(nodes: &[StructuredNode]) -> bool {
-    nodes.iter().any(|n| match n {
+pub(crate) fn has_plain_return(nodes: &[StructuredNode]) -> bool {    nodes.iter().any(|n| match n {
         StructuredNode::Return(_) => true,
         StructuredNode::Block(b) => b.stmts.iter().any(|s| matches!(s, IrStmt::Return(_))),
         StructuredNode::If { then, otherwise, .. } => {
@@ -1260,4 +1259,582 @@ fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode>
 fn dbg_syn(so: &str, fa: u64) -> (usize, Vec<(u64, Option<usize>, Option<Vec<IrStmt>>)>) {
     let _ = (so, fa);
     (0, Vec::new())
+}
+
+// ---------------------------------------------------------------------------
+// Shared-tail helper extraction: the gotos that inlining and return synthesis
+// deliberately kept (cyclic epilogue chains too big to duplicate per site)
+// are rendered as `static` helper functions. Each goto site becomes
+// `return tail_XXXXXXXX(...);` and the tail body exists exactly once, so the
+// gotos go to zero without the per-site expansion blowup that capped inlining.
+// ---------------------------------------------------------------------------
+
+/// A shared exit tail extracted into a helper function.
+#[derive(Debug, Clone)]
+pub struct TailHelper {
+    /// `tail_%08x` of the join label address.
+    pub name: String,
+    /// Caller variables the body reads before any write: (name, is_stack_pointer).
+    pub params: Vec<(String, bool)>,
+    /// Helper-local registers the body writes (declared inside the helper).
+    pub locals: Vec<String>,
+    /// The spliced tail region (same nodes the inliner would have duplicated).
+    pub body: Vec<StructuredNode>,
+}
+
+pub(crate) const STACK_PTR_REGS: &[&str] = &["x29", "sp", "rbp", "rsp"];
+
+fn collect_reg_mentions_expr(e: &IrExpr, out: &mut std::collections::BTreeSet<String>) {
+    match e {
+        IrExpr::Reg(r, _) => {
+            out.insert(r.to_lowercase());
+        }
+        IrExpr::Unary(_, inner, _) => collect_reg_mentions_expr(inner, out),
+        IrExpr::Binary(_, l, r, _) => {
+            collect_reg_mentions_expr(l, out);
+            collect_reg_mentions_expr(r, out);
+        }
+        IrExpr::Load { ptr, .. } => collect_reg_mentions_expr(ptr, out),
+        IrExpr::Ternary {
+            cond,
+            true_val,
+            false_val,
+            ..
+        } => {
+            collect_reg_mentions_expr(cond, out);
+            collect_reg_mentions_expr(true_val, out);
+            collect_reg_mentions_expr(false_val, out);
+        }
+        IrExpr::Call { target, args, .. } => {
+            collect_reg_mentions_expr(target, out);
+            for a in args {
+                collect_reg_mentions_expr(a, out);
+            }
+        }
+        IrExpr::Const(_) | IrExpr::StringLit(_) | IrExpr::StackVar { .. } => {}
+    }
+}
+
+fn collect_reg_mentions_stmt(s: &IrStmt, out: &mut std::collections::BTreeSet<String>) {
+    match s {
+        IrStmt::Assign { dst, src } => {
+            collect_reg_mentions_expr(dst, out);
+            collect_reg_mentions_expr(src, out);
+        }
+        IrStmt::Store { ptr, val, .. } => {
+            collect_reg_mentions_expr(ptr, out);
+            collect_reg_mentions_expr(val, out);
+        }
+        IrStmt::DivRem {
+            quot_dst,
+            rem_dst,
+            dividend_high,
+            dividend_low,
+            divisor,
+            ..
+        } => {
+            collect_reg_mentions_expr(quot_dst, out);
+            collect_reg_mentions_expr(rem_dst, out);
+            collect_reg_mentions_expr(dividend_high, out);
+            collect_reg_mentions_expr(dividend_low, out);
+            collect_reg_mentions_expr(divisor, out);
+        }
+        IrStmt::Call {
+            target, args, ret_dst, ..
+        } => {
+            collect_reg_mentions_expr(target, out);
+            for a in args {
+                collect_reg_mentions_expr(a, out);
+            }
+            if let Some(d) = ret_dst {
+                collect_reg_mentions_expr(d, out);
+            }
+        }
+        IrStmt::Branch { cond, .. } => {
+            if let Some(c) = cond {
+                collect_reg_mentions_expr(c, out);
+            }
+        }
+        IrStmt::IndirectBranch { target } => collect_reg_mentions_expr(target, out),
+        IrStmt::Return(Some(e)) => collect_reg_mentions_expr(e, out),
+        _ => {}
+    }
+}
+
+fn collect_reg_mentions(nodes: &[StructuredNode], out: &mut std::collections::BTreeSet<String>) {
+    for n in nodes {
+        match n {
+            StructuredNode::Block(b) => {
+                for s in &b.stmts {
+                    collect_reg_mentions_stmt(s, out);
+                }
+            }
+            StructuredNode::If { cond, then, otherwise } => {
+                collect_reg_mentions_expr(cond, out);
+                collect_reg_mentions(then, out);
+                collect_reg_mentions(otherwise, out);
+            }
+            StructuredNode::While { cond, body } | StructuredNode::DoWhile { cond, body } => {
+                collect_reg_mentions_expr(cond, out);
+                collect_reg_mentions(body, out);
+            }
+            StructuredNode::Return(Some(e)) => collect_reg_mentions_expr(e, out),
+            StructuredNode::Switch { selector, .. } => collect_reg_mentions_expr(selector, out),
+            _ => {}
+        }
+    }
+}
+
+/// Split the registers a tail touches into helper params and helper locals.
+/// A register is a param only when the body READS it before any write (the
+/// caller must supply its value at the goto site); everything else — write-only
+/// epilogue restores, scratch regs — is a local of the helper, because the
+/// tail ends in `return` or a noreturn call on every path, so no write can
+/// escape back to the caller. Returns (params, locals), both sorted.
+fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
+    let mut reads: Vec<String> = Vec::new();
+    let mut writes: Vec<String> = Vec::new();
+    fn expr_reads(e: &IrExpr, reads: &mut Vec<String>) {
+        match e {
+            IrExpr::Reg(r, _) => reads.push(r.to_lowercase()),
+            IrExpr::Unary(_, inner, _) => expr_reads(inner, reads),
+            IrExpr::Binary(_, l, r, _) => {
+                expr_reads(l, reads);
+                expr_reads(r, reads);
+            }
+            IrExpr::Load { ptr, .. } => expr_reads(ptr, reads),
+            IrExpr::Ternary {
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
+                expr_reads(cond, reads);
+                expr_reads(true_val, reads);
+                expr_reads(false_val, reads);
+            }
+            IrExpr::Call { target, args, .. } => {
+                expr_reads(target, reads);
+                for a in args {
+                    expr_reads(a, reads);
+                }
+            }
+            IrExpr::Const(_) | IrExpr::StringLit(_) | IrExpr::StackVar { .. } => {}
+        }
+    }
+    fn stmt_reads_writes(s: &IrStmt, reads: &mut Vec<String>, writes: &mut Vec<String>) {
+        match s {
+            IrStmt::Assign { dst, src } => {
+                expr_reads(src, reads);
+                if let IrExpr::Reg(r, _) = dst {
+                    writes.push(r.to_lowercase());
+                }
+                if let IrExpr::StackVar { .. } = dst {}
+            }
+            IrStmt::Store { ptr, val, .. } => {
+                expr_reads(ptr, reads);
+                expr_reads(val, reads);
+            }
+            IrStmt::DivRem {
+                quot_dst,
+                rem_dst,
+                dividend_high,
+                dividend_low,
+                divisor,
+                ..
+            } => {
+                expr_reads(dividend_high, reads);
+                expr_reads(dividend_low, reads);
+                expr_reads(divisor, reads);
+                if let IrExpr::Reg(r, _) = quot_dst {
+                    writes.push(r.to_lowercase());
+                }
+                if let IrExpr::Reg(r, _) = rem_dst {
+                    writes.push(r.to_lowercase());
+                }
+            }
+            IrStmt::Call {
+                target, args, ret_dst, ..
+            } => {
+                expr_reads(target, reads);
+                for a in args {
+                    expr_reads(a, reads);
+                }
+                if let Some(IrExpr::Reg(r, _)) = ret_dst {
+                    writes.push(r.to_lowercase());
+                }
+            }
+            IrStmt::Branch { cond, .. } => {
+                if let Some(c) = cond {
+                    expr_reads(c, reads);
+                }
+            }
+            IrStmt::IndirectBranch { target } => expr_reads(target, reads),
+            IrStmt::Return(Some(e)) => expr_reads(e, reads),
+            _ => {}
+        }
+    }
+    fn walk(nodes: &[StructuredNode], reads: &mut Vec<String>, writes: &mut Vec<String>) {
+        for n in nodes {
+            match n {
+                StructuredNode::Block(b) => {
+                    for s in &b.stmts {
+                        stmt_reads_writes(s, reads, writes);
+                    }
+                }
+                StructuredNode::If { cond, then, otherwise } => {
+                    expr_reads(cond, reads);
+                    walk(then, reads, writes);
+                    walk(otherwise, reads, writes);
+                }
+                StructuredNode::While { cond, body } | StructuredNode::DoWhile { cond, body } => {
+                    expr_reads(cond, reads);
+                    walk(body, reads, writes);
+                }
+                StructuredNode::Return(Some(e)) => expr_reads(e, reads),
+                StructuredNode::Switch { selector, .. } => expr_reads(selector, reads),
+                _ => {}
+            }
+        }
+    }
+    walk(body, &mut reads, &mut writes);
+
+    let mut params: Vec<String> = Vec::new();
+    let mut written: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for r in reads {
+        if !written.contains(&r) && !params.contains(&r) {
+            params.push(r);
+        }
+    }
+    for w in writes {
+        written.insert(w);
+    }
+    // Re-scan in order: the first pass above counted a read of a register the
+    // body only wrote EARLIER in a nested arm; do a proper ordered pass.
+    params.clear();
+    written.clear();
+    let mut seen_order: Vec<String> = Vec::new();
+    fn ordered_walk(
+        nodes: &[StructuredNode],
+        params: &mut Vec<String>,
+        written: &mut std::collections::BTreeSet<String>,
+    ) {
+        fn expr_reads_ordered(
+            e: &IrExpr,
+            params: &mut Vec<String>,
+            written: &std::collections::BTreeSet<String>,
+        ) {
+            match e {
+                IrExpr::Reg(r, _) => {
+                    let r = r.to_lowercase();
+                    if !written.contains(&r) && !params.contains(&r) {
+                        params.push(r);
+                    }
+                }
+                IrExpr::Unary(_, inner, _) => expr_reads_ordered(inner, params, written),
+                IrExpr::Binary(_, l, r, _) => {
+                    expr_reads_ordered(l, params, written);
+                    expr_reads_ordered(r, params, written);
+                }
+                IrExpr::Load { ptr, .. } => expr_reads_ordered(ptr, params, written),
+                IrExpr::Ternary {
+                    cond,
+                    true_val,
+                    false_val,
+                    ..
+                } => {
+                    expr_reads_ordered(cond, params, written);
+                    expr_reads_ordered(true_val, params, written);
+                    expr_reads_ordered(false_val, params, written);
+                }
+                IrExpr::Call { target, args, .. } => {
+                    expr_reads_ordered(target, params, written);
+                    for a in args {
+                        expr_reads_ordered(a, params, written);
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn stmt_ordered(
+            s: &IrStmt,
+            params: &mut Vec<String>,
+            written: &mut std::collections::BTreeSet<String>,
+        ) {
+            match s {
+                IrStmt::Assign { dst, src } => {
+                    expr_reads_ordered(src, params, written);
+                    if let IrExpr::Reg(r, _) = dst {
+                        written.insert(r.to_lowercase());
+                    }
+                }
+                IrStmt::Store { ptr, val, .. } => {
+                    expr_reads_ordered(ptr, params, written);
+                    expr_reads_ordered(val, params, written);
+                }
+                IrStmt::DivRem {
+                    quot_dst,
+                    rem_dst,
+                    dividend_high,
+                    dividend_low,
+                    divisor,
+                    ..
+                } => {
+                    expr_reads_ordered(dividend_high, params, written);
+                    expr_reads_ordered(dividend_low, params, written);
+                    expr_reads_ordered(divisor, params, written);
+                    if let IrExpr::Reg(r, _) = quot_dst {
+                        written.insert(r.to_lowercase());
+                    }
+                    if let IrExpr::Reg(r, _) = rem_dst {
+                        written.insert(r.to_lowercase());
+                    }
+                }
+                IrStmt::Call {
+                    target, args, ret_dst, ..
+                } => {
+                    expr_reads_ordered(target, params, written);
+                    for a in args {
+                        expr_reads_ordered(a, params, written);
+                    }
+                    if let Some(IrExpr::Reg(r, _)) = ret_dst {
+                        written.insert(r.to_lowercase());
+                    }
+                }
+                IrStmt::Branch { cond, .. } => {
+                    if let Some(c) = cond {
+                        expr_reads_ordered(c, params, written);
+                    }
+                }
+                IrStmt::IndirectBranch { target } => expr_reads_ordered(target, params, written),
+                IrStmt::Return(Some(e)) => expr_reads_ordered(e, params, written),
+                _ => {}
+            }
+        }
+        for n in nodes {
+            match n {
+                StructuredNode::Block(b) => {
+                    for s in &b.stmts {
+                        stmt_ordered(s, params, written);
+                    }
+                }
+                StructuredNode::If { cond, then, otherwise } => {
+                    expr_reads_ordered(cond, params, written);
+                    ordered_walk(then, params, written);
+                    ordered_walk(otherwise, params, written);
+                }
+                StructuredNode::While { cond, body } | StructuredNode::DoWhile { cond, body } => {
+                    expr_reads_ordered(cond, params, written);
+                    ordered_walk(body, params, written);
+                }
+                StructuredNode::Return(Some(e)) => expr_reads_ordered(e, params, written),
+                StructuredNode::Switch { selector, .. } => expr_reads_ordered(selector, params, written),
+                _ => {}
+            }
+        }
+    }
+    ordered_walk(body, &mut params, &mut written);
+    seen_order = params.clone();
+
+    // Locals: every register the body touches (or whose wider parent the
+    // emitted text touches — a `w0` write is printed as `x0 = ...`) that is
+    // not a param. The synthetic `return <ret_reg>` text can also mention the
+    // ret register without an IR read, so parents of touched sub-registers are
+    // included defensively.
+    let mut all: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut mentions: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    collect_reg_mentions(body, &mut mentions);
+    for m in mentions {
+        all.insert(m.clone());
+        let lower = m.to_lowercase();
+        if let Some((parent, _)) = crate::decompiler::codegen::sub_register_info(&lower) {
+            all.insert(parent.to_lowercase());
+        }
+    }
+    let locals: Vec<String> = all
+        .into_iter()
+        .filter(|r| !params.contains(r))
+        .collect();
+    let _ = &seen_order;
+    (params, locals)
+}
+
+fn body_has_unresolvable_jump(nodes: &[StructuredNode]) -> bool {
+    nodes.iter().any(|n| match n {
+        StructuredNode::Goto(_) | StructuredNode::Label(_) => true,
+        StructuredNode::If { then, otherwise, .. } => {
+            body_has_unresolvable_jump(then) || body_has_unresolvable_jump(otherwise)
+        }
+        StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+            body_has_unresolvable_jump(body)
+        }
+        _ => false,
+    })
+}
+
+/// Replace every `Goto(addr)` whose tail was extracted with a call to the
+/// helper. Non-void callers return the helper's value; void callers call it
+/// and return. The helper always transfers control like the original goto:
+/// every extracted tail ends in a `return` or a noreturn call, so control
+/// never comes back to code after the call site.
+fn replace_gotos(
+    nodes: Vec<StructuredNode>,
+    repl: &std::collections::HashMap<u64, &TailHelper>,
+    ret_void: bool,
+) -> Vec<StructuredNode> {
+    nodes
+        .into_iter()
+        .map(|n| match n {
+            StructuredNode::Goto(addr) if repl.contains_key(&addr) => {
+                let h = repl[&addr];
+                let args: Vec<IrExpr> = h
+                    .params
+                    .iter()
+                    .map(|(name, is_ptr)| {
+                        if *is_ptr {
+                            // Stack-pointer params are pointers in the caller;
+                            // the call passes them through unchanged.
+                            IrExpr::Reg(name.clone(), IrType::Int64)
+                        } else {
+                            IrExpr::Reg(name.clone(), IrType::Int64)
+                        }
+                    })
+                    .collect();
+                let call_expr = IrExpr::Call {
+                    target: Box::new(IrExpr::Const(0)),
+                    name: Some(h.name.clone()),
+                    args: args.clone(),
+                    ret_ty: IrType::Int64,
+                };
+                if ret_void {
+                    // Void function: call the tail helper, then return.
+                    StructuredNode::Block(IrBlock {
+                        id: 0,
+                        start_address: 0,
+                        end_address: 0,
+                        stmts: vec![
+                            IrStmt::Call {
+                                target: IrExpr::Const(0),
+                                name: Some(h.name.clone()),
+                                args,
+                                ret_dst: None,
+                            },
+                            IrStmt::Return(None),
+                        ],
+                    })
+                } else {
+                    StructuredNode::Return(Some(call_expr))
+                }
+            }
+            StructuredNode::If { cond, then, otherwise } => StructuredNode::If {
+                cond,
+                then: replace_gotos(then, repl, ret_void),
+                otherwise: replace_gotos(otherwise, repl, ret_void),
+            },
+            StructuredNode::While { cond, body } => StructuredNode::While {
+                cond,
+                body: replace_gotos(body, repl, ret_void),
+            },
+            StructuredNode::DoWhile { cond, body } => StructuredNode::DoWhile {
+                cond,
+                body: replace_gotos(body, repl, ret_void),
+            },
+            other => other,
+        })
+        .collect()
+}
+
+/// Extract every still-referenced shared exit tail into a [`TailHelper`] and
+/// rewrite its goto sites into helper calls. Returns the rewritten node list
+/// and the helpers (in address order, for stable output).
+pub fn extract_tail_helpers(
+    nodes: Vec<StructuredNode>,
+    ret_void: bool,
+) -> (Vec<StructuredNode>, Vec<TailHelper>) {
+    let mut regions: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    for (i, n) in nodes.iter().enumerate() {
+        if let StructuredNode::Label(a) = n {
+            regions.entry(*a).or_insert(i);
+        }
+    }
+    let mut refs: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    goto_refs(&nodes, &mut refs);
+    if refs.is_empty() {
+        return (nodes, Vec::new());
+    }
+
+    let mut helpers: Vec<TailHelper> = Vec::new();
+    let mut by_addr: std::collections::HashMap<u64, TailHelper> = std::collections::HashMap::new();
+    let mut addrs: Vec<u64> = refs.keys().copied().collect();
+    addrs.sort_unstable();
+    for addr in addrs {
+        let Some(&idx) = regions.get(&addr) else {
+            continue;
+        };
+        let mut budget = MAX_JOIN_STMTS;
+        let Some(mut body) = try_region(&nodes, idx, &regions, 0, &mut budget) else {
+            continue;
+        };
+        // A tail may end in an explicit Goto to another join (the cyclic
+        // epilogue chain). Splice that join's region in place of the goto —
+        // same rule the inliner applies to fall-throughs — so the helper body
+        // is self-contained. Bounded by budget and a visited set.
+        let mut spliced: Vec<StructuredNode> = Vec::new();
+        let mut queue: Vec<StructuredNode> = body.drain(..).collect();
+        let mut visited: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+        visited.insert(addr);
+        queue.reverse();
+        while let Some(n) = queue.pop() {
+            match n {
+                StructuredNode::Goto(u) if regions.contains_key(&u) && visited.insert(u) => {
+                    let Some(&ui) = regions.get(&u) else {
+                        continue;
+                    };
+                    let mut b2 = MAX_JOIN_STMTS;
+                    if let Some(part) = try_region(&nodes, ui, &regions, 0, &mut b2) {
+                        for p in part.into_iter().rev() {
+                            queue.push(p);
+                        }
+                    } else {
+                        // Not splicable: keep the goto; the label survives at
+                        // its original site, so the helper would dangle. Give
+                        // up on this tail rather than emit a cross-function
+                        // jump.
+                        spliced.clear();
+                        break;
+                    }
+                }
+                other => spliced.push(other),
+            }
+        }
+        let body = spliced;
+        if body.is_empty() || body_has_unresolvable_jump(&body) {
+            continue;
+        }
+        let (params_raw, locals) = classify_tail_regs(&body);
+        let params: Vec<(String, bool)> = params_raw
+            .into_iter()
+            .map(|r| {
+                let is_ptr = STACK_PTR_REGS.contains(&r.as_str());
+                (r, is_ptr)
+            })
+            .collect();
+        let name = format!("tail_{addr:08x}");
+        let h = TailHelper {
+            name: name.clone(),
+            params,
+            locals,
+            body,
+        };
+        by_addr.insert(addr, h.clone());
+        helpers.push(h);
+    }
+    if helpers.is_empty() {
+        return (nodes, helpers);
+    }
+
+    let repl: std::collections::HashMap<u64, &TailHelper> =
+        by_addr.iter().map(|(k, v)| (*k, v)).collect();
+    let rewritten = replace_gotos(nodes, &repl, ret_void);
+    (rewritten, helpers)
 }
