@@ -6,18 +6,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +56,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     // Set when Patch All is pressed on a plugin whose patches deserve a
     // confirmation (generic symbol names could match benign functions).
     var confirmPatchAllFor by remember { mutableStateOf<LoadedPlugin?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -80,6 +88,9 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showEditor = true }) {
+                        Icon(Icons.Default.Code, contentDescription = "Rhai Editor", tint = AmberAccent)
+                    }
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Quick Rule", tint = colors.primary)
                     }
@@ -265,6 +276,13 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                 }
             }
         }
+    }
+
+    if (showEditor) {
+        RhaiEditorDialog(
+            viewModel = viewModel,
+            onClose = { showEditor = false }
+        )
     }
 
     if (showAddDialog) {
@@ -622,6 +640,170 @@ private fun PluginFindingRow(
                         modifier = Modifier.height(30.dp)
                     ) {
                         Text(patchLabel, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class RhaiTemplate(val title: String, val description: String, val script: String)
+
+private val RHAI_TEMPLATES = listOf(
+    RhaiTemplate(
+        "Starter",
+        "Report each symbol matching a name you type",
+        """let syms = find_symbols("your_symbol");
+for s in syms {
+  report("My Finding", s.address, "MEDIUM", "Matched " + s.name);
+}"""
+    ),
+    RhaiTemplate(
+        "String hunt",
+        "Report every string containing a keyword",
+        """let hits = find_strings("keyword");
+for h in hits {
+  report("String Hit", h.address, "INFO", h.value);
+}"""
+    ),
+    RhaiTemplate(
+        "Callers of a function",
+        "Trace who calls an import, optionally patch",
+        """let syms = find_symbols("target_function");
+for s in syms {
+  let xrefs = get_xrefs(s.address);
+  for x in xrefs {
+    report_patch("Caller of " + s.name, x.from, "HIGH", x.instruction, "quick", "nop");
+  }
+}"""
+    ),
+    RhaiTemplate(
+        "Instruction pattern",
+        "Disassemble a function and match a mnemonic",
+        """let syms = find_symbols("JNI_OnLoad");
+for s in syms {
+  let insns = disasm(s.address, 128);
+  for ins in insns {
+    if ins.mnemonic == "svc" || ins.mnemonic == "syscall" {
+      report("Direct Syscall", ins.address, "HIGH", ins.mnemonic + " " + ins.op_str);
+    }
+  }
+}"""
+    )
+)
+
+@Composable
+private fun RhaiEditorDialog(
+    viewModel: ELFTraceViewModel,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val colors = LocalELFTraceColors.current
+    var script by rememberSaveable { mutableStateOf(RHAI_TEMPLATES[0].script) }
+    var template by rememberSaveable { mutableStateOf(RHAI_TEMPLATES[0].title) }
+    var autoRun by rememberSaveable { mutableStateOf(true) }
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.border),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .padding(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    text = "Rhai Editor",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Write a script, save it as a plugin, run it against the loaded binary.",
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                )
+
+                // Template picker
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(RHAI_TEMPLATES.size) { idx ->
+                        val t = RHAI_TEMPLATES[idx]
+                        FilterChip(
+                            selected = template == t.title,
+                            onClick = {
+                                template = t.title
+                                script = t.script
+                            },
+                            label = { Text(t.title, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                Text(
+                    text = RHAI_TEMPLATES.first { it.title == template }.description,
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+                )
+
+                // Script editor — a plain scrollable text field, mono font.
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.bg,
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    BasicTextField(
+                        value = script,
+                        onValueChange = { script = it },
+                        textStyle = androidx.compose.material3.LocalTextStyle.current.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = colors.textPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(10.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${script.length} chars",
+                        color = colors.textSecondary,
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onClose) {
+                        Text("Close", color = colors.textSecondary)
+                    }
+                    Button(
+                        onClick = {
+                            val manifest = viewModel.importPluginJson(script.trim()).getOrNull()
+                            if (manifest == null) {
+                                Toast.makeText(context, "Empty script — nothing to save", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Saved as \"${manifest.name}\"", Toast.LENGTH_SHORT).show()
+                                if (autoRun) viewModel.runPlugin(manifest.id)
+                                onClose()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text("Save & Run", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
