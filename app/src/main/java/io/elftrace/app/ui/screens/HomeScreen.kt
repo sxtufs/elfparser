@@ -426,6 +426,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                                 }
                             }
                         }
+                        Spacer(Modifier.height(4.dp))
                     }
                 },
                 confirmButton = {
