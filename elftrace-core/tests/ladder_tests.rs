@@ -206,3 +206,48 @@ fn test_poweramp_jni_onload_shared_tail_inlined() {
         total_gotos
     );
 }
+
+/// Regression: return-value synthesis for shared tails. The classic error
+/// tail is `log(); x19 = -1; <epilogue>; return a0;` and its full expansion
+/// exceeds the 16-stmt inline cap, so every error site kept a single goto.
+/// With exit-block dataflow the tail's provable constant return (w19 = "-1"
+/// forwarded to w0/a0) is synthesized per site as `x19 = -1; a0 = x19;
+/// return a0;` — the gotos disappear without duplicating the epilogue.
+#[test]
+fn test_poweramp_jni_onload_return_value_synthesized() {
+    let Some(path) = fixture_path() else {
+        eprintln!("SKIP: libpowerampcore.so not found");
+        return;
+    };
+    let ctx = ElfContext::open(path.to_str().unwrap()).expect("open libpowerampcore.so");
+    let info = ctx.get_info().expect("get_info");
+    let sym = info
+        .syms
+        .iter()
+        .find(|s| s.sym == "JNI_OnLoad")
+        .expect("JNI_OnLoad symbol");
+
+    let structured = decompile_to_c_structured(&ctx, sym.value);
+
+    // Most error sites now return inline instead of jumping to the log tail.
+    let log_tail_gotos = count_occurrences(&structured, "goto loc_0020960c;");
+    assert!(
+        log_tail_gotos <= 1,
+        "log-tail gotos were not synthesized away: {} sites still goto loc_0020960c",
+        log_tail_gotos
+    );
+
+    let synthesized = count_occurrences(&structured, "return a0;");
+    assert!(
+        synthesized >= 10,
+        "expected >=10 synthesized returns, found {}",
+        synthesized
+    );
+
+    let total_gotos = count_occurrences(&structured, "goto loc_");
+    assert!(
+        total_gotos <= 16,
+        "goto count regressed: {} (synthesis should keep it <=16)",
+        total_gotos
+    );
+}

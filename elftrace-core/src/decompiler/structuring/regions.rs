@@ -623,9 +623,9 @@ fn fallback_to_gotos(func: &IrFunction, _graph: &CfGraph) -> Vec<StructuredNode>
     // Inline shared tails to a (bounded) fixpoint: one expansion can itself
     // end in a goto to another inlinable shared tail (e.g. the canary-fail
     // block behind an error tail).
-    let mut nodes = collapse_early_exit_ladder(inline_shared_joins(nodes));
+    let mut nodes = collapse_early_exit_ladder(inline_shared_joins_with_ret(nodes, &func.ret_reg));
     for _ in 0..2 {
-        nodes = collapse_early_exit_ladder(inline_shared_joins(nodes));
+        nodes = collapse_early_exit_ladder(inline_shared_joins_with_ret(nodes, &func.ret_reg));
     }
     nodes
 }
@@ -760,7 +760,222 @@ fn try_region(
     None
 }
 
+fn has_plain_return(nodes: &[StructuredNode]) -> bool {
+    nodes.iter().any(|n| match n {
+        StructuredNode::Return(_) => true,
+        StructuredNode::Block(b) => b.stmts.iter().any(|s| matches!(s, IrStmt::Return(_))),
+        StructuredNode::If { then, otherwise, .. } => {
+            has_plain_return(then) || has_plain_return(otherwise)
+        }
+        _ => false,
+    })
+}
+
+/// Simulate the linear region that starts at `label_idx` and, if the function
+/// provably returns a constant there, return the minimal statement sequence
+/// that materializes that return. This is exit-block dataflow for the classic
+/// error tail `log(); ret_reg = -1; <epilogue restores>; return ret_reg;`:
+/// assignments are logged in order, and at the `return <reg>` the log is
+/// walked backwards to collect only the assignments the returned register
+/// depends on (e.g. `x19 = -1; a0 = x19;`). The walk stops at a Call, a
+/// memory Load in the dependency chain or an unknown expression — those bails
+/// keep the synthesis conservative. Label-free Ifs are transparent when their
+/// arms end in a noreturn call (the canary check) so the fall-through path
+/// continues; falling into a further label splices that region.
+fn const_return_stmts(
+    top: &[StructuredNode],
+    label_idx: usize,
+    regions: &std::collections::HashMap<u64, usize>,
+    ret_reg: &str,
+) -> Option<Vec<IrStmt>> {
+    let mut log: Vec<IrStmt> = Vec::new();
+    let mut i = label_idx + 1;
+    while i < top.len() {
+        match &top[i] {
+            StructuredNode::Block(b) => {
+                for s in &b.stmts {
+                    match s {
+                        // A bare return: the emitter prints `return a0;` for
+                        // it, so the provable value is whatever the logged
+                        // assigns most recently put into the return register
+                        // (x0) or its sub-register (w0).
+                        IrStmt::Return(None) => {
+                            let mut candidates = [ret_reg.to_string(), String::new()];
+                            candidates[1] = if let Some(stripped) = ret_reg.strip_prefix('x') {
+                                format!("w{}", stripped)
+                            } else {
+                                String::new()
+                            };
+                            let start = log.iter().rev().find_map(|a| match a {
+                                IrStmt::Assign {
+                                    dst: IrExpr::Reg(r, _),
+                                    ..
+                                } if candidates.contains(r) => Some(r.clone()),
+                                _ => None,
+                            });
+                            let mut picked = match start {
+                                Some(r) => resolve_chain(&log, &r)?,
+                                None => return None,
+                            };
+                            picked.push(IrStmt::Return(None));
+                            return Some(picked);
+                        }
+                        IrStmt::Return(Some(v)) => {
+                            // Backward chain walk over the logged assigns;
+                            // the explicit return's own expression comes last.
+                            let (mut picked, needs_ret) = match v {
+                                IrExpr::Reg(r, _) => (resolve_chain(&log, r)?, true),
+                                IrExpr::Const(_) => (Vec::new(), true),
+                                _ => return None,
+                            };
+                            if needs_ret {
+                                picked.push(IrStmt::Return(Some(v.clone())));
+                            }
+                            return Some(picked);
+                        }
+                        IrStmt::Assign {
+                            dst: IrExpr::Reg(_, _),
+                            ..
+                        }
+                        | IrStmt::Store { .. } => log.push(s.clone()),
+                        _ => {}
+                    }
+                }
+                if block_terminates(b) {
+                    // Ends in a noreturn call: control never reaches a return
+                    // through this path (a Return was already handled above).
+                    return None;
+                }
+            }
+            StructuredNode::If {
+                then, otherwise, ..
+            } => {
+                // Label-free control flow is not required here: an arm that
+                // contains no Return and ends in a noreturn call (the canary
+                // check `if (flags_cond) loc_FAIL: __stack_chk_fail();`) is a
+                // dead end, so the fall-through path continues after the If.
+                if has_plain_return(then) || has_plain_return(otherwise) {
+                    return None;
+                }
+            }
+            StructuredNode::Label(u) => {
+                // Fall-through into the next join: continue in its region.
+                let &ui = regions.get(u)?;
+                i = ui;
+            }
+            // A top-level Return of a register is not preceded by the label's
+            // own assignments in this walk (they live in earlier regions);
+            // without a chain the synthesis is not provable here.
+            StructuredNode::Return(_) => return None,
+            // Goto to unknown code / loops / switches: not a proven exit.
+            _ => {
+                return None;
+            }
+        }
+        i += 1;
+    }
+    // The walk exhausted the region without an explicit Return: the emitter
+    // appends an implicit `return <ret_reg>;` at function end, so the tail
+    // still provably returns — resolve the chain for that register instead.
+    if let Some(mut picked) = resolve_chain(&log, ret_reg) {
+        picked.push(IrStmt::Return(Some(IrExpr::Reg(
+            ret_reg.to_string(),
+            IrType::Int64,
+        ))));
+        return Some(picked);
+    }
+    None
+}
+
+/// Canonical key for a pointer expression (load/store slot identity).
+fn ptr_key(e: &IrExpr) -> String {
+    format!("{:?}", e)
+}
+
+/// What the backward chain walk is still looking for: a register copy or a
+/// value that was stored to a stack slot (and must be found in a Store).
+enum Need {
+    Reg(String),
+    Mem(String),
+}
+
+/// Walk the logged assignments backwards and return the minimal statement
+/// sequence that materializes `ret_reg` as a constant. Follows register
+/// copies and store→load forwarding through stack slots (the AArch64 epilogue
+/// restores callee-saved regs via the stack: `x19 = -1; store; ...; a0 =
+/// load;`). Any non-const/non-reg value, or a Call/DivRem sitting between the
+/// copies, makes the result unprovable.
+fn resolve_chain(log: &[IrStmt], ret_reg: &str) -> Option<Vec<IrStmt>> {
+    let mut needed = Need::Reg(ret_reg.to_string());
+    let mut picked: Vec<IrStmt> = Vec::new();
+    for a in log.iter().rev() {
+        match (&needed, a) {
+            (
+                Need::Reg(d),
+                IrStmt::Assign {
+                    dst: IrExpr::Reg(r, _),
+                    src,
+                },
+            ) if r == d => match src {
+                IrExpr::Const(_) | IrExpr::StringLit(_) => {
+                    picked.push(a.clone());
+                    needed = Need::Reg(String::new()); // satisfied sentinel
+                }
+                IrExpr::Reg(nr, _) => {
+                    picked.push(a.clone());
+                    needed = Need::Reg(nr.clone());
+                }
+                IrExpr::Load { ptr, .. } => {
+                    picked.push(a.clone());
+                    needed = Need::Mem(ptr_key(ptr));
+                }
+                _ => return None,
+            },
+            (Need::Mem(slot), IrStmt::Store { ptr, val, .. }) if ptr_key(ptr) == *slot => {
+                match val {
+                    IrExpr::Const(_) | IrExpr::StringLit(_) => {
+                        picked.push(a.clone());
+                        needed = Need::Reg(String::new());
+                    }
+                    IrExpr::Reg(nr, _) => {
+                        picked.push(a.clone());
+                        needed = Need::Reg(nr.clone());
+                    }
+                    _ => return None,
+                }
+            }
+            (Need::Reg(d), IrStmt::Call { .. }) | (Need::Reg(d), IrStmt::DivRem { .. })
+                if !d.is_empty() =>
+            {
+                // May clobber the chain: give up.
+                return None;
+            }
+            (Need::Mem(_), IrStmt::Call { .. }) => {
+                return None;
+            }
+            _ => {}
+        }
+        if let Need::Reg(d) = &needed {
+            if d.is_empty() {
+                break;
+            }
+        }
+    }
+    match needed {
+        Need::Reg(ref d) if d.is_empty() => {}
+        _ => return None,
+    }
+    picked.reverse();
+    Some(picked)
+}
+
 pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
+    inline_shared_joins_with_ret(nodes, "x0")
+}
+
+/// Like [`inline_shared_joins`], with the function's return register so
+/// tails ending in a bare `return` can be synthesized per site.
+pub fn inline_shared_joins_with_ret(nodes: Vec<StructuredNode>, ret_reg: &str) -> Vec<StructuredNode> {
     // Top-level label -> index of its Label node (first occurrence wins).
     let mut regions: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
     for (i, n) in nodes.iter().enumerate() {
@@ -797,16 +1012,32 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
             }
         }
     }
+    // Join regions whose full expansion was refused (over the size cap) but
+    // whose exit value is a proven constant: each goto site can simply become
+    // a synthesized `return` (with its minimal assignment chain) instead of
+    // duplicating the whole epilogue.
+    let mut ret_syn: std::collections::HashMap<u64, Vec<IrStmt>> =
+        std::collections::HashMap::new();
+    for (&addr, &n) in &refs {
+        if n >= 2 && !matches!(memo.get(&addr), Some(Some(_))) {
+            if let Some(&idx) = regions.get(&addr) {
+                if let Some(stmts) = const_return_stmts(&nodes, idx, &regions, &ret_reg) {
+                    ret_syn.insert(addr, stmts);
+                }
+            }
+        }
+    }
     // Replace all refs to an inlinable join except the LAST one (in walk
     // order), so the label stays referenced and its body reachable as before.
     let mut remaining: std::collections::HashMap<u64, usize> = refs
         .into_iter()
-        .filter(|(a, _)| matches!(memo.get(a), Some(Some(_))))
+        .filter(|(a, _)| matches!(memo.get(a), Some(Some(_))) || ret_syn.contains_key(a))
         .collect();
 
     fn subst(
         nodes: Vec<StructuredNode>,
         memo: &std::collections::HashMap<u64, Option<Vec<StructuredNode>>>,
+        ret_syn: &std::collections::HashMap<u64, Vec<IrStmt>>,
         remaining: &mut std::collections::HashMap<u64, usize>,
     ) -> Vec<StructuredNode> {
         nodes
@@ -824,6 +1055,13 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
                         vec![StructuredNode::Goto(t)]
                     } else if let Some(Some(exp)) = memo.get(&t) {
                         exp.clone()
+                    } else if let Some(stmts) = ret_syn.get(&t) {
+                        vec![StructuredNode::Block(IrBlock {
+                            id: 0,
+                            start_address: 0,
+                            end_address: 0,
+                            stmts: stmts.clone(),
+                        })]
                     } else {
                         vec![StructuredNode::Goto(t)]
                     }
@@ -834,19 +1072,19 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
                     otherwise,
                 } => vec![StructuredNode::If {
                     cond,
-                    then: subst(then, memo, remaining),
-                    otherwise: subst(otherwise, memo, remaining),
+                    then: subst(then, memo, ret_syn, remaining),
+                    otherwise: subst(otherwise, memo, ret_syn, remaining),
                 }],
                 StructuredNode::While { cond, body } => {
                     vec![StructuredNode::While {
                         cond,
-                        body: subst(body, memo, remaining),
+                        body: subst(body, memo, ret_syn, remaining),
                     }]
                 }
                 StructuredNode::DoWhile { cond, body } => {
                     vec![StructuredNode::DoWhile {
                         cond,
-                        body: subst(body, memo, remaining),
+                        body: subst(body, memo, ret_syn, remaining),
                     }]
                 }
                 other => vec![other],
@@ -854,7 +1092,7 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
             .collect()
     }
 
-    subst(nodes, &memo, &mut remaining)
+    subst(nodes, &memo, &ret_syn, &mut remaining)
 }
 
 /// Collapse the flat "early-exit ladder" pattern that `fallback_to_gotos`
@@ -984,4 +1222,10 @@ fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode>
     }
 
     out
+}
+
+#[cfg(test)]
+fn dbg_syn(so: &str, fa: u64) -> (usize, Vec<(u64, Option<usize>, Option<Vec<IrStmt>>)>) {
+    let _ = (so, fa);
+    (0, Vec::new())
 }
