@@ -597,18 +597,8 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         // Branch refs (b, b.cond, cbz, tbz) are excluded because
                         // neutralising them can change control flow.
                         val callers = xrefsList.filter { it.kind == "Call" }
+                        var confirmPatchAll by remember { mutableStateOf(false) }
                         if (callers.isNotEmpty()) {
-                            var confirmPatchAll by remember { mutableStateOf(false) }
-                            Button(
-                                onClick = { confirmPatchAll = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.card, contentColor = colors.primary),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Patch all ${callers.size} callers", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                            Spacer(Modifier.height(8.dp))
                             if (confirmPatchAll) {
                                 Text(
                                     "This NOPs the call at each caller site. Continue?",
@@ -661,7 +651,16 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             }
                         }
                         Spacer(Modifier.height(10.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (callers.isNotEmpty()) {
+                                TextButton(onClick = { confirmPatchAll = true }) {
+                                    Text("Patch all (${callers.size})", color = colors.annotation, fontWeight = FontWeight.Bold)
+                                }
+                            }
                             TextButton(onClick = { showXrefDialog = false }) {
                                 Text("Close", color = colors.primary)
                             }

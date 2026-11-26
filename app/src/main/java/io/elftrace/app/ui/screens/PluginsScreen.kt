@@ -322,6 +322,7 @@ private fun PluginCard(
 ) {
     val colors = LocalELFTraceColors.current
     val report = plugin.lastReport
+    val patchable = report?.findings?.count { it.patch != null } ?: 0
 
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.card),
@@ -390,6 +391,19 @@ private fun PluginCard(
                     }
                 }
 
+                if (patchable > 0) {
+                    Button(
+                        onClick = onPatchAll,
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.card, contentColor = colors.annotation),
+                        border = BorderStroke(1.dp, colors.border),
+                        shape = RoundedCornerShape(50),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("Patch all $patchable", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+
                 if (!plugin.isBuiltIn) {
                     IconButton(onClick = onRemove) {
                         Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
@@ -402,22 +416,8 @@ private fun PluginCard(
                 HorizontalDivider(color = colors.border)
                 Spacer(Modifier.height(8.dp))
 
-                // Batch-apply every finding that carries a patch. Shown only when
-                // there is at least one patchable finding, so the button never
-                // dangles with nothing to act on.
-                val patchable = report.findings.count { it.patch != null }
-                if (patchable > 0) {
-                    Button(
-                        onClick = onPatchAll,
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.card, contentColor = colors.primary),
-                        border = BorderStroke(1.dp, colors.primary),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Patch all " + patchable, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
+                // Batch-apply action lives as a small chip in the card header;
+                // nothing shown here when no finding carries a patch.
 
                 if (report.error != null) {
                     Text(
