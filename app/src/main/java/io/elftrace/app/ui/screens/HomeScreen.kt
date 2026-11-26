@@ -231,7 +231,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             ) {
                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
-                        text = "Inspector",
+                        text = "ELFTrace",
                         fontSize = 16.sp,
                         color = colors.textPrimary,
                         fontWeight = FontWeight.SemiBold
