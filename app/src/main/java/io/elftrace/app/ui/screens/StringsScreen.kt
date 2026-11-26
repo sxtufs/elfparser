@@ -123,6 +123,8 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
                             val codeAddr = xrefFor[item.vaddr]
                             if (codeAddr != null) {
                                 viewModel.jumpToStringReference(item.vaddr)
+                                viewModel.codeSubTab.value = 0
+                                viewModel.navigateTo(Screen.Code)
                             } else {
                                 selectedString = item
                                 viewModel.loadXrefsFor(item.vaddr) { list ->
