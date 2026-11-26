@@ -813,21 +813,25 @@ fn const_return_stmts(
                                 } if candidates.contains(r) => Some(r.clone()),
                                 _ => None,
                             });
-                            let mut picked = match start {
+                            let chain = match start {
                                 Some(r) => resolve_chain(&log, &r)?,
                                 None => return None,
                             };
+                            let mut picked = leading_calls(&log, &chain);
+                            picked.extend(chain);
                             picked.push(IrStmt::Return(None));
                             return Some(picked);
                         }
                         IrStmt::Return(Some(v)) => {
                             // Backward chain walk over the logged assigns;
                             // the explicit return's own expression comes last.
-                            let (mut picked, needs_ret) = match v {
+                            let (chain, needs_ret) = match v {
                                 IrExpr::Reg(r, _) => (resolve_chain(&log, r)?, true),
                                 IrExpr::Const(_) => (Vec::new(), true),
                                 _ => return None,
                             };
+                            let mut picked = leading_calls(&log, &chain);
+                            picked.extend(chain);
                             if needs_ret {
                                 picked.push(IrStmt::Return(Some(v.clone())));
                             }
@@ -838,6 +842,13 @@ fn const_return_stmts(
                             ..
                         }
                         | IrStmt::Store { .. } => log.push(s.clone()),
+                        // A call in the tail (the shared `__android_log_print`
+                        // before the error return) is observable behavior: it is
+                        // logged so it can be prepended to the synthesized
+                        // per-site sequence. It is never resolved through —
+                        // `resolve_chain` bails when it meets a Call while it
+                        // still needs a register or memory slot.
+                        IrStmt::Call { .. } => log.push(s.clone()),
                         _ => {}
                     }
                 }
@@ -877,7 +888,9 @@ fn const_return_stmts(
     // The walk exhausted the region without an explicit Return: the emitter
     // appends an implicit `return <ret_reg>;` at function end, so the tail
     // still provably returns — resolve the chain for that register instead.
-    if let Some(mut picked) = resolve_chain(&log, ret_reg) {
+    if let Some(chain) = resolve_chain(&log, ret_reg) {
+        let mut picked = leading_calls(&log, &chain);
+        picked.extend(chain);
         picked.push(IrStmt::Return(Some(IrExpr::Reg(
             ret_reg.to_string(),
             IrType::Int64,
@@ -885,6 +898,25 @@ fn const_return_stmts(
         return Some(picked);
     }
     None
+}
+
+/// Calls the shared tail executes before the first statement of the resolved
+/// return chain are part of the tail's observable behavior (an error log
+/// printed before the return) and are prepended to the per-site synthesis.
+/// Calls sitting between chain statements are left out — reordering them is
+/// not provably safe.
+fn leading_calls(log: &[IrStmt], chain: &[IrStmt]) -> Vec<IrStmt> {
+    let cutoff = chain
+        .first()
+        .and_then(|first| log.iter().position(|l| l == first));
+    match cutoff {
+        Some(cut) => log[..cut]
+            .iter()
+            .filter(|l| matches!(l, IrStmt::Call { .. }))
+            .cloned()
+            .collect(),
+        None => Vec::new(),
+    }
 }
 
 /// Canonical key for a pointer expression (load/store slot identity).

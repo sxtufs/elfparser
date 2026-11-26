@@ -715,7 +715,7 @@ fn emit_block_stmts(
 fn count_gotos(nodes: &[StructuredNode], count: &mut usize) {
     for n in nodes {
         match n {
-            StructuredNode::Goto(_) | StructuredNode::Label(_) => *count += 1,
+            StructuredNode::Goto(_) => *count += 1,
             StructuredNode::Block(b) => {
                 for s in &b.stmts {
                     if let IrStmt::Branch { .. } = s {
