@@ -85,6 +85,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val isDarkMode = MutableStateFlow(prefs.getBoolean(KEY_DARK_MODE, true)) // Light / Dark mode toggle
 
     val currentFileName = MutableStateFlow("")
+    /** One-shot error when a binary fails to open, shown as a toast. */
+    val openError = MutableStateFlow<String?>(null)
 
     private val _entropyReport = MutableStateFlow<EntropyReport?>(null)
     val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
@@ -333,7 +335,10 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     fun loadElf(path: String, fileName: String = "", knownKey: String? = null) {
         viewModelScope.launch(nativeDispatcher) {
             currentFileName.value = if (fileName.isNotEmpty()) fileName else File(path).name
-            val newBridge = JNIBridge.open(path) ?: return@launch
+            val newBridge = JNIBridge.open(path) ?: run {
+                openError.value = "Could not open ${File(path).name} — unsupported format or not enough memory"
+                return@launch
+            }
             // We are already on the single native thread, so no lock is needed.
             // Close the previous bridge before swapping it out.
             val old = _bridge.value

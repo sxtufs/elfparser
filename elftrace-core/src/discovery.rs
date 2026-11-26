@@ -29,6 +29,11 @@ pub const MAX_SCANNED_BYTES: u64 = 32 * 1024 * 1024;
 /// Upper bound on the number of discovered functions (keeps the symbol table,
 /// the JSON response and the UI list bounded).
 pub const MAX_FUNCTIONS: usize = 40_000;
+/// Hard cap on recovered string references. A packed 100+ MB binary can
+/// otherwise produce millions of adrp/add pairs, and the report JSON (and the
+/// Kotlin-side list built from it) grows past the phone's heap and kills the
+/// process. The cap keeps the Recover Functions pass bounded on any input.
+pub const MAX_STRING_REFS: usize = 100_000;
 /// A function guessed only by the distance to the next start is never given a
 /// span larger than this; real code is far smaller and a 32 KiB span would
 /// swallow unrelated bytes.
@@ -688,12 +693,12 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     }
     // String refs: adrp+add/ldr into .rodata (and .data.rel.ro) where a
     // NUL-terminated printable string lives.
-    let ro_sections: Vec<(u64, Vec<u8>)> = obj_file
+    let ro_sections: Vec<(u64, &[u8])> = obj_file
         .sections()
         .filter_map(|s| {
             let n = s.name().unwrap_or("");
             if matches!(n, ".rodata" | ".data.rel.ro" | ".data") {
-                s.data().ok().map(|d| (s.address(), d.to_vec()))
+                s.data().ok().map(|d| (s.address(), d))
             } else {
                 None
             }
@@ -720,11 +725,11 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
         false
     };
     let mut string_refs = Vec::new();
-    for (base, data) in &regions {
+    'refs: for (base, data) in &regions {
         if *base as usize + data.len() > u32::MAX as usize {
             continue; // bound 32-bit decoding to 32-bit address spaces
         }
-        string_refs.extend(scan_string_refs_aarch64(
+        for r in scan_string_refs_aarch64(
             *base,
             data,
             (
@@ -732,7 +737,12 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
                 ro_sections.last().map(|(b, d)| b + d.len() as u64).unwrap_or(0),
             ),
             looks_like_string,
-        ));
+        ) {
+            if string_refs.len() >= MAX_STRING_REFS {
+                break 'refs;
+            }
+            string_refs.push(r);
+        }
     }
     string_refs.sort();
     string_refs.dedup();
@@ -742,11 +752,11 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
         obj_file
             .sections()
             .find(|s| s.name().unwrap_or("") == ".data.rel.ro")
-            .and_then(|s| s.data().ok().map(|d| (s.address(), d.to_vec()))),
+            .and_then(|s| s.data().ok().map(|d| (s.address(), d))),
         obj_file
             .sections()
             .find(|s| s.name().unwrap_or("") == ".rodata")
-            .and_then(|s| s.data().ok().map(|d| (s.address(), d.to_vec()))),
+            .and_then(|s| s.data().ok().map(|d| (s.address(), d))),
     ) {
         let exec: Vec<(u64, u64)> = regions.iter().map(|(b, d)| (*b, d.len() as u64)).collect();
         // RELATIVE relocation addends: in the file image .data.rel.ro pointers
@@ -767,7 +777,7 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
                 }
             }
         }
-        report.vtables = scan_vtables((drr.0, &drr.1), &exec, (ro.0, &ro.1), &relocs);
+        report.vtables = scan_vtables(drr, &exec, ro, &relocs);
     }
     report
 }

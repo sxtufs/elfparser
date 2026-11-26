@@ -61,6 +61,14 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     val currentFileName by viewModel.currentFileName.collectAsState()
     val recentSessions by viewModel.recentSessions.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
+    val openError by viewModel.openError.collectAsState()
+
+    LaunchedEffect(openError) {
+        openError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.openError.value = null
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
     var showBookmarksDialog by remember { mutableStateOf(false) }
 
