@@ -32,19 +32,25 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
     var search by remember { mutableStateOf("") }
     var selectedString by remember { mutableStateOf<StringItem?>(null) }
     var xrefsList by remember { mutableStateOf<List<XRefItem>>(emptyList()) }
+    var refFilter by remember { mutableStateOf("all") }
     val stringXrefs by viewModel.stringXrefs.collectAsState()
     val xrefFor = remember(stringXrefs) {
         stringXrefs.associate { it.strAddr to it.codeAddr }
     }
 
     val cleanHex = search.trim().removePrefix("0x").removePrefix("0X")
-    val filtered = remember(search, stringsList) {
-        if (search.isBlank()) stringsList
+    val filtered = remember(search, stringsList, refFilter, xrefFor) {
+        val base = if (search.isBlank()) stringsList
         else {
             stringsList.filter { item ->
                 item.string.contains(search, ignoreCase = true) ||
                 (cleanHex.isNotEmpty() && "%08X".format(item.vaddr).contains(cleanHex, ignoreCase = true))
             }
+        }
+        when (refFilter) {
+            "refd" -> base.filter { xrefFor.containsKey(it.vaddr) }
+            "unrefd" -> base.filter { !xrefFor.containsKey(it.vaddr) }
+            else -> base
         }
     }
 
@@ -73,6 +79,29 @@ fun StringsScreen(viewModel: ELFTraceViewModel) {
         )
 
         Spacer(Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip(
+                selected = refFilter == "all",
+                onClick = { refFilter = "all" },
+                label = { Text("All", fontSize = 11.sp) }
+            )
+            FilterChip(
+                selected = refFilter == "refd",
+                onClick = { refFilter = "refd" },
+                label = { Text("Referenced", fontSize = 11.sp) }
+            )
+            FilterChip(
+                selected = refFilter == "unrefd",
+                onClick = { refFilter = "unrefd" },
+                label = { Text("Unreferenced", fontSize = 11.sp) }
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

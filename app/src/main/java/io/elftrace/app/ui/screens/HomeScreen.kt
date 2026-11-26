@@ -529,7 +529,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf("all" to "All", "funcs" to "Functions", "jni" to "JNI").forEach { (key, label) ->
+                listOf("all" to "All", "funcs" to "Functions", "classes" to "Classes", "jni" to "JNI").forEach { (key, label) ->
                     FilterChip(
                         selected = symFilter == key,
                         onClick = { symFilter = key },
@@ -545,6 +545,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 info.syms.filter { sym ->
                     val matchesTab = when (symFilter) {
                         "funcs" -> sym.value != 0L
+                        "classes" -> sym.displayName.startsWith("vtable for ") || sym.displayName.contains("::vf")
                         "jni" -> sym.isJni
                         else -> true
                     }
