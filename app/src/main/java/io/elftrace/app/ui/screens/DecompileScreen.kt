@@ -120,7 +120,7 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
 
     val displayedText = remember(decompileCode, decompileStructured, decompileMode) {
         val base = when (decompileMode) {
-            2 -> decompileStructured.ifEmpty { "// Structuring… (or no structured output for this function)" }
+            2 -> decompileStructured.ifEmpty { "// No structured output for this function" }
             0 -> decompileCode.ifEmpty { "// Select a function to decompile" }
             else -> decompileCode.ifEmpty { "// Select a function to decompile" }
         }

@@ -369,56 +369,59 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
         if (showBookmarksDialog) {
             AlertDialog(
                 onDismissRequest = { showBookmarksDialog = false },
-                title = { Text("Bookmarks", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
                 text = {
-                    if (bookmarks.isEmpty()) {
-                        Text(
-                            "No bookmarks yet. Open a function and tap the star in the Code header.",
-                            fontSize = 12.sp
-                        )
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .heightIn(max = 380.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            bookmarks.forEach { bookmark ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            showBookmarksDialog = false
-                                            viewModel.navigateTo(Screen.Code)
-                                            viewModel.selectFunction(bookmark.address, bookmark.name)
-                                        }
-                                        .padding(vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = bookmark.name,
-                                            fontSize = 12.sp,
-                                            color = colors.primary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "0x%08X".format(bookmark.address),
-                                            fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = colors.textSecondary
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.removeBookmark(bookmark.id) },
-                                        modifier = Modifier.size(26.dp)
+                    Column {
+                        Text("Bookmarks", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        if (bookmarks.isEmpty()) {
+                            Text(
+                                "No bookmarks yet. Open a function and tap the star in the Code header.",
+                                fontSize = 12.sp
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 300.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                bookmarks.forEach { bookmark ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                showBookmarksDialog = false
+                                                viewModel.navigateTo(Screen.Code)
+                                                viewModel.selectFunction(bookmark.address, bookmark.name)
+                                            }
+                                            .padding(vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Remove bookmark",
-                                            tint = colors.textSecondary,
-                                            modifier = Modifier.size(13.dp)
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = bookmark.name,
+                                                fontSize = 12.sp,
+                                                color = colors.primary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "0x%08X".format(bookmark.address),
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.removeBookmark(bookmark.id) },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove bookmark",
+                                                tint = colors.textSecondary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

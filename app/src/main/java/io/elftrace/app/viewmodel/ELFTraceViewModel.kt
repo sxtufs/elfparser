@@ -350,6 +350,10 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             _navStack.value = emptyList()
             _canGoBack.value = false
 
+            // Drop reports from the previous binary so the Plugins tab starts
+            // clean instead of showing stale findings until the next run.
+            _plugins.value = _plugins.value.map { it.copy(lastReport = null) }
+
             // Key the workspace by content, not by path: the picker copies every
             // file to the same cache path, so a path key would mix binaries.
             sessionKey = knownKey ?: try {
