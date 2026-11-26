@@ -1,7 +1,7 @@
 //! Structured C Pseudocode Emitter.
 
 use super::StructuredNode;
-use crate::decompiler::codegen::CodeGenerator;
+use crate::decompiler::codegen::{is_valid_c_ident, CodeGenerator};
 use crate::decompiler::ir::{IrBlock, IrExpr, IrFunction, IrStmt, IrType};
 use std::collections::{HashMap, HashSet};
 
@@ -75,8 +75,37 @@ pub fn emit_structured_c(
         }
     }
 
+    // 2. Declare local variables
+    // Extern declarations for every named function this decompiled function
+    // calls. The emitted C only includes stdint.h/stddef.h, so without these
+    // every external call is an implicit declaration (-Werror). Variadic
+    // int64_t prototypes compile for any call shape; the libc-memory
+    // denylist keeps gcc's built-in prototypes intact.
+    let mut extern_calls: Vec<String> = Vec::new();
+    collect_extern_calls(nodes, &mut extern_calls);
+    for name in &extern_calls {
+        match LIBC_PROTO.iter().find(|(n, _)| n == name) {
+            Some((_, proto)) => out.push_str(&format!("extern {};\n", proto)),
+            None => out.push_str(&format!("extern int64_t {}();\n", name)),
+        }
+    }
+    if !extern_calls.is_empty() {
+        out.push('\n');
+    }
+
     let ret_c = func.ret_type.to_c_type();
-    let params_str = if func.inferred_params.is_empty() {
+    // JNI entrypoints (JNI_OnLoad, Java_*) reuse x0 freely across pointer and
+    // integer values (JNIEnv*, then jint returns), so type params as int64_t —
+    // same rule as the linear codegen path. Pointer-typed params in
+    // general functions keep their pointer type.
+    let is_jni = func.name.contains("JNI_OnLoad") || func.name.starts_with("Java_");
+    let params_str = if is_jni {
+        func.inferred_params
+            .iter()
+            .map(|p| format!("int64_t {}", p.name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else if func.inferred_params.is_empty() {
         "void".to_string()
     } else {
         func.inferred_params
@@ -456,6 +485,35 @@ fn emit_block_stmts(
                     {
                         src_str = format!("(int64_t)(uintptr_t)({})", src_str);
                     }
+                    // String literals assigned to an integer destination
+                    // (e.g. adrp+add resolved to a .rodata address) must be
+                    // cast to an integer, otherwise the C compiler rejects
+                    // `x1 = "...";` as char* -> int64_t.
+                    if matches!(src, IrExpr::StringLit(_)) && !dst_str.contains('*') {
+                        src_str = format!("(int64_t)(uintptr_t)({})", src_str);
+                    }
+                    // A pointer-cast source (e.g. `(int64_t*)x20`, the JNIEnv
+                    // vtable load) assigned to a scalar register must go
+                    // through uintptr_t, or the C compiler rejects it as a
+                    // pointer -> integer conversion.
+                    if src_str.contains("*)(") || (src_str.contains("*)") && !src_str.contains(" *("))
+                    {
+                        if !dst_str.contains('*') {
+                            src_str = format!("(int64_t)(uintptr_t)({})", src_str);
+                        }
+                    }
+                    // A pointer-typed source register (a pointer param in a
+                    // non-JNI function) assigned to a scalar local must be
+                    // cast down, like `x20 = a0;`.
+                    if !dst_str.contains('*') {
+                        if let Some(p) = func
+                            .inferred_params
+                            .iter()
+                            .find(|p| p.name == src_str && p.is_ptr)
+                        {
+                            src_str = format!("({})(uintptr_t){}", p.ty.to_c_type(), src_str);
+                        }
+                    }
                     out.push_str(&format!("{}{}{} = {};\n", ind_str, "", dst_str, src_str));
                 }
             }
@@ -511,22 +569,51 @@ fn emit_block_stmts(
                 args,
                 ret_dst,
             } => {
+                let proto_args = if args.is_empty() {
+                    "void".to_string()
+                } else {
+                    vec!["uint64_t"; args.len()].join(", ")
+                };
                 let call_name = match (name.as_ref(), target) {
+                    // A "name" that is really a local register (indirect call
+                    // through a callee-saved register holding a vtable entry,
+                    // e.g. `x8`) must become a function-pointer cast, not a
+                    // direct call of a variable.
+                    (Some(n), _) if !is_valid_c_ident(n) => match target {
+                        IrExpr::Const(addr) => {
+                            format!("((void(*)({}))0x{:x})", proto_args, addr)
+                        }
+                        other => {
+                            let inner = codegen.format_expr(
+                                other,
+                                param_map,
+                                func.base_stack_offset,
+                                func.inferred_params.len(),
+                            );
+                            format!("((void(*)({}))(uintptr_t){})", proto_args, inner)
+                        }
+                    },
+                    (Some(n), _) if looks_like_register_name(n) => {
+                        let inner = n.clone();
+                        format!("((int64_t(*)({}))(uintptr_t){})", proto_args, inner)
+                    }
                     (Some(n), _) => n.clone(),
                     (None, IrExpr::Const(addr)) => {
-                        let proto_args = if args.is_empty() {
-                            "void".to_string()
-                        } else {
-                            vec!["uint64_t"; args.len()].join(", ")
-                        };
                         format!("((void(*)({}))0x{:x})", proto_args, addr)
                     }
-                    (None, other) => codegen.format_expr(
-                        other,
-                        param_map,
-                        func.base_stack_offset,
-                        func.inferred_params.len(),
-                    ),
+                    (None, other) => {
+                        // Indirect call with no resolved name (e.g. the JNI
+                        // vtable `x8` loaded from the JNIEnv): must become a
+                        // function-pointer cast, a bare `x8(...)` is a
+                        // "called object is not a function" error.
+                        let inner = codegen.format_expr(
+                            other,
+                            param_map,
+                            func.base_stack_offset,
+                            func.inferred_params.len(),
+                        );
+                        format!("((int64_t(*)({}))(uintptr_t){})", proto_args, inner)
+                    }
                 };
                 let formatted_args = args
                     .iter()
@@ -870,4 +957,62 @@ pub fn prune_unused_labels(body: String) -> String {
         result.push_str(line);
     }
     result
+}
+
+/// Names that gcc treats as built-ins: declaring them variadically would
+/// conflict, so they get their real libc prototypes instead.
+const LIBC_PROTO: &[(&str, &str)] = &[
+    ("memcpy", "void *memcpy(void *, const void *, unsigned long)"),
+    ("memmove", "void *memmove(void *, const void *, unsigned long)"),
+    ("memset", "void *memset(void *, int, unsigned long)"),
+    ("memcmp", "int memcmp(const void *, const void *, unsigned long)"),
+    ("strlen", "unsigned long strlen(const char *)"),
+    ("strcpy", "char *strcpy(char *, const char *)"),
+    ("strncpy", "char *strncpy(char *, const char *, unsigned long)"),
+    ("strcat", "char *strcat(char *, const char *)"),
+    ("strcmp", "int strcmp(const char *, const char *)"),
+    ("strncmp", "int strncmp(const char *, const char *, unsigned long)"),
+];
+
+/// True for plain register-shaped names (x0, w19, q8, v3): a call "name" like
+/// this is an indirect call through a local register, not a symbol.
+fn looks_like_register_name(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    let b = lower.as_bytes();
+    b.len() >= 2
+        && matches!(b[0], b'x' | b'w' | b'q' | b'v' | b'd' | b's' | b'h' | b'b')
+        && b[1..].iter().all(|c| c.is_ascii_digit())
+        && s.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+}
+
+/// Collect the names of every called function in the node tree, deduped in
+/// first-appearance order, skipping register-shaped names (those are emitted
+/// as function-pointer casts and need no declaration).
+fn collect_extern_calls(nodes: &[StructuredNode], out: &mut Vec<String>) {
+    for n in nodes {
+        match n {
+            StructuredNode::Block(b) => {
+                for s in &b.stmts {
+                    if let IrStmt::Call { name, .. } = s {
+                        if let Some(nm) = name {
+                            if is_valid_c_ident(nm)
+                                && !looks_like_register_name(nm)
+                                && !out.contains(nm)
+                            {
+                                out.push(nm.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            StructuredNode::If { then, otherwise, .. } => {
+                collect_extern_calls(then, out);
+                collect_extern_calls(otherwise, out);
+            }
+            StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
+                collect_extern_calls(body, out);
+            }
+            _ => {}
+        }
+    }
 }

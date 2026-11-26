@@ -1281,7 +1281,7 @@ fn collect_expr_regs(
 /// Returns true if `s` is a syntactically valid C identifier that can appear as a
 /// function name in emitted C. Rejects C++ demangled names like
 /// "operator new(unsigned long)" which contain characters invalid in C identifiers.
-fn is_valid_c_ident(s: &str) -> bool {
+pub(crate) fn is_valid_c_ident(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
