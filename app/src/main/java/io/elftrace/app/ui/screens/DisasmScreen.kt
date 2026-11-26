@@ -395,7 +395,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
@@ -447,7 +447,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
@@ -475,7 +475,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             },
                             enabled = undoDepth > 0,
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
@@ -502,7 +502,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 }
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.55f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
