@@ -658,7 +658,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             if (callers.isNotEmpty()) {
                                 TextButton(onClick = { confirmPatchAll = true }) {
-                                    Text("Patch all (${callers.size})", color = colors.annotation, fontWeight = FontWeight.Bold)
+                                    Text("Patch All", color = colors.annotation, fontWeight = FontWeight.Bold)
                                 }
                             }
                             TextButton(onClick = { showXrefDialog = false }) {
