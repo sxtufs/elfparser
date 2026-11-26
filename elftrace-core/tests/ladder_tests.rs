@@ -167,3 +167,42 @@ fn aarch64_compiler() -> Option<(&'static str, &'static [&'static str])> {
     }
     None
 }
+
+/// Regression: shared tails that terminate in a `return` living INSIDE a Block
+/// (the fallback emitter stores IrStmt::Return among block statements) were
+/// never recognized as terminators by the join-inliner, so sites jumping to
+/// the `x19 = -1` error tail (loc_00209610) kept their gotos. With the
+/// terminator fix the tail is spliced into each site and only the last goto
+/// remains.
+#[test]
+fn test_poweramp_jni_onload_shared_tail_inlined() {
+    let Some(path) = fixture_path() else {
+        eprintln!("SKIP: libpowerampcore.so not found");
+        return;
+    };
+    let ctx = ElfContext::open(path.to_str().unwrap()).expect("open libpowerampcore.so");
+    let info = ctx.get_info().expect("get_info");
+    let sym = info
+        .syms
+        .iter()
+        .find(|s| s.sym == "JNI_OnLoad")
+        .expect("JNI_OnLoad symbol");
+
+    let structured = decompile_to_c_structured(&ctx, sym.value);
+    let tail_gotos = count_occurrences(&structured, "goto loc_00209610;");
+    assert!(
+        tail_gotos <= 1,
+        "shared `x19 = -1` error tail was not inlined: {} sites still goto loc_00209610",
+        tail_gotos
+    );
+
+    // The inlining must not bloat the output: the 16-stmt expansion cap keeps
+    // long cascading tails (the whole epilogue chain) as single gotos instead
+    // of duplicating them into every site.
+    let total_gotos = count_occurrences(&structured, "goto loc_");
+    assert!(
+        total_gotos < 200,
+        "goto count exploded to {} — expansion cap not applying",
+        total_gotos
+    );
+}

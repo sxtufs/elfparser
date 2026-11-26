@@ -620,7 +620,14 @@ fn fallback_to_gotos(func: &IrFunction, _graph: &CfGraph) -> Vec<StructuredNode>
         }
     }
 
-    collapse_early_exit_ladder(inline_shared_joins(nodes))
+    // Inline shared tails to a (bounded) fixpoint: one expansion can itself
+    // end in a goto to another inlinable shared tail (e.g. the canary-fail
+    // block behind an error tail).
+    let mut nodes = collapse_early_exit_ladder(inline_shared_joins(nodes));
+    for _ in 0..2 {
+        nodes = collapse_early_exit_ladder(inline_shared_joins(nodes));
+    }
+    nodes
 }
 
 /// Eliminate gotos to *shared join blocks* (the classic error-tail pattern:
@@ -639,6 +646,36 @@ fn fallback_to_gotos(func: &IrFunction, _graph: &CfGraph) -> Vec<StructuredNode>
 /// in place at the original region.
 const MAX_JOIN_DEPTH: usize = 6;
 const MAX_JOIN_STMTS: usize = 64;
+/// Cap on the size of a tail duplicated into each goto site: keeps the error-
+/// tail expansions compact and refuses cascading ones (a shared tail that
+/// splices a long chain of downstream regions) that would bloat the output.
+const MAX_INLINE_STMTS: usize = 16;
+
+/// Calls that never return: a Block ending in one terminates control flow, so
+/// a shared tail can stop there instead of splicing the (often cyclic) code
+/// that happens to follow the abort in the layout.
+fn is_noreturn_call(stmt: &IrStmt) -> bool {
+    const NORETURN: &[&str] = &[
+        "__stack_chk_fail",
+        "abort",
+        "__assert_fail",
+        "__android_log_assert",
+        "__stack_chk_fail_rt",
+    ];
+    match stmt {
+        IrStmt::Call { name: Some(n), .. } => {
+            NORETURN.iter().any(|k| n.ends_with(k))
+        }
+        IrStmt::Trap => true,
+        _ => false,
+    }
+}
+
+fn block_terminates(b: &IrBlock) -> bool {
+    b.stmts
+        .last()
+        .is_some_and(|s| matches!(s, IrStmt::Return(_)) || is_noreturn_call(s))
+}
 
 fn goto_refs(nodes: &[StructuredNode], refs: &mut std::collections::HashMap<u64, usize>) {
     for n in nodes {
@@ -689,6 +726,11 @@ fn try_region(
             StructuredNode::Block(b) => {
                 *budget = budget.checked_sub(b.stmts.len().max(1))?;
                 out.push(top[i].clone());
+                // A Block ending in `return` or a noreturn call is a
+                // terminator: control never falls through to the next label.
+                if block_terminates(b) {
+                    return Some(out);
+                }
             }
             StructuredNode::If { then, otherwise, .. } => {
                 if contains_label(then) || contains_label(otherwise) {
@@ -739,7 +781,19 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
         if n >= 2 {
             if let Some(&idx) = regions.get(&addr) {
                 let mut budget = MAX_JOIN_STMTS;
-                memo.insert(addr, try_region(&nodes, idx, &regions, 0, &mut budget));
+                memo.insert(addr, try_region(&nodes, idx, &regions, 0, &mut budget).filter(|exp| {
+                    let stmts: usize = exp
+                        .iter()
+                        .map(|n| match n {
+                            StructuredNode::Block(b) => b.stmts.len().max(1),
+                            StructuredNode::If { then, otherwise, .. } => {
+                                then.len() + otherwise.len()
+                            }
+                            _ => 1,
+                        })
+                        .sum();
+                    stmts <= MAX_INLINE_STMTS
+                }));
             }
         }
     }
