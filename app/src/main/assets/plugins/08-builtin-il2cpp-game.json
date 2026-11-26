@@ -3,7 +3,7 @@
   "name": "Unity Il2Cpp & Game Engine",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects Unity Il2Cpp runtime exports and Unreal Engine (UE4/UE5) symbols.",
+  "description": "Unity IL2CPP metadata, global-metadata and game-engine markers.",
   "rules": [
     {
       "name": "il2cpp_init",

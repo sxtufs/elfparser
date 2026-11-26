@@ -3,7 +3,7 @@
   "name": "License, IAP & Premium Checks",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Locates common entitlement, subscription, and license verification symbols.",
+  "description": "License and IAP checks: billing symbols, premium flags, signature checks.",
   "rules": [
     {
       "name": "isPremium / isPro",
@@ -11,7 +11,11 @@
       "pattern": "isPremium",
       "severity": "HIGH",
       "description": "Premium entitlement check",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     },
     {
       "name": "isSubscribed",
@@ -19,7 +23,11 @@
       "pattern": "isSubscribed",
       "severity": "HIGH",
       "description": "Subscription status check",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     },
     {
       "name": "checkLicense",
@@ -27,7 +35,11 @@
       "pattern": "checkLicense",
       "severity": "HIGH",
       "description": "License verification routine",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     },
     {
       "name": "verifyPurchase",
@@ -35,7 +47,11 @@
       "pattern": "verifyPurchase",
       "severity": "HIGH",
       "description": "In-app purchase verification",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     }
   ]
 }

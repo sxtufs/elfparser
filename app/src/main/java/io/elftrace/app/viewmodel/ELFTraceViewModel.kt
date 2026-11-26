@@ -80,9 +80,6 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val pluginsListState = androidx.compose.foundation.lazy.LazyListState()
     val expandedPluginId = MutableStateFlow<String?>(null)
 
-    /** Auto-run all enabled plugins when a binary finishes loading (session-only). */
-    val autoRunPlugins = MutableStateFlow(false)
-
     /** Persisted across launches in a private SharedPreferences file. */
     private val prefs = app.getSharedPreferences("elftrace_prefs", Context.MODE_PRIVATE)
     val isDarkMode = MutableStateFlow(prefs.getBoolean(KEY_DARK_MODE, true)) // Light / Dark mode toggle
@@ -398,8 +395,6 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             selectFunction(firstAddr, firstName, pushHistory = false)
             _stringsList.value = b.getStrings()
             _entropyReport.value = b.getEntropyReport()
-
-            if (autoRunPlugins.value) runAllEnabledPlugins()
         }
     }
 

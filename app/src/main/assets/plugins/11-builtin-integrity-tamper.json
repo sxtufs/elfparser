@@ -3,7 +3,7 @@
   "name": "Integrity, Signature & Emulator",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects APK signature checks, /proc/self/maps memory integrity, and emulator/hook checks.",
+  "description": "APK signature and integrity probes: /proc/self/maps, checksums, signer checks.",
   "rules": [
     {
       "name": "checkSignature",

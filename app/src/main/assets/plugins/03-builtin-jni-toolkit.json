@@ -1,0 +1,8 @@
+{
+  "id": "builtin-jni-toolkit",
+  "name": "JNI Toolkit",
+  "version": "1.0",
+  "author": "ELFTrace",
+  "description": "JNI entrypoints, Java_ exports, call sites and the registered method table.",
+  "script": "let entry = find_symbols(\"JNI_OnLoad\");\nfor s in entry {\n  report(\"JNI_OnLoad Entry\", s.address, \"INFO\", \"Size: \" + s.size + \" bytes\");\n  let insns = disasm(s.address, 256);\n  let n = insns.len();\n  for i in 0..n {\n    let ins = insns[i];\n    if ins.mnemonic == \"bl\" || ins.mnemonic == \"blr\" {\n      report(\"JNI_OnLoad Call\", ins.address, \"INFO\", ins.mnemonic + \" \" + ins.op_str);\n    }\n    if ins.op_str.contains(\"0x6b8\") || ins.op_str.contains(\"0x35c\") {\n      let dispatched = false;\n      let j = i + 1;\n      while j < n && j <= i + 32 {\n        let m = insns[j].mnemonic;\n        if m == \"blr\" || m == \"bl\" {\n          dispatched = true;\n          break;\n        }\n        j += 1;\n      }\n      if dispatched {\n        report(\"RegisterNatives VTable\", ins.address, \"HIGH\", ins.mnemonic + \" \" + ins.op_str + \" (call dispatch follows)\");\n      }\n    }\n  }\n}\nlet exports = find_symbols(\"Java_\");\nfor s in exports {\n  if s.name.starts_with(\"Java_\") {\n    report(\"Java_ Export\", s.address, \"INFO\", s.name);\n  }\n}\nlet methods = find_jni_methods();\nfor m in methods {\n  report(\"JNI: \" + m.name, m.address, \"HIGH\", m.signature);\n}\nlet strs = find_strings(\"RegisterNatives\");\nfor st in strs {\n  report(\"RegisterNatives String\", st.address, \"INFO\", st.value);\n}"
+}

@@ -3,7 +3,7 @@
   "name": "SSL Pinning & TLS Hooks",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects BoringSSL/OpenSSL certificate verification hooks and pinning strings.",
+  "description": "TLS/SSL certificate-pinning hooks, pinned-hash strings and BoringSSL verify symbols.",
   "rules": [
     {
       "name": "SSL_CTX_set_custom_verify",
@@ -11,7 +11,11 @@
       "pattern": "SSL_CTX_set_custom_verify",
       "severity": "HIGH",
       "description": "BoringSSL custom certificate verification callback",
-      "patch": { "mode": "quick", "value": "ret_void", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_void",
+        "offset": 0
+      }
     },
     {
       "name": "SSL_CTX_set_verify",
@@ -26,7 +30,11 @@
       "pattern": "SSL_get_verify_result",
       "severity": "HIGH",
       "description": "OpenSSL/BoringSSL verification result check",
-      "patch": { "mode": "quick", "value": "ret_false", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_false",
+        "offset": 0
+      }
     },
     {
       "name": "X509_verify_cert",
@@ -34,7 +42,11 @@
       "pattern": "X509_verify_cert",
       "severity": "MEDIUM",
       "description": "X.509 certificate chain verification",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     },
     {
       "name": "Pin Hash String",

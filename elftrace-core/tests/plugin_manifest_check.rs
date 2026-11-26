@@ -14,7 +14,7 @@ fn builtin_scripts_run_without_script_errors() {
         .expect("plugin dir")
         .map(|e| e.unwrap().path())
         .collect();
-    assert!(entries.len() >= 20, "expected >=20 manifests, got {}", entries.len());
+    assert!(entries.len() >= 16, "expected >=16 manifests, got {}", entries.len());
 
     for path in entries {
         let json = std::fs::read_to_string(&path).unwrap();

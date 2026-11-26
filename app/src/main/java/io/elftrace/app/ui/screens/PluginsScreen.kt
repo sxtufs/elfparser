@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
@@ -41,13 +42,10 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
     val loadErrors by viewModel.builtInLoadErrors.collectAsState()
 
     val expandedPluginId by viewModel.expandedPluginId.collectAsState()
-    val autoRun by viewModel.autoRunPlugins.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var ruleType by remember { mutableStateOf("symbol") }
     var rulePattern by remember { mutableStateOf("") }
     var rulePatch by remember { mutableStateOf("none") }
-    // Finding filter chips: all / HIGH only / patchable only.
-    var sevFilter by remember { mutableStateOf("all") }
     // Set when Patch All is pressed on a plugin whose patches deserve a
     // confirmation (generic symbol names could match benign functions).
     var confirmPatchAllFor by remember { mutableStateOf<LoadedPlugin?>(null) }
@@ -97,29 +95,6 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                     }
                 }
             }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Filter chips + auto-run toggle.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            listOf("all" to "All", "high" to "HIGH", "patch" to "Patchable").forEach { (key, label) ->
-                FilterChip(
-                    selected = sevFilter == key,
-                    onClick = { sevFilter = key },
-                    label = { Text(label, fontSize = 11.sp) }
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            FilterChip(
-                selected = autoRun,
-                onClick = { viewModel.autoRunPlugins.value = !autoRun },
-                label = { Text("Auto", fontSize = 11.sp) }
-            )
         }
 
         Spacer(Modifier.height(8.dp))
@@ -181,7 +156,6 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                 PluginCard(
                     plugin = plugin,
                     isExpanded = expandedPluginId == plugin.manifest.id,
-                    sevFilter = sevFilter,
                     onToggleExpand = {
                         val willExpand = expandedPluginId != plugin.manifest.id
                         viewModel.expandedPluginId.value = if (willExpand) plugin.manifest.id else null
@@ -403,7 +377,6 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
 private fun PluginCard(
     plugin: LoadedPlugin,
     isExpanded: Boolean,
-    sevFilter: String,
     onToggleExpand: () -> Unit,
     onRemove: () -> Unit,
     onJumpToAddress: (Long, String?, String) -> Unit,
@@ -413,13 +386,6 @@ private fun PluginCard(
     val colors = LocalELFTraceColors.current
     val report = plugin.lastReport
     val patchable = report?.findings?.count { it.patch != null } ?: 0
-    val visibleFindings = report?.findings?.filter {
-        when (sevFilter) {
-            "high" -> it.severity.equals("HIGH", ignoreCase = true)
-            "patch" -> it.patch != null
-            else -> true
-        }
-    } ?: emptyList()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.card),
@@ -446,8 +412,11 @@ private fun PluginCard(
                         Text(
                             text = plugin.manifest.description,
                             color = colors.textSecondary,
-                            fontSize = 11.5.sp,
-                            maxLines = 2
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            letterSpacing = 0.1.sp
                         )
                     }
                     Spacer(Modifier.height(4.dp))
@@ -522,10 +491,9 @@ private fun PluginCard(
                         color = RedAccent,
                         fontSize = 12.sp
                     )
-                } else if (visibleFindings.isEmpty()) {
+                } else if (report.findings.isEmpty()) {
                     Text(
-                        text = if (report.findings.isEmpty()) "No matches found for this plugin."
-                        else "No findings match this filter.",
+                        text = "No matches found for this plugin.",
                         color = colors.textSecondary,
                         fontSize = 12.sp
                     )
@@ -546,7 +514,7 @@ private fun PluginCard(
                         }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        visibleFindings.forEach { finding ->
+                        report.findings.forEach { finding ->
                             PluginFindingRow(
                                 finding = finding,
                                 onJump = { onJumpToAddress(finding.address, finding.symbol_name, finding.rule_type) },

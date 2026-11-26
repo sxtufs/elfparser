@@ -2,8 +2,11 @@
   "id": "builtin-liapp",
   "name": "LIAPP Protector",
   "version": "1.0",
-  "arch": ["arm", "aarch64"],
+  "arch": [
+    "arm",
+    "aarch64"
+  ],
   "author": "ELFTrace",
-  "description": "Detects Lockin LIAPP loader entries, anti-dump watchers, and traces callers to decision points.",
+  "description": "LIAPP packer markers and protection-stub patterns.",
   "script": "let strs = find_strings(\"libliapp.so\");\nfor st in strs {\n  report(\"LIAPP Identifier\", st.address, \"HIGH\", st.value);\n}\nlet is_liapp = strs.len() > 0;\nif is_liapp {\n  let inits = find_symbols(\"init_array_\");\n  for ini in inits {\n    report(\"LIAPP Loader Entry (\" + ini.name + \")\", ini.address, \"HIGH\", \"Constructor in .init_array (unpacks DEX & starts checks)\");\n  }\n  let apis = [\"inotify_rm_watch\", \"dl_iterate_phdr\", \"fork\", \"prctl\"];\n  for api in apis {\n    let syms = find_symbols(api);\n    for s in syms {\n      if s.name == api && s.address > 0 {\n        let xrefs = get_xrefs(s.address);\n        if xrefs.len() == 0 {\n          report(\"LIAPP Import: \" + api, s.address, \"MEDIUM\", \"PLT stub (called indirectly or via wrapper)\");\n        }\n        for x in xrefs {\n          report(\"LIAPP Calls \" + api, x.from, \"HIGH\", x.instruction);\n          if x.kind == \"Jump\" && x.from > 64 {\n            let win = disasm(x.from - 64, 64);\n            let wrap_start = -1;\n            let idx = 0;\n            while idx + 1 < win.len() {\n              let ins = win[idx];\n              let nxt = win[idx + 1];\n              let is_end = ins.mnemonic == \"b\" || ins.mnemonic == \"jmp\" || (ins.mnemonic == \"bx\" && ins.op_str == \"lr\") || (ins.mnemonic == \"ret\" && !nxt.op_str.contains(\"x30\") && !nxt.op_str.contains(\"lr\"));\n              if is_end {\n                wrap_start = nxt.address;\n              }\n              idx += 1;\n            }\n            if wrap_start > 0 {\n              let callers = get_xrefs(wrap_start);\n              for c in callers {\n                report(\"LIAPP Decision Site (\" + api + \")\", c.from, \"HIGH\", \"Calls wrapper \" + hex(wrap_start) + \" -> \" + c.instruction);\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}"
 }

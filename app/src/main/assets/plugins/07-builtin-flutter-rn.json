@@ -3,7 +3,7 @@
   "name": "Flutter & React Native",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects Flutter SSL pinning, Dart AOT snapshots (libapp.so), and React Native Hermes/JSI.",
+  "description": "Flutter engine and React Native bundle assets and symbols.",
   "rules": [
     {
       "name": "Flutter SSL Verify",
@@ -11,7 +11,11 @@
       "pattern": "ssl_crypto_x509_session_verify_cert_chain",
       "severity": "HIGH",
       "description": "Flutter BoringSSL certificate chain verification (libflutter.so)",
-      "patch": { "mode": "quick", "value": "ret_true", "offset": 0 }
+      "patch": {
+        "mode": "quick",
+        "value": "ret_true",
+        "offset": 0
+      }
     },
     {
       "name": "Dart Isolate Instructions",

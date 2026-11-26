@@ -3,7 +3,7 @@
   "name": "Root, Frida & Anti-Debug",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Finds common root, Frida, Xposed, and ptrace anti-tamper indicators.",
+  "description": "Anti-debug and Frida artifacts: ptrace, TracerPid checks, gadget/server files.",
   "rules": [
     {
       "name": "ptrace Symbol",
@@ -79,13 +79,6 @@
       "match_mode": "word_boundary",
       "severity": "INFO",
       "description": "Frida default TCP port 27042 (low signal)"
-    },
-    {
-      "name": "Magisk / Su String",
-      "type": "string",
-      "pattern": "/system/bin/su",
-      "severity": "MEDIUM",
-      "description": "Root binary path check"
     },
     {
       "name": "TracerPid Check",

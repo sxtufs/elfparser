@@ -3,7 +3,7 @@
   "name": "Play Integrity & Pairip",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects Google Play Integrity API and Pairip (AIP) native markers. Pairip indicates native VM code protection; the API alone only attests app/environment integrity.",
+  "description": "Play Integrity, SafetyNet and PairIP attestation markers.",
   "rules": [
     {
       "name": "Pairip (AIP) core library",
@@ -24,14 +24,14 @@
       "type": "string",
       "pattern": "setNonce",
       "severity": "INFO",
-      "description": "setNonce() reference — hints Classic request path"
+      "description": "setNonce() reference \u2014 hints Classic request path"
     },
     {
       "name": "Standard request (requestHash)",
       "type": "string",
       "pattern": "requestHash",
       "severity": "INFO",
-      "description": "requestHash reference — hints Standard request path"
+      "description": "requestHash reference \u2014 hints Standard request path"
     },
     {
       "name": "StandardIntegrityManager",

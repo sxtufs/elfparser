@@ -3,7 +3,7 @@
   "name": "Crypto & Key Material",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Locates embedded key material and hardcoded crypto tables (AES S-box, SHA-256/MD5 constants).",
+  "description": "Embedded cryptographic constants: AES tables, MD5/SHA inits, ChaCha20, Curve25519.",
   "rules": [
     {
       "name": "PEM Public Key",
@@ -17,7 +17,7 @@
       "type": "string",
       "pattern": "-----BEGIN RSA",
       "severity": "MEDIUM",
-      "description": "Embedded RSA key block (public or private; inspect to confirm — private keys are HIGH in the secrets plugin)"
+      "description": "Embedded RSA key block (public or private; inspect to confirm \u2014 private keys are HIGH in the secrets plugin)"
     },
     {
       "name": "AES S-Box Table",
@@ -52,14 +52,14 @@
       "type": "string",
       "pattern": "expand 32-byte k",
       "severity": "MEDIUM",
-      "description": "ChaCha20/Salsa20 sigma constant — stream cipher in use"
+      "description": "ChaCha20/Salsa20 sigma constant \u2014 stream cipher in use"
     },
     {
       "name": "Curve25519 Base Point",
       "type": "byte_pattern",
       "pattern": "09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
       "severity": "LOW",
-      "description": "Curve25519 base point (u-coordinate 9) — ECDH key exchange"
+      "description": "Curve25519 base point (u-coordinate 9) \u2014 ECDH key exchange"
     }
   ]
 }

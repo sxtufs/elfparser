@@ -1,8 +1,0 @@
-{
-  "id": "builtin-rhai-jni-inspector",
-  "name": "Rhai: JNI_OnLoad Calls",
-  "version": "1.0",
-  "author": "ELFTrace",
-  "description": "Rhai script that disassembles JNI_OnLoad and lists its outgoing branch/call targets.",
-  "script": "let syms = find_symbols(\"JNI_OnLoad\");\nfor s in syms {\n  report(\"JNI_OnLoad Entry\", s.address, \"INFO\", \"Size: \" + s.size + \" bytes\");\n  let insns = disasm(s.address, 128);\n  for ins in insns {\n    if ins.mnemonic == \"bl\" || ins.mnemonic == \"blr\" || ins.mnemonic == \"call\" {\n      report(\"JNI_OnLoad Call\", ins.address, \"INFO\", ins.mnemonic + \" \" + ins.op_str);\n    }\n  }\n}"
-}
