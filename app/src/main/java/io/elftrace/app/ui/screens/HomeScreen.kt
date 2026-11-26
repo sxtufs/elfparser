@@ -7,7 +7,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -25,7 +27,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -225,14 +229,20 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "Inspector",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontSize = 16.sp,
-                    color = colors.textPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                )
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "Inspector",
+                        fontSize = 16.sp,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Binary & APK analysis",
+                        fontSize = 10.5.sp,
+                        color = colors.textSecondary,
+                        lineHeight = 12.sp
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.toggleTheme() }) {
                         ThemeToggleIcon(isDark = colors.isDark, tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary)
@@ -532,23 +542,44 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             Spacer(Modifier.height(4.dp))
 
             AnimatedVisibility(visible = showSearch) {
-                OutlinedTextField(
+                var searchFocused by remember { mutableStateOf(false) }
+                BasicTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search Symbol or Address", fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp)) },
                     singleLine = true,
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = colors.textPrimary),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.primary,
-                        unfocusedBorderColor = colors.border,
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                        focusedLabelColor = colors.primary,
-                        unfocusedLabelColor = colors.textSecondary,
-                        cursorColor = colors.primary
-                    )
+                    cursorBrush = SolidColor(colors.primary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { searchFocused = it.isFocused },
+                    decorationBox = { inner ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .border(
+                                    1.dp,
+                                    if (searchFocused) colors.primary else colors.border,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .padding(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.weight(1f)) {
+                                if (searchQuery.isEmpty()) {
+                                    Text("Search Symbol or Address", fontSize = 13.sp, color = colors.textSecondary)
+                                }
+                                inner()
+                            }
+                        }
+                    }
                 )
             }
 
