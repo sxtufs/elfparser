@@ -228,8 +228,9 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 Text(
                     text = "Inspector",
                     style = MaterialTheme.typography.titleMedium,
+                    fontSize = 16.sp,
                     color = colors.textPrimary,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f).padding(end = 8.dp)
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -518,12 +519,12 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 IconButton(onClick = {
                     showSearch = !showSearch
                     if (!showSearch) searchQuery = ""
-                }, modifier = Modifier.size(32.dp)) {
+                }, modifier = Modifier.size(36.dp)) {
                     Icon(
                         if (showSearch) Icons.Default.Close else Icons.Default.Search,
                         contentDescription = if (showSearch) "Close Search" else "Search",
                         tint = colors.primary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -534,10 +535,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search Symbol or Address") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
+                    placeholder = { Text("Search Symbol or Address", fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = colors.textPrimary),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colors.primary,
                         unfocusedBorderColor = colors.border,

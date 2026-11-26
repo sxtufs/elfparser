@@ -199,11 +199,10 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
             )
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Three-way engine/filter switch:
-                //   Raw   (0) = linear pseudocode, untouched
+                // Two-way engine/filter switch:
                 //   Clean (1) = linear, minus (void)param; noise
                 //   Struct(2) = structured emitter (if/while/switch)
-                listOf(0 to "Raw", 1 to "Clean", 2 to "Struct").forEach { (mode, label) ->
+                listOf(1 to "Clean", 2 to "Struct").forEach { (mode, label) ->
                     val active = decompileMode == mode
                     Surface(
                         shape = RoundedCornerShape(6.dp),

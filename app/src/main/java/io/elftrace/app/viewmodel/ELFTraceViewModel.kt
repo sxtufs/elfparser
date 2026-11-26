@@ -272,7 +272,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     private val _decompileStructured = MutableStateFlow("")
     val decompileStructured: StateFlow<String> = _decompileStructured.asStateFlow()
 
-    /// 0 = Linear-Raw, 1 = Linear-Clean, 2 = Structured.
+    /// 1 = Linear-Clean, 2 = Structured (Raw was removed from the UI).
     private val _decompileMode = MutableStateFlow(1)
     val decompileMode: StateFlow<Int> = _decompileMode.asStateFlow()
 

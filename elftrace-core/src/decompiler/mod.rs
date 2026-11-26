@@ -340,13 +340,7 @@ pub fn generate_flowchart_text(ctx: &ElfContext, address: u64) -> String {
 
     let mut out = String::new();
     out.push_str(&format!("// CONTROL FLOW GRAPH: {}\n", fn_range.name));
-    out.push_str(&format!(
-        "// Blocks: {} | Size: {} bytes (0x{:08x} - 0x{:08x})\n\n",
-        blocks.len(),
-        fn_range.size,
-        fn_range.start,
-        fn_range.start + fn_range.size
-    ));
+    out.push_str(&format!("// {} blocks · {} B\n\n", blocks.len(), fn_range.size));
 
     for (idx, block) in blocks.iter().enumerate() {
         let b_start = block.first().unwrap().address;
