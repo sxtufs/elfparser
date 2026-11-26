@@ -46,6 +46,20 @@
       "pattern": "01 23 45 67 89 AB CD EF FE DC BA 98 76 54 32 10",
       "severity": "LOW",
       "description": "Standard MD5 initialization vector"
+    },
+    {
+      "name": "ChaCha20 Sigma Constant",
+      "type": "string",
+      "pattern": "expand 32-byte k",
+      "severity": "MEDIUM",
+      "description": "ChaCha20/Salsa20 sigma constant — stream cipher in use"
+    },
+    {
+      "name": "Curve25519 Base Point",
+      "type": "byte_pattern",
+      "pattern": "09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+      "severity": "LOW",
+      "description": "Curve25519 base point (u-coordinate 9) — ECDH key exchange"
     }
   ]
 }

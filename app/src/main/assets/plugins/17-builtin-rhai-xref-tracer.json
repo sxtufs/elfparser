@@ -1,8 +1,8 @@
 {
   "id": "builtin-rhai-xref-tracer",
   "name": "Rhai: Anti-Debug XRefs",
-  "version": "1.0",
+  "version": "1.1",
   "author": "ELFTrace",
-  "description": "Rhai script that traces callers of ptrace/kill/exit and suggests NOP patches.",
-  "script": "let targets = [\"ptrace\", \"prctl\"];\nfor t in targets {\n  let syms = find_symbols(t);\n  for s in syms {\n    if s.name == t || s.name.ends_with(\"::\" + t) {\n      let xrefs = get_xrefs(s.address);\n      for x in xrefs {\n        report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n      }\n    }\n  }\n}"
+  "description": "Traces callers of ptrace and offers NOP patches at the call site (skips the anti-debug check). prctl callers are reported without a patch — prctl is often used benignly (thread naming, PR_SET_VMA).",
+  "script": "let syms = find_symbols(\"ptrace\");\nfor s in syms {\n  if s.name == \"ptrace\" || s.name.ends_with(\"::ptrace\") {\n    let xrefs = get_xrefs(s.address);\n    for x in xrefs {\n      report_patch(\"Caller of \" + s.name, x.from, \"HIGH\", \"Calls \" + s.name + \" via \" + x.instruction, \"quick\", \"nop\");\n    }\n  }\n}\nlet prctl_syms = find_symbols(\"prctl\");\nfor s in prctl_syms {\n  if s.name == \"prctl\" || s.name.ends_with(\"::prctl\") {\n    let xrefs = get_xrefs(s.address);\n    for x in xrefs {\n      report(\"Caller of \" + s.name, x.from, \"MEDIUM\", \"Calls \" + s.name + \" via \" + x.instruction + \" (verify intent before patching)\");\n    }\n  }\n}"
 }

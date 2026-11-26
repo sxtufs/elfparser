@@ -80,6 +80,9 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val pluginsListState = androidx.compose.foundation.lazy.LazyListState()
     val expandedPluginId = MutableStateFlow<String?>(null)
 
+    /** Auto-run all enabled plugins when a binary finishes loading (session-only). */
+    val autoRunPlugins = MutableStateFlow(false)
+
     /** Persisted across launches in a private SharedPreferences file. */
     private val prefs = app.getSharedPreferences("elftrace_prefs", Context.MODE_PRIVATE)
     val isDarkMode = MutableStateFlow(prefs.getBoolean(KEY_DARK_MODE, true)) // Light / Dark mode toggle
@@ -395,6 +398,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             selectFunction(firstAddr, firstName, pushHistory = false)
             _stringsList.value = b.getStrings()
             _entropyReport.value = b.getEntropyReport()
+
+            if (autoRunPlugins.value) runAllEnabledPlugins()
         }
     }
 
@@ -874,9 +879,22 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
             _isRunningPlugins.value = true
+            var seen = HashSet<String>()
             val updated = _plugins.value.map { plugin ->
                 if (plugin.enabled) {
-                    plugin.copy(lastReport = b.runPlugin(plugin.rawJson))
+                    val report = b.runPlugin(plugin.rawJson)
+                    // Cross-plugin dedupe: keep only the first report of an
+                    // identical (address, rule, severity, patch) finding when
+                    // several plugins surface the same thing.
+                    val deduped = report.findings.filter { f ->
+                        val key = "${f.rule_type}:${f.address}:${f.severity}:" +
+                            (f.patch?.let { "${it.mode}=${it.value}@${it.offset}" } ?: "")
+                        seen.add(key)
+                    }
+                    plugin.copy(
+                        lastReport = if (deduped.size == report.findings.size) report
+                        else report.copy(findings = deduped, total_findings = deduped.size)
+                    )
                 } else {
                     plugin
                 }
