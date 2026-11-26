@@ -504,12 +504,15 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     OutlinedButton(
                         onClick = {
                             viewModel.recoverFunctions { res ->
+                                val total = res.known + res.added
                                 val msg = when {
                                     res.error != null -> res.error
-                                    res.added == 0 -> "No new functions — ${res.known} already known"
-                                    else -> "Recovered ${res.added} " +
+                                    res.added == 0 -> "No new functions ($total total)" +
+                                        (if (res.truncated) " — partial scan" else "")
+                                    else -> "Recovered ${res.added} new " +
                                         (if (res.added == 1) "function" else "functions") +
-                                        (if (res.truncated) " · partial scan" else "")
+                                        " ($total total)" +
+                                        (if (res.truncated) " — partial scan" else "")
                                 }
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
