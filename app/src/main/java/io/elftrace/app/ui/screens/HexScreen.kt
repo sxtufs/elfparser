@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -85,17 +84,11 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "VMA: 0x${"%08X".format(startAddress)}",
+                    text = "0x${"%08X".format(startAddress)}",
                     color = colors.primary,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "${hexBytes.size} B",
-                    color = colors.textSecondary,
-                    fontSize = 11.sp
                 )
             }
 
@@ -143,12 +136,6 @@ fun HexScreen(viewModel: ELFTraceViewModel) {
                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy Hex", tint = colors.textPrimary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(
-                    onClick = { viewModel.loadHexDump(startAddress, 2048) },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
-                }
             }
         }
 

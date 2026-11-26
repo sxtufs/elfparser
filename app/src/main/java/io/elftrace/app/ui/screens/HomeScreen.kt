@@ -17,6 +17,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
@@ -224,19 +225,13 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = "Binary & APK Inspector",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Open any .so, .apk, or split package directly",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = "Inspector",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.toggleTheme() }) {
                         ThemeToggleIcon(isDark = colors.isDark, tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary)
@@ -504,27 +499,9 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
             Spacer(Modifier.height(8.dp))
 
-            // Search Symbols or Address Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Search Symbol or Address") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.border,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary,
-                    focusedLabelColor = colors.primary,
-                    unfocusedLabelColor = colors.textSecondary,
-                    cursorColor = colors.primary
-                )
-            )
+            var showSearch by remember { mutableStateOf(false) }
 
-            Spacer(Modifier.height(6.dp))
-
+            // Filter chips row with collapsible search trigger at the right end
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -537,6 +514,40 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         label = { Text(label, fontSize = 11.sp) }
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = {
+                    showSearch = !showSearch
+                    if (!showSearch) searchQuery = ""
+                }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        if (showSearch) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = if (showSearch) "Close Search" else "Search",
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            AnimatedVisibility(visible = showSearch) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search Symbol or Address") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.primary) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary,
+                        focusedLabelColor = colors.primary,
+                        unfocusedLabelColor = colors.textSecondary,
+                        cursorColor = colors.primary
+                    )
+                )
             }
 
             Spacer(Modifier.height(4.dp))

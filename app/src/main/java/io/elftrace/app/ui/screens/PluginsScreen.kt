@@ -400,7 +400,7 @@ private fun PluginCard(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         modifier = Modifier.height(28.dp)
                     ) {
-                        Text("Patch all $patchable", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text("Patch All", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
                 }
 

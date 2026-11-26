@@ -73,9 +73,6 @@ fun EntropyScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
 
-                IconButton(onClick = { viewModel.refreshEntropyReport() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Rescan", tint = colors.primary)
-                }
             }
         }
 
