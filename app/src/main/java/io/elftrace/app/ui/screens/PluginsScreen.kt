@@ -101,7 +101,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                         if (isRunning) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = colors.primary)
                         } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Run All", tint = GreenAccent)
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Run All", tint = AmberAccent)
                         }
                     }
                 }
@@ -800,7 +800,11 @@ private fun RhaiEditorDialog(
                                 onClose()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = AmberAccent
+                        ),
+                        border = BorderStroke(1.dp, AmberAccent),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Text("Save & Run", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)

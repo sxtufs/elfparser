@@ -3,7 +3,7 @@
   "name": "Packers & Packed Stubs",
   "version": "1.0",
   "author": "ELFTrace",
-  "description": "Detects UPX and commercial packer stubs (Bangcle SecNeo, Ijiami, Qihoo 360 jiagu) in native libraries. Signatures derived from APKiD's ELF packer rules (https://github.com/rednaga/APKiD).",
+  "description": "UPX and commercial packer stubs (Bangcle, Ijiami, Qihoo 360).",
   "rules": [
     {
       "name": "UPX Magic",
