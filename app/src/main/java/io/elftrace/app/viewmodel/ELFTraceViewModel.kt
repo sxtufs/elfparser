@@ -251,6 +251,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val KEY_DARK_MODE = "dark_mode"
+        const val MAX_BOOKMARKS = 50
     }
 
     private val _elfInfo = MutableStateFlow<ElfInfo?>(null)
@@ -497,6 +498,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(nativeDispatcher) {
             if (_bookmarks.value.any { it.address == address }) {
                 store.removeBookmark(sessionKey, address)
+            } else if (_bookmarks.value.size >= MAX_BOOKMARKS) {
+                openError.value = "Bookmark limit reached ($MAX_BOOKMARKS) — remove one to add another"
             } else {
                 store.addBookmark(sessionKey, address, name)
             }

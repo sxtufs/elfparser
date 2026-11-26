@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -375,7 +377,11 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             fontSize = 12.sp
                         )
                     } else {
-                        Column {
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 380.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
                             bookmarks.forEach { bookmark ->
                                 Row(
                                     modifier = Modifier
