@@ -321,7 +321,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             OutlinedButton(
                                 onClick = {
                                     viewModel.applyQuickPatch(ins.address, type) { res ->
-                                        Toast.makeText(context, "Patched $label: ${res.success}", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Patched $label", Toast.LENGTH_SHORT).show()
                                         selectedInsn = null
                                     }
                                 },

@@ -228,8 +228,8 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.Search,
-                        contentDescription = "Search",
+                        if (showSearch) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = if (showSearch) "Close search" else "Search",
                         tint = if (showSearch) colors.primary else colors.textPrimary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -326,15 +326,6 @@ fun DecompileScreen(viewModel: ELFTraceViewModel) {
                                 Icon(Icons.Default.ChevronRight, contentDescription = "Next Match", tint = colors.textPrimary, modifier = Modifier.size(16.dp))
                             }
                         }
-                    }
-                    IconButton(
-                        onClick = {
-                            searchQuery = ""
-                            showSearch = false
-                        },
-                        modifier = Modifier.size(26.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                     }
                 }
             }
