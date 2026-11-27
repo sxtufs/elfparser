@@ -323,6 +323,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Throwable) {
         }
         _bridge.value = null
+        try { JNIBridge.setCurrentFile(null) } catch (_: Throwable) {}
         try { store.close() } catch (_: Throwable) {}
     }
 
@@ -338,6 +339,8 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val old = _bridge.value
             _bridge.value = newBridge
             try { old?.close() } catch (_: Throwable) {}
+            // Let the MCP server answer "what is open?" and accept calls without a path.
+            try { JNIBridge.setCurrentFile(path) } catch (_: Throwable) {}
             val b = newBridge
 
             _navStack.value = emptyList()

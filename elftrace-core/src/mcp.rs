@@ -244,7 +244,8 @@ fn is_known_tool(name: &str) -> bool {
     TOOL_NAMES.contains(&name)
 }
 
-const TOOL_NAMES: [&str; 20] = [
+const TOOL_NAMES: [&str; 21] = [
+    "current_file",
     "elf_info",
     "list_symbols",
     "disassemble",
@@ -273,6 +274,11 @@ const WRITE_TOOLS: [&str; 3] = ["patch", "undo", "save"];
 
 fn tool_definitions() -> Value {
     let defs = json!([
+        {
+            "name": "current_file",
+            "description": "The binary ELFTrace currently has open, as a path every other tool accepts. Call this first when you do not know which file is on screen.",
+            "inputSchema": object_schema(json!({}), &[])
+        },
         {
             "name": "elf_info",
             "description": "ELF header, architecture, soname, DT_NEEDED libraries, program segments and sections. Symbol count only; use list_symbols for names.",
@@ -460,6 +466,10 @@ fn with_annotations(list: Value) -> Value {
         tools
             .into_iter()
             .map(|mut tool| {
+                // `path` became optional once the app could report its open file.
+                if let Some(required) = tool["inputSchema"]["required"].as_array_mut() {
+                    required.retain(|name| name.as_str() != Some("path"));
+                }
                 let write = tool["name"]
                     .as_str()
                     .is_some_and(|name| WRITE_TOOLS.contains(&name));
@@ -525,6 +535,18 @@ fn optional_string(args: &Value, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+/// `path`, or the file the app has open when the call omits it. This is what
+/// lets an agent work on "the binary on screen" without knowing where it lives.
+fn file_arg(args: &Value) -> Result<String, String> {
+    if let Some(path) = optional_string(args, "path").filter(|path| !path.trim().is_empty()) {
+        return Ok(path);
+    }
+    current_file().ok_or_else(|| {
+        "no 'path' given and ELFTrace has no file open; open a binary in the app or pass 'path'"
+            .to_string()
+    })
+}
+
 fn optional_bool(args: &Value, key: &str, default: bool) -> bool {
     args.get(key).and_then(Value::as_bool).unwrap_or(default)
 }
@@ -579,6 +601,7 @@ fn hex(value: u64) -> String {
 
 fn call_tool(host: &mut Host, name: &str, args: &Value) -> Result<String, String> {
     match name {
+        "current_file" => tool_current_file(host, args),
         "elf_info" => tool_elf_info(host, args),
         "list_symbols" => tool_list_symbols(host, args),
         "disassemble" => tool_disassemble(host, args),
@@ -602,15 +625,23 @@ fn call_tool(host: &mut Host, name: &str, args: &Value) -> Result<String, String
         other => Err(format!("unknown tool: {other}")),
     }
 }
+fn tool_current_file(_host: &mut Host, _args: &Value) -> Result<String, String> {
+    Ok(json!({
+        "path": current_file(),
+        "open": current_file().is_some(),
+    })
+    .to_string())
+}
+
 fn tool_binary_facts(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let ctx = host.context(&path)?;
     let facts = crate::scanner::build_binary_facts(ctx);
     serde_json::to_string(&facts).map_err(|e| e.to_string())
 }
 
 fn tool_resolve_jni(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let offset = address_arg(args, "offset")?;
     let ctx = host.context(&path)?;
     let is_64 = ctx.get_info().map(|info| info.is_64).unwrap_or(true);
@@ -624,7 +655,7 @@ fn tool_resolve_jni(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_rename_function(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let name = string_arg(args, "name")?;
     let ctx = host.context_mut(&path)?;
@@ -633,7 +664,7 @@ fn tool_rename_function(host: &mut Host, args: &Value) -> Result<String, String>
 }
 
 fn tool_assemble(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let instruction = string_arg(args, "instruction")?;
     let ctx = host.context(&path)?;
@@ -651,7 +682,7 @@ fn tool_assemble(host: &mut Host, args: &Value) -> Result<String, String> {
 fn tool_patch(host: &mut Host, args: &Value) -> Result<String, String> {
     use crate::patcher::QuickPatchType;
 
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let kind = optional_string(args, "kind");
     let bytes = optional_string(args, "bytes");
@@ -721,7 +752,7 @@ fn tool_patch(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_undo(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let count = optional_usize(args, "count", 1)?.clamp(1, 256);
     let ctx = host.context_mut(&path)?;
     let mut restored = Vec::new();
@@ -739,7 +770,7 @@ fn tool_undo(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_save(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let output = string_arg(args, "output")?;
     let ctx = host.context(&path)?;
     let same = match (std::fs::canonicalize(&path), std::fs::canonicalize(&output)) {
@@ -754,7 +785,7 @@ fn tool_save(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_elf_info(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let ctx = host.context(&path)?;
     let info = ctx.get_info()?;
     let segments: Vec<Value> = info
@@ -817,7 +848,7 @@ fn arch_name(e_machine: u32) -> &'static str {
 }
 
 fn tool_list_symbols(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let filter = optional_string(args, "filter").map(|f| f.to_lowercase());
     let limit = optional_usize(args, "limit", 200)?.min(5000);
     let offset = optional_usize(args, "offset", 0)?;
@@ -926,7 +957,7 @@ fn disassemble_at(
 }
 
 fn tool_disassemble(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let size = optional_u64(args, "size", 128)?;
     let thumb = optional_bool(args, "thumb", false);
@@ -954,7 +985,7 @@ fn tool_disassemble(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_decompile(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let style = optional_string(args, "style").unwrap_or_else(|| "structured".to_string());
     let ctx = host.context(&path)?;
@@ -980,7 +1011,7 @@ fn tool_decompile(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_xrefs(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let ctx = host.context(&path)?;
     let refs: Vec<Value> = crate::xref::find_callers_to(ctx, address)
@@ -1006,7 +1037,7 @@ fn xref_json(item: &crate::xref::XRefItem) -> Value {
 }
 
 fn tool_call_hierarchy(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let ctx = host.context(&path)?;
     let hierarchy = crate::xref::get_hierarchy(ctx, address);
@@ -1033,21 +1064,21 @@ fn tool_call_hierarchy(host: &mut Host, args: &Value) -> Result<String, String> 
 }
 
 fn tool_security_scan(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let ctx = host.context(&path)?;
     serde_json::to_string(&crate::scanner::scan_security(ctx))
         .map_err(|e| format!("could not serialize the scan report: {e}"))
 }
 
 fn tool_entropy(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let ctx = host.context(&path)?;
     serde_json::to_string(&crate::scanner::calculate_entropy_report(ctx))
         .map_err(|e| format!("could not serialize the entropy report: {e}"))
 }
 
 fn tool_strings(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let filter = optional_string(args, "filter").map(|f| f.to_lowercase());
     let min_length = optional_usize(args, "min_length", 4)?;
     let limit = optional_usize(args, "limit", 200)?.min(5000);
@@ -1085,7 +1116,7 @@ fn tool_strings(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_discover_functions(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let max_scanned = optional_u64(
         args,
         "max_scanned_bytes",
@@ -1201,7 +1232,7 @@ fn default_plugins_dir() -> Result<std::path::PathBuf, String> {
 }
 
 fn tool_run_plugin(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let plugin = string_arg(args, "plugin")?;
     let manifest = if plugin.trim_start().starts_with('{') {
         plugin
@@ -1214,7 +1245,7 @@ fn tool_run_plugin(host: &mut Host, args: &Value) -> Result<String, String> {
 }
 
 fn tool_read_bytes(host: &mut Host, args: &Value) -> Result<String, String> {
-    let path = string_arg(args, "path")?;
+    let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
     let length = optional_usize(args, "length", 64)?.min(4096);
     let ctx = host.context(&path)?;
@@ -1352,6 +1383,28 @@ struct RunningServer {
 }
 
 static RUNNING: Mutex<Option<RunningServer>> = Mutex::new(None);
+
+/// The file the app currently has open. Tools then work without a `path`, which
+/// is how an agent asks about "the binary on screen" instead of guessing where
+/// the app put it.
+static CURRENT_FILE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Record (or clear, with `None`) the file the app has open.
+pub fn set_current_file(path: Option<String>) {
+    let mut current = match CURRENT_FILE.lock() {
+        Ok(current) => current,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *current = path.filter(|path| !path.trim().is_empty());
+}
+
+/// Path of the file the app has open, if any.
+pub fn current_file() -> Option<String> {
+    match CURRENT_FILE.lock() {
+        Ok(current) => current.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
 
 /// Start the in-app HTTP server on `addr` and return the client URL
 /// (`http://<bound>/mcp`).

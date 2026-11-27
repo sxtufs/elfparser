@@ -334,7 +334,7 @@ fn binary_serves_a_stdio_session() {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "elftrace-mcp");
     assert_eq!(
         responses[1]["result"]["tools"].as_array().unwrap().len(),
-        20
+        21
     );
     let info_text = responses[2]["result"]["content"][0]["text"]
         .as_str()
@@ -585,4 +585,29 @@ fn patch_undo_and_save_round_trip_on_a_real_elf() {
         "saved copy differs"
     );
     let _ = std::fs::remove_file(&output);
+}
+
+#[test]
+fn tools_work_without_a_path_when_a_file_is_open() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    mcp::set_current_file(Some(path.clone()));
+
+    let (open, is_error) = call_tool(&mut host, "current_file", json!({}));
+    assert!(!is_error, "current_file failed: {open}");
+    assert!(
+        open.contains(&path),
+        "current_file did not report the path: {open}"
+    );
+
+    // No "path" argument: the server falls back to the open file.
+    let (info, is_error) = call_tool(&mut host, "elf_info", json!({}));
+    assert!(!is_error, "elf_info without a path failed: {info}");
+    assert!(info.contains("e_machine"), "elf_info output: {info}");
+
+    mcp::set_current_file(Some(String::new()));
+    let (_, is_error) = call_tool(&mut host, "elf_info", json!({}));
+    assert!(is_error, "an empty current file must not be used");
 }
