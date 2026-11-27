@@ -59,7 +59,7 @@ jobs:
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26b
+          ndk-version: r30
           add-to-path: true
 
       - name: Build Rust core for arm64-v8a
