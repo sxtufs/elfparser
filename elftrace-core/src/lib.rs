@@ -6,6 +6,7 @@ pub mod elf_parser;
 pub mod il2cpp;
 pub mod jni_bridge;
 pub mod jni_resolver;
+pub mod mcp;
 pub mod model;
 pub mod patcher;
 pub mod plugins;

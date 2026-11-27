@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-11-27 — MCP server: separate read-only binary, stdio first, HTTP opt-in
+`elftrace-core/src/mcp.rs` + `src/bin/elftrace-mcp.rs` expose the analysis
+engine to MCP clients (Claude Desktop, Cursor, Claude Code). It is a normal
+binary built from the same crate as the `.so` (`crate-type = ["cdylib", "rlib"]`
+already allowed this); the Android app is unchanged and dead-code-strips the
+module.
+- Default transport is stdio (client spawns the binary); `--http 127.0.0.1:8989`
+  serves the same tools as stateless Streamable HTTP at `/mcp`. No session id,
+  GET refused with 405, foreign `Origin` refused with 403 (DNS-rebinding guard).
+- 13 tools, all read-only: elf_info, list_symbols, disassemble, decompile,
+  xrefs, call_hierarchy, security_scan, entropy, strings, discover_functions,
+  list_plugins, run_plugin, read_bytes. Patch/write tools are deliberately
+  absent: an MCP client can call anything exposed, so byte-writing must come
+  later under separate, approval-gated names.
+- `disassemble_at` in mcp.rs mirrors jni_bridge `handle_disasm` (same clamping,
+  symbol/string resolution and JNI detection) rather than sharing code, so the
+  shipped app path was not touched.
+- Tool results are capped at 400k chars at a char boundary; parsed ELFs are
+  cached (8 files, most-recent-first) because tools revisit one file constantly.
+- Tests: `tests/mcp_tests.rs` runs the protocol, a real ELF (the test binary
+  itself), the AArch64 fixture when built, the plugin catalog, a spawned binary
+  stdio session and an HTTP round-trip. The stdio test caught a real deadlock:
+  a `BufReader` rebuilt per line discarded requests that shared a read.
+
 ## 2026-11-26 — Shared-tail goto inlining: terminators generalized, expansion capped
 The "46 gotos" in functions like Poweramp's JNI_OnLoad were shared error tails
 whose terminator (IrStmt::Return or a noreturn call like __stack_chk_fail) sits
