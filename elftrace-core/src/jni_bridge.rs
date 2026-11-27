@@ -547,6 +547,23 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getEntropyReport(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getTriageReport(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jstring {
+    if handle == 0 {
+        return env.new_string("{\"items\":[],\"needed_libs\":[],\"exported_functions\":0,\"init_constructors\":0,\"symbol_table\":\"Unknown\",\"fortify_count\":0}").unwrap().as_raw() as jstring;
+    }
+    let ctx = &*(handle as *const ElfContext);
+    guard_jstring(&mut env, "{\"items\":[],\"needed_libs\":[],\"exported_functions\":0,\"init_constructors\":0,\"symbol_table\":\"Unknown\",\"fortify_count\":0}", |env| {
+        let report = crate::scanner::build_triage_report(ctx);
+        let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+        env.new_string(json).unwrap().as_raw() as jstring
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_loadScriptJson(
     mut env: JNIEnv,
     _class: JClass,

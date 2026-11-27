@@ -72,7 +72,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
-    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Entropy Radar
+    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Triage
 
     // Plugins tab scroll position and expanded card live here, not in the screen:
     // jumping to a finding swaps PluginsScreen out of composition, which would
@@ -88,13 +88,13 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     /** One-shot error when a binary fails to open, shown as a toast. */
     val openError = MutableStateFlow<String?>(null)
 
-    private val _entropyReport = MutableStateFlow<EntropyReport?>(null)
-    val entropyReport: StateFlow<EntropyReport?> = _entropyReport.asStateFlow()
+    private val _triageReport = MutableStateFlow<TriageReport?>(null)
+    val triageReport: StateFlow<TriageReport?> = _triageReport.asStateFlow()
 
-    fun refreshEntropyReport() {
+    fun refreshTriageReport() {
         viewModelScope.launch(nativeDispatcher) {
             val b = _bridge.value ?: return@launch
-            _entropyReport.value = b.getEntropyReport()
+            _triageReport.value = b.getTriageReport()
         }
     }
 
@@ -394,7 +394,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 ?: firstSym?.displayName ?: "entry"
             selectFunction(firstAddr, firstName, pushHistory = false)
             _stringsList.value = b.getStrings()
-            _entropyReport.value = b.getEntropyReport()
+            _triageReport.value = b.getTriageReport()
         }
     }
 

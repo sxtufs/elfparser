@@ -163,13 +163,13 @@ class MainActivity : ComponentActivity() {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     ELFTraceTopTabBar(
                                         selectedTabIndex = analysisTab.coerceIn(0, 1),
-                                        tabs = listOf("Strings", "Entropy"),
+                                        tabs = listOf("Strings", "Triage"),
                                         onTabSelected = { viewModel.analysisSubTab.value = it }
                                     )
 
                                     when (analysisTab) {
                                         0 -> StringsScreen(viewModel)
-                                        else -> EntropyScreen(viewModel)
+                                        else -> TriageScreen(viewModel)
                                     }
                                 }
                             }

@@ -124,6 +124,21 @@ data class EntropyReport(
     val sections: List<SectionEntropy> = emptyList()
 )
 
+data class TriageItem(
+    val name: String = "",
+    val status: String = "",
+    val detail: String = ""
+)
+
+data class TriageReport(
+    val items: List<TriageItem> = emptyList(),
+    val needed_libs: List<String> = emptyList(),
+    val exported_functions: Int = 0,
+    val init_constructors: Int = 0,
+    val symbol_table: String = "",
+    val fortify_count: Int = 0
+)
+
 data class CodeIns(
     val data: List<Instruction> = emptyList()
 )
