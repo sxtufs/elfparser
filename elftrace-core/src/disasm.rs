@@ -2,6 +2,16 @@ use crate::model::{CodeIns, CodeInsItem};
 use capstone::prelude::*;
 use std::collections::HashMap;
 
+/// Map an AArch64 syscall number to its name, marking the ones commonly used
+/// for anti-debugging.
+///
+/// ```
+/// use elftrace::disasm::resolve_aarch64_syscall;
+///
+/// assert_eq!(resolve_aarch64_syscall(56), Some("openat"));
+/// assert_eq!(resolve_aarch64_syscall(117), Some("ptrace [Anti-Debug]"));
+/// assert_eq!(resolve_aarch64_syscall(9_999), None);
+/// ```
 pub fn resolve_aarch64_syscall(num: u64) -> Option<&'static str> {
     match num {
         56 => Some("openat"),

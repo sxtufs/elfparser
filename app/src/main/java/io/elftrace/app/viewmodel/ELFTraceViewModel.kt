@@ -184,6 +184,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
      * already exists (owned by this app), it is replaced so repeated exports
      * don't accumulate duplicates.
      */
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.Q)
     private fun writeViaMediaStore(context: Context, displayName: String, bytes: ByteArray): SaveOutcome {
         val resolver = context.contentResolver
         val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
