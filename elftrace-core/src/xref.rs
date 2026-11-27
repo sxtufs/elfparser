@@ -194,9 +194,9 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
     // caller to fall inside a *sized* symbol, but that silently dropped real
     // call sites in stripped/packed libraries where most functions have size 0
     // or no local symbol — turning 40+ matches into 0. Reverted.)
-    let target_in_exec = exec_regions
-        .iter()
-        .any(|(base, d)| target_vaddr >= *base && target_vaddr < base.saturating_add(d.len() as u64));
+    let target_in_exec = exec_regions.iter().any(|(base, d)| {
+        target_vaddr >= *base && target_vaddr < base.saturating_add(d.len() as u64)
+    });
     if !target_in_exec {
         return refs;
     }
@@ -204,7 +204,6 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
     for (sec_vaddr, data) in exec_regions {
         {
             {
-
                 if e_machine == 183 {
                     // Fast direct 4-byte ARM64 hardware decoding
                     let mut i = 0;
@@ -251,11 +250,8 @@ pub fn find_callers_to(ctx: &ElfContext, target_vaddr: u64) -> Vec<XRefItem> {
                             let i2 = (!(j2 ^ s)) & 1;
                             let imm11 = (hw2 & 0x07FF) as i64;
                             let is_bl = (hw2 & 0x1000) != 0;
-                            let mut imm = (s << 24)
-                                | (i1 << 23)
-                                | (i2 << 22)
-                                | (imm10 << 12)
-                                | (imm11 << 1);
+                            let mut imm =
+                                (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
                             if s != 0 {
                                 imm |= !0x01FF_FFFF;
                             }

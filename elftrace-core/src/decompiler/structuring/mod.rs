@@ -78,10 +78,7 @@ pub fn decompile_to_c_structured(ctx: &ElfContext, address: u64) -> String {
     // epilogue chains) become static helper functions; their goto sites
     // become `return tail_XXXXXXXX(...)`. Void functions call the helper
     // and return; value-returning functions tail-return it.
-    let ret_void = matches!(
-        ir_func.ret_type,
-        crate::decompiler::ir::IrType::Void
-    );
+    let ret_void = matches!(ir_func.ret_type, crate::decompiler::ir::IrType::Void);
     let (nodes, helpers) = regions::extract_tail_helpers(nodes, ret_void);
     emit_structured_c(&ir_func, &nodes, &codegen, &helpers)
 }

@@ -318,10 +318,8 @@ impl<'a> CodeGenerator<'a> {
                         if let IrExpr::Reg(dst_r, _) = dst {
                             let dst_lower = dst_r.to_lowercase();
                             if let Some((parent, _)) = sub_register_info(&dst_lower) {
-                                let parent_name = param_reg_map
-                                    .get(&parent)
-                                    .cloned()
-                                    .unwrap_or(parent);
+                                let parent_name =
+                                    param_reg_map.get(&parent).cloned().unwrap_or(parent);
                                 let src_str = self.format_expr(
                                     src,
                                     &param_reg_map,
@@ -540,10 +538,7 @@ impl<'a> CodeGenerator<'a> {
                         // -Werror=nonnull (e.g. `memcpy((void*)0, (void*)0, 0)`),
                         // so we fall back to a generic function-pointer cast that
                         // has no libc prototype constraints.
-                        let is_libc_name = name
-                            .as_deref()
-                            .map(is_libc_memory_fn)
-                            .unwrap_or(false);
+                        let is_libc_name = name.as_deref().map(is_libc_memory_fn).unwrap_or(false);
                         let is_libc_mem = is_libc_name
                             && name
                                 .as_deref()
@@ -555,10 +550,7 @@ impl<'a> CodeGenerator<'a> {
                         // function-pointer cast against a `uint64_t`-arg prototype
                         // so the call is well-typed without changing the values.
                         // Result: `((int64_t(*)(uint64_t,...))pthread_create)(...)`.
-                        let is_pthread = name
-                            .as_deref()
-                            .map(is_pthread_fn)
-                            .unwrap_or(false);
+                        let is_pthread = name.as_deref().map(is_pthread_fn).unwrap_or(false);
                         // `is_libc_mem` is only true when the recovered arg
                         // count EXACTLY matches the canonical libc prototype, so
                         // libc_arg_cast indexes below are always in range and the
@@ -667,7 +659,7 @@ impl<'a> CodeGenerator<'a> {
                                 out.push_str(&format!("    goto loc_{:08x};\n", target));
                             }
                         } else {
-                            // Branch target has no emitted label (external / PLT tail-call / 
+                            // Branch target has no emitted label (external / PLT tail-call /
                             // unreachable block). Emit a comment so the C compiles; a
                             // `goto loc_<missing>` would be an undefined-label error.
                             out.push_str(&format!(
@@ -1335,8 +1327,8 @@ fn is_libc_memory_fn(name: &str) -> bool {
 fn libc_arg_count(name: &str) -> usize {
     match name {
         "memcpy" | "memmove" | "memcmp" | "strncpy" | "strncat" | "strncmp" => 3,
-        "memset" | "memchr" | "strcpy" | "strcat" | "strcmp" | "strchr" | "strrchr"
-        | "strstr" | "strdup" => 2,
+        "memset" | "memchr" | "strcpy" | "strcat" | "strcmp" | "strchr" | "strrchr" | "strstr"
+        | "strdup" => 2,
         "strlen" => 1,
         "__memcpy_chk" | "__memmove_chk" => 4,
         "__memset_chk" | "__strncpy_chk" => 4,

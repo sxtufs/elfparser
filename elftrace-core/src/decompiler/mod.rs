@@ -22,6 +22,30 @@ pub struct FunctionRange {
     pub thumb: bool,
 }
 
+/// Render `s` as a C string literal.
+///
+/// Callers pass printable rodata strings, but any backslash or quote inside
+/// them would otherwise be copied raw: a rodata string containing the text
+/// `\u00` (V8/JS escapes, JSON fragments) emitted as-is makes the C compiler
+/// reject the file with "incomplete universal character name".
+pub(crate) fn c_string_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\{:03o}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 pub fn find_function_range(ctx: &ElfContext, address: u64) -> FunctionRange {
     // 1. Exact match first
     if let Some(sym) = ctx.syms_map.get(&address) {
@@ -433,15 +457,13 @@ pub fn generate_flowchart_text(ctx: &ElfContext, address: u64) -> String {
                     out.push_str("       ▼   [FALSE] fallthrough\n\n");
                 }
             }
+        } else if next_idx < blocks.len() {
+            out.push_str(&format!(
+                "       │\n       ▼ (fallthrough to Block {})\n\n",
+                next_idx
+            ));
         } else {
-            if next_idx < blocks.len() {
-                out.push_str(&format!(
-                    "       │\n       ▼ (fallthrough to Block {})\n\n",
-                    next_idx
-                ));
-            } else {
-                out.push_str("       │\n       ▼ (fallthrough)\n\n");
-            }
+            out.push_str("       │\n       ▼ (fallthrough)\n\n");
         }
     }
 
@@ -462,4 +484,30 @@ fn parse_target_addr(op_str: &str) -> Option<u64> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod c_string_tests {
+    use super::c_string_literal;
+
+    #[test]
+    fn escapes_backslash_so_universal_names_stay_literal() {
+        // A rodata string containing the text `\u00` must not reach the C
+        // compiler as an escape sequence.
+        assert_eq!(
+            c_string_literal("deadlock\\u00"),
+            "\"deadlock\\\\u00\"".to_string()
+        );
+    }
+
+    #[test]
+    fn escapes_quotes_and_keeps_printable_text() {
+        assert_eq!(c_string_literal("say \"hi\""), r#""say \"hi\"""#);
+        assert_eq!(c_string_literal("/usr/lib/libc.so"), "\"/usr/lib/libc.so\"");
+    }
+
+    #[test]
+    fn control_chars_become_fixed_width_octal() {
+        assert_eq!(c_string_literal("a\tb\nc\u{1}"), "\"a\\tb\\nc\\001\"");
+    }
 }

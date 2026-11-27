@@ -17,7 +17,10 @@ android {
         applicationId = "io.elftrace.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
+        // CI passes the workflow run number so every APK installs as an update
+        // over the previous one. Debug-key signing above is intentional for now
+        // (sideload-only distribution); a real release key can slot in later.
+        versionCode = System.getenv("ELFT_VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = "1.0.0"
 
         ndk {
@@ -86,6 +89,8 @@ dependencies {
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
+
+    testImplementation("junit:junit:4.13.2")
 }
 
 // Fail early with a helpful message if the native library hasn't been built yet.

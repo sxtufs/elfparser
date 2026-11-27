@@ -125,9 +125,8 @@ impl InstructionLifter for Arm64Lifter {
         // which makes the structurer see an irreducible CFG and emit goto soup
         // for the whole function. Seed an opaque predicate instead so the edge
         // survives as a real Branch; the condition renders as a labeled local.
-        let is_cond_branch = mnem.starts_with("b.")
-            || mnem.starts_with("cb")
-            || mnem.starts_with("tb");
+        let is_cond_branch =
+            mnem.starts_with("b.") || mnem.starts_with("cb") || mnem.starts_with("tb");
         if is_cond_branch && self.last_cmp.is_none() {
             self.last_cmp = Some(IrExpr::reg("flags_cond", IrType::Int32));
         }
@@ -1670,8 +1669,7 @@ fn resolve_rodata_string(ctx: &ElfContext, vaddr: u64) -> Option<String> {
     let candidate = &slice[..null_pos];
     if candidate.iter().all(|&b| (0x20..=0x7E).contains(&b)) {
         let s = std::str::from_utf8(candidate).ok()?;
-        let escaped = s.replace('\"', "\\\"");
-        return Some(format!("\"{}\"", escaped));
+        return Some(crate::decompiler::c_string_literal(s));
     }
     None
 }

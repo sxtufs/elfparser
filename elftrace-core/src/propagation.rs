@@ -229,7 +229,7 @@ pub fn seed_insn_mask(e_machine: u32, is_thumb: bool, word: u32) -> (u32, u32) {
         40 if !is_thumb => {
             // ARM A32 register fields: Rm/Rs (0-3), Rd/Rt (12-15), Rn (16-19).
             // Never mask the condition (28-31) or opcode (20-27) bits.
-            let operand_bits: u32 = (0xF << 0) | (0xF << 12) | (0xF << 16);
+            let operand_bits: u32 = 0xF | (0xF << 12) | (0xF << 16);
             (word & !operand_bits, !operand_bits)
         }
         _ => (word, 0xFFFF_FFFF),
@@ -310,18 +310,26 @@ pub fn propagate_exact(
     let align = align_of(e_machine) as u64;
 
     if seed_patch.is_empty() {
-        return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Empty seed patch".into());
+        return PatchPropagationReport::error(
+            seed_addr,
+            mode,
+            opts.dry_run,
+            "Empty seed patch".into(),
+        );
     }
     // Multi-instruction seeds (e.g. `ret_true` = mov+ret, 8 bytes on AArch64)
     // are allowed: the first instruction word is operand-wildcarded, the rest
     // of the seed must match the clone exactly. Only the alignment rule below
     // constrains the length (it must be a whole number of instructions).
-    if e_machine == 183 && seed_patch.len() % 4 != 0 {
+    if e_machine == 183 && !seed_patch.len().is_multiple_of(4) {
         return PatchPropagationReport::error(
             seed_addr,
             mode,
             opts.dry_run,
-            format!("AArch64 seed patch must be a multiple of 4 bytes, got {}", seed_patch.len()),
+            format!(
+                "AArch64 seed patch must be a multiple of 4 bytes, got {}",
+                seed_patch.len()
+            ),
         );
     }
 
@@ -337,7 +345,12 @@ pub fn propagate_exact(
         }
     };
     if seed_off + seed_patch.len() > ctx.raw.len() {
-        return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Seed patch out of bounds".into());
+        return PatchPropagationReport::error(
+            seed_addr,
+            mode,
+            opts.dry_run,
+            "Seed patch out of bounds".into(),
+        );
     }
 
     let fn_range = crate::decompiler::find_function_range(ctx, seed_addr);
@@ -363,13 +376,23 @@ pub fn propagate_exact(
     };
     let tpl_end_off = tpl_end_off.min(ctx.raw.len());
     if tpl_start_off >= tpl_end_off {
-        return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Empty template range".into());
+        return PatchPropagationReport::error(
+            seed_addr,
+            mode,
+            opts.dry_run,
+            "Empty template range".into(),
+        );
     }
 
     let mut template: Vec<u8> = ctx.raw[tpl_start_off..tpl_end_off].to_vec();
     let seed_in_tpl = seed_off - tpl_start_off;
     if seed_in_tpl + seed_patch.len() > template.len() {
-        return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Seed outside template".into());
+        return PatchPropagationReport::error(
+            seed_addr,
+            mode,
+            opts.dry_run,
+            "Seed outside template".into(),
+        );
     }
     // IMPORTANT: the template must reflect the ORIGINAL bytes at the seed, not
     // the patched ones. We are searching for sibling clones in their *current*
@@ -392,10 +415,8 @@ pub fn propagate_exact(
         let (val, m) = seed_insn_mask(e_machine, is_thumb, seed_word);
         let val_b = val.to_le_bytes();
         let m_b = m.to_le_bytes();
-        for i in 0..4 {
-            template[seed_in_tpl + i] = val_b[i];
-            mask[seed_in_tpl + i] = m_b[i];
-        }
+        template[seed_in_tpl..seed_in_tpl + 4].copy_from_slice(&val_b);
+        mask[seed_in_tpl..seed_in_tpl + 4].copy_from_slice(&m_b);
     }
 
     let regions = exec_regions(ctx);
@@ -437,7 +458,13 @@ pub fn propagate_exact(
         if opts.dry_run {
             entries.push(candidate_entry(ctx, addr, seed_patch, &mut skipped));
         } else {
-            entries.push(make_entry(ctx, addr, seed_patch, &mut applied, &mut skipped));
+            entries.push(make_entry(
+                ctx,
+                addr,
+                seed_patch,
+                &mut applied,
+                &mut skipped,
+            ));
         }
     }
 
@@ -463,7 +490,12 @@ pub fn propagate_callers(
 ) -> PatchPropagationReport {
     let mode = PropagationMode::Callers;
     if seed_patch.is_empty() {
-        return PatchPropagationReport::error(seed_addr, mode, opts.dry_run, "Empty seed patch".into());
+        return PatchPropagationReport::error(
+            seed_addr,
+            mode,
+            opts.dry_run,
+            "Empty seed patch".into(),
+        );
     }
 
     let refs = crate::xref::find_callers_to(ctx, seed_addr & !1);
@@ -481,7 +513,13 @@ pub fn propagate_callers(
         if opts.dry_run {
             entries.push(candidate_entry(ctx, addr, seed_patch, &mut skipped));
         } else {
-            entries.push(make_entry(ctx, addr, seed_patch, &mut applied, &mut skipped));
+            entries.push(make_entry(
+                ctx,
+                addr,
+                seed_patch,
+                &mut applied,
+                &mut skipped,
+            ));
         }
     }
 

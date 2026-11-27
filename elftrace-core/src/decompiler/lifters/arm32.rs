@@ -471,9 +471,7 @@ impl InstructionLifter for Arm32Lifter {
                         // ADDS sets Z when lhs + rhs == 0, i.e. lhs == -rhs.
                         // NOTE: clone rhs — the Add assignment below still needs it.
                         let neg_rhs = match rhs.clone() {
-                            IrExpr::Const(c) => {
-                                IrExpr::Const((c as u32).wrapping_neg() as u64)
-                            }
+                            IrExpr::Const(c) => IrExpr::Const((c as u32).wrapping_neg() as u64),
                             other => IrExpr::Unary(UnaryOp::Neg, Box::new(other), IrType::Int32),
                         };
                         self.last_cmp = Some(IrExpr::Binary(

@@ -70,7 +70,7 @@ fn parse_imm(s: &str) -> Option<i64> {
 
 /// Resolve the table base address produced by an `adrp` (page) + `add` (offset)
 /// pair, or a single `adr`. Returns the effective VA and the destination reg.
-fn track_adr<'a>(
+fn track_adr(
     mnem: &str,
     ops: &str,
     pc: u64,
@@ -175,7 +175,12 @@ pub fn recover(ctx: &ElfContext, block_start: u64, block_end: u64) -> Option<Jum
                 let dst = parts[0].to_lowercase();
                 // The memory operand looks like "[x9, x0]" or "[x9, w0, sxtw #2]".
                 let mem = parts[1].trim_start_matches('[');
-                let base = mem.split(|c: char| c == ',' || c == ']').next().unwrap_or("").trim().to_lowercase();
+                let base = mem
+                    .split([',', ']'])
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_lowercase();
                 let scale_shift = if mnem == "ldrb" {
                     0
                 } else if mnem == "ldrh" {

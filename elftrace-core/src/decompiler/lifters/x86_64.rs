@@ -1332,8 +1332,7 @@ fn resolve_rodata_string(ctx: &ElfContext, vaddr: u64) -> Option<String> {
     let candidate = &slice[..null_pos];
     if candidate.iter().all(|&b| (0x20..=0x7E).contains(&b)) {
         let s = std::str::from_utf8(candidate).ok()?;
-        let escaped = s.replace('"', "\\\"");
-        return Some(format!("\"{}\"", escaped));
+        return Some(crate::decompiler::c_string_literal(s));
     }
     None
 }

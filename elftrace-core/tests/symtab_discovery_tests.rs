@@ -175,7 +175,7 @@ fn test_discover_functions_recovers_bl_target() {
 
 #[test]
 fn test_scan_for_function_end_aarch64_bounds_at_ret() {
-    use elftrace::discovery::{scan_for_function_end_aarch64, is_aarch64_fp_prologue};
+    use elftrace::discovery::{is_aarch64_fp_prologue, scan_for_function_end_aarch64};
 
     // Prologue check: stp x29, x30, [sp, #-16]! => 0xA9BF7BFD (little-endian
     // encoding: opc=10, imm7=-2, Rt2=30, Rn=31, Rt=29).
@@ -219,30 +219,48 @@ fn test_scan_vtables_recovers_class_names_and_slots() {
     // i starts at 2, so slots live at offsets 0..; header at -16/-8.
     drr[0x00..0x08].copy_from_slice(&(drr_base + 0x10).to_le_bytes()); // fn1
     drr[0x08..0x10].copy_from_slice(&(drr_base + 0x20).to_le_bytes()); // fn2
-    drr[0x10..0x18].copy_from_slice(&0u64.to_le_bytes());              // end run
-    drr[0x20..0x28].copy_from_slice(&ts_addr.to_le_bytes());           // _ZTS ptr (i=4? no—
-    // header must sit at vt_addr-16, so rewrite: put header right before slots.
+    drr[0x10..0x18].copy_from_slice(&0u64.to_le_bytes()); // end run
+    drr[0x20..0x28].copy_from_slice(&ts_addr.to_le_bytes()); // _ZTS ptr (i=4? no—
+                                                             // header must sit at vt_addr-16, so rewrite: put header right before slots.
     let mut drr2 = vec![0u8; 0x40];
-    drr2[0x00..0x08].copy_from_slice(&ts_addr.to_le_bytes());           // _ZTS ptr
-    drr2[0x08..0x10].copy_from_slice(&(ro + 0x80).to_le_bytes());       // typeinfo ptr
-    drr2[0x10..0x18].copy_from_slice(&(0x1000u64).to_le_bytes());       // vf0
-    drr2[0x18..0x20].copy_from_slice(&(0x2000u64).to_le_bytes());       // vf1
-    // 0x20.. zeros end the run.
+    drr2[0x00..0x08].copy_from_slice(&ts_addr.to_le_bytes()); // _ZTS ptr
+    drr2[0x08..0x10].copy_from_slice(&(ro + 0x80).to_le_bytes()); // typeinfo ptr
+    drr2[0x10..0x18].copy_from_slice(&(0x1000u64).to_le_bytes()); // vf0
+    drr2[0x18..0x20].copy_from_slice(&(0x2000u64).to_le_bytes()); // vf1
+                                                                  // 0x20.. zeros end the run.
 
     // Same layout but with zeroed file-image pointers filled by RELATIVE
     // relocations — how real shared libraries look on disk (AArch64 RELA).
     let mut relocs = std::collections::HashMap::new();
-    relocs.insert(drr_base + 0x00, ts_addr);
+    relocs.insert(drr_base, ts_addr);
     relocs.insert(drr_base + 0x08, ro + 0x80);
     relocs.insert(drr_base + 0x10, 0x1000u64);
     relocs.insert(drr_base + 0x18, 0x2000u64);
-    let mut drr3 = vec![0u8; 0x40]; // all zeros in the file image
-    let out3 = scan_vtables((drr_base, &drr3), &[(0x1000, 0x2000)], (ro, &rodata), &relocs);
-    assert!(out3.contains(&(drr_base, "vtable for MyWidget".to_string())), "got {:?}", out3);
+    let drr3 = vec![0u8; 0x40]; // all zeros in the file image
+    let out3 = scan_vtables(
+        (drr_base, &drr3),
+        &[(0x1000, 0x2000)],
+        (ro, &rodata),
+        &relocs,
+    );
+    assert!(
+        out3.contains(&(drr_base, "vtable for MyWidget".to_string())),
+        "got {:?}",
+        out3
+    );
     assert!(out3.contains(&(drr_base + 0x10, "MyWidget::vf0".to_string())));
 
-    let out = scan_vtables((drr_base, &drr2), &[(0x1000, 0x2000)], (ro, &rodata), &std::collections::HashMap::new());
-    assert!(out.contains(&(drr_base, "vtable for MyWidget".to_string())), "got {:?}", out);
+    let out = scan_vtables(
+        (drr_base, &drr2),
+        &[(0x1000, 0x2000)],
+        (ro, &rodata),
+        &std::collections::HashMap::new(),
+    );
+    assert!(
+        out.contains(&(drr_base, "vtable for MyWidget".to_string())),
+        "got {:?}",
+        out
+    );
     assert!(out.contains(&(drr_base + 0x10, "MyWidget::vf0".to_string())));
     assert!(out.contains(&(drr_base + 0x18, "MyWidget::vf1".to_string())));
     let _ = drr; // unused variant kept minimal
@@ -258,8 +276,8 @@ fn test_scan_string_refs_aarch64_finds_rodata_reference() {
     // then junk.
     // adrp x0, imm = ((0x2000>>12) - (0x1000>>12)) = 1 => immhi=0<<2|immlo=1
     let adrp_imm_lo = 1u32; // immlo bits 29-30
-    let adrp: u32 = (1u32 << 31) | (adrp_imm_lo << 29) | (0b10000 << 24) | (0u32 << 5) | 0;
-    let add: u32 = (0b0_0010_0010u32 << 23) | (0x34 << 10) | (0 << 5) | 0;
+    let adrp: u32 = (1u32 << 31) | (adrp_imm_lo << 29) | (0b10000 << 24);
+    let add: u32 = (0b0_0010_0010u32 << 23) | (0x34 << 10);
 
     let mut code = Vec::new();
     code.extend_from_slice(&adrp.to_le_bytes());
@@ -270,9 +288,7 @@ fn test_scan_string_refs_aarch64_finds_rodata_reference() {
     let mut ro = vec![0u8; 0x100];
     ro[0x34..0x34 + 6].copy_from_slice(b"hello\0");
 
-    let out = scan_string_refs_aarch64(0x1000, &code, (0x2000, 0x2100), |a| {
-        a == 0x2034
-    });
+    let out = scan_string_refs_aarch64(0x1000, &code, (0x2000, 0x2100), |a| a == 0x2034);
     assert_eq!(out, vec![(0x2034u64, 0x1004u64)]);
 }
 

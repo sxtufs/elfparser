@@ -105,7 +105,16 @@ fn structure_sequence(
     jump_tables: &std::collections::HashMap<u64, super::jumptable::JumpTable>,
 ) -> Vec<StructuredNode> {
     structure_sequence_d(
-        func, graph, loop_info, ipdom, start, end, stop_idx, visited, jump_tables, 0,
+        func,
+        graph,
+        loop_info,
+        ipdom,
+        start,
+        end,
+        stop_idx,
+        visited,
+        jump_tables,
+        0,
     )
 }
 
@@ -394,7 +403,16 @@ fn structure_sequence_d(
                 // Case 1: Simple If-Then (fallthrough == join_idx)
                 if Some(fallthrough) == join_idx && tgt_idx < n {
                     let then_nodes = structure_sequence_d(
-                        func, graph, loop_info, ipdom, tgt_idx, end, join_idx, visited, jump_tables, depth + 1,
+                        func,
+                        graph,
+                        loop_info,
+                        ipdom,
+                        tgt_idx,
+                        end,
+                        join_idx,
+                        visited,
+                        jump_tables,
+                        depth + 1,
                     );
                     nodes.push(StructuredNode::If {
                         cond: c,
@@ -663,9 +681,7 @@ fn is_noreturn_call(stmt: &IrStmt) -> bool {
         "__stack_chk_fail_rt",
     ];
     match stmt {
-        IrStmt::Call { name: Some(n), .. } => {
-            NORETURN.iter().any(|k| n.ends_with(k))
-        }
+        IrStmt::Call { name: Some(n), .. } => NORETURN.iter().any(|k| n.ends_with(k)),
         IrStmt::Trap => true,
         _ => false,
     }
@@ -681,7 +697,9 @@ fn goto_refs(nodes: &[StructuredNode], refs: &mut std::collections::HashMap<u64,
     for n in nodes {
         match n {
             StructuredNode::Goto(t) => *refs.entry(*t).or_insert(0) += 1,
-            StructuredNode::If { then, otherwise, .. } => {
+            StructuredNode::If {
+                then, otherwise, ..
+            } => {
                 goto_refs(then, refs);
                 goto_refs(otherwise, refs);
             }
@@ -696,9 +714,9 @@ fn goto_refs(nodes: &[StructuredNode], refs: &mut std::collections::HashMap<u64,
 fn contains_label(nodes: &[StructuredNode]) -> bool {
     nodes.iter().any(|n| match n {
         StructuredNode::Label(_) => true,
-        StructuredNode::If { then, otherwise, .. } => {
-            contains_label(then) || contains_label(otherwise)
-        }
+        StructuredNode::If {
+            then, otherwise, ..
+        } => contains_label(then) || contains_label(otherwise),
         StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
             contains_label(body)
         }
@@ -732,7 +750,9 @@ fn try_region(
                     return Some(out);
                 }
             }
-            StructuredNode::If { then, otherwise, .. } => {
+            StructuredNode::If {
+                then, otherwise, ..
+            } => {
                 if contains_label(then) || contains_label(otherwise) {
                     return None;
                 }
@@ -760,12 +780,13 @@ fn try_region(
     None
 }
 
-pub(crate) fn has_plain_return(nodes: &[StructuredNode]) -> bool {    nodes.iter().any(|n| match n {
+pub(crate) fn has_plain_return(nodes: &[StructuredNode]) -> bool {
+    nodes.iter().any(|n| match n {
         StructuredNode::Return(_) => true,
         StructuredNode::Block(b) => b.stmts.iter().any(|s| matches!(s, IrStmt::Return(_))),
-        StructuredNode::If { then, otherwise, .. } => {
-            has_plain_return(then) || has_plain_return(otherwise)
-        }
+        StructuredNode::If {
+            then, otherwise, ..
+        } => has_plain_return(then) || has_plain_return(otherwise),
         _ => false,
     })
 }
@@ -962,19 +983,18 @@ fn resolve_chain(log: &[IrStmt], ret_reg: &str) -> Option<Vec<IrStmt>> {
                 }
                 _ => return None,
             },
-            (Need::Mem(slot), IrStmt::Store { ptr, val, .. }) if ptr_key(ptr) == *slot => {
-                match val {
-                    IrExpr::Const(_) | IrExpr::StringLit(_) => {
-                        picked.push(a.clone());
-                        needed = Need::Reg(String::new());
-                    }
-                    IrExpr::Reg(nr, _) => {
-                        picked.push(a.clone());
-                        needed = Need::Reg(nr.clone());
-                    }
-                    _ => return None,
+            (Need::Mem(slot), IrStmt::Store { ptr, val, .. }) if ptr_key(ptr) == *slot => match val
+            {
+                IrExpr::Const(_) | IrExpr::StringLit(_) => {
+                    picked.push(a.clone());
+                    needed = Need::Reg(String::new());
                 }
-            }
+                IrExpr::Reg(nr, _) => {
+                    picked.push(a.clone());
+                    needed = Need::Reg(nr.clone());
+                }
+                _ => return None,
+            },
             (Need::Reg(d), IrStmt::Call { .. }) | (Need::Reg(d), IrStmt::DivRem { .. })
                 if !d.is_empty() =>
             {
@@ -1006,7 +1026,10 @@ pub fn inline_shared_joins(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
 
 /// Like [`inline_shared_joins`], with the function's return register so
 /// tails ending in a bare `return` can be synthesized per site.
-pub fn inline_shared_joins_with_ret(nodes: Vec<StructuredNode>, ret_reg: &str) -> Vec<StructuredNode> {
+pub fn inline_shared_joins_with_ret(
+    nodes: Vec<StructuredNode>,
+    ret_reg: &str,
+) -> Vec<StructuredNode> {
     // Top-level label -> index of its Label node (first occurrence wins).
     let mut regions: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
     for (i, n) in nodes.iter().enumerate() {
@@ -1027,19 +1050,22 @@ pub fn inline_shared_joins_with_ret(nodes: Vec<StructuredNode>, ret_reg: &str) -
         if n >= 2 {
             if let Some(&idx) = regions.get(&addr) {
                 let mut budget = MAX_JOIN_STMTS;
-                memo.insert(addr, try_region(&nodes, idx, &regions, 0, &mut budget).filter(|exp| {
-                    let stmts: usize = exp
-                        .iter()
-                        .map(|n| match n {
-                            StructuredNode::Block(b) => b.stmts.len().max(1),
-                            StructuredNode::If { then, otherwise, .. } => {
-                                then.len() + otherwise.len()
-                            }
-                            _ => 1,
-                        })
-                        .sum();
-                    stmts <= MAX_INLINE_STMTS
-                }));
+                memo.insert(
+                    addr,
+                    try_region(&nodes, idx, &regions, 0, &mut budget).filter(|exp| {
+                        let stmts: usize = exp
+                            .iter()
+                            .map(|n| match n {
+                                StructuredNode::Block(b) => b.stmts.len().max(1),
+                                StructuredNode::If {
+                                    then, otherwise, ..
+                                } => then.len() + otherwise.len(),
+                                _ => 1,
+                            })
+                            .sum();
+                        stmts <= MAX_INLINE_STMTS
+                    }),
+                );
             }
         }
     }
@@ -1047,12 +1073,11 @@ pub fn inline_shared_joins_with_ret(nodes: Vec<StructuredNode>, ret_reg: &str) -
     // whose exit value is a proven constant: each goto site can simply become
     // a synthesized `return` (with its minimal assignment chain) instead of
     // duplicating the whole epilogue.
-    let mut ret_syn: std::collections::HashMap<u64, Vec<IrStmt>> =
-        std::collections::HashMap::new();
+    let mut ret_syn: std::collections::HashMap<u64, Vec<IrStmt>> = std::collections::HashMap::new();
     for (&addr, &n) in &refs {
         if n >= 2 && !matches!(memo.get(&addr), Some(Some(_))) {
             if let Some(&idx) = regions.get(&addr) {
-                if let Some(stmts) = const_return_stmts(&nodes, idx, &regions, &ret_reg) {
+                if let Some(stmts) = const_return_stmts(&nodes, idx, &regions, ret_reg) {
                     ret_syn.insert(addr, stmts);
                 }
             }
@@ -1157,13 +1182,14 @@ pub fn inline_shared_joins_with_ret(nodes: Vec<StructuredNode>, ret_reg: &str) -
 fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode> {
     // Count references to each label target so we never drop a Label that is
     // jumped to from more than the one If we are folding.
-    let mut label_refs: std::collections::HashMap<u64, usize> =
-        std::collections::HashMap::new();
+    let mut label_refs: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
     fn tally(nodes: &[StructuredNode], m: &mut std::collections::HashMap<u64, usize>) {
         for n in nodes {
             match n {
                 StructuredNode::Goto(t) => *m.entry(*t).or_insert(0) += 1,
-                StructuredNode::If { then, otherwise, .. } => {
+                StructuredNode::If {
+                    then, otherwise, ..
+                } => {
                     tally(then, m);
                     tally(otherwise, m);
                 }
@@ -1255,12 +1281,6 @@ fn collapse_early_exit_ladder(nodes: Vec<StructuredNode>) -> Vec<StructuredNode>
     out
 }
 
-#[cfg(test)]
-fn dbg_syn(so: &str, fa: u64) -> (usize, Vec<(u64, Option<usize>, Option<Vec<IrStmt>>)>) {
-    let _ = (so, fa);
-    (0, Vec::new())
-}
-
 // ---------------------------------------------------------------------------
 // Shared-tail helper extraction: the gotos that inlining and return synthesis
 // deliberately kept (cyclic epilogue chains too big to duplicate per site)
@@ -1340,7 +1360,10 @@ fn collect_reg_mentions_stmt(s: &IrStmt, out: &mut std::collections::BTreeSet<St
             collect_reg_mentions_expr(divisor, out);
         }
         IrStmt::Call {
-            target, args, ret_dst, ..
+            target,
+            args,
+            ret_dst,
+            ..
         } => {
             collect_reg_mentions_expr(target, out);
             for a in args {
@@ -1350,10 +1373,8 @@ fn collect_reg_mentions_stmt(s: &IrStmt, out: &mut std::collections::BTreeSet<St
                 collect_reg_mentions_expr(d, out);
             }
         }
-        IrStmt::Branch { cond, .. } => {
-            if let Some(c) = cond {
-                collect_reg_mentions_expr(c, out);
-            }
+        IrStmt::Branch { cond: Some(c), .. } => {
+            collect_reg_mentions_expr(c, out);
         }
         IrStmt::IndirectBranch { target } => collect_reg_mentions_expr(target, out),
         IrStmt::Return(Some(e)) => collect_reg_mentions_expr(e, out),
@@ -1369,7 +1390,11 @@ fn collect_reg_mentions(nodes: &[StructuredNode], out: &mut std::collections::BT
                     collect_reg_mentions_stmt(s, out);
                 }
             }
-            StructuredNode::If { cond, then, otherwise } => {
+            StructuredNode::If {
+                cond,
+                then,
+                otherwise,
+            } => {
                 collect_reg_mentions_expr(cond, out);
                 collect_reg_mentions(then, out);
                 collect_reg_mentions(otherwise, out);
@@ -1454,7 +1479,10 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                 }
             }
             IrStmt::Call {
-                target, args, ret_dst, ..
+                target,
+                args,
+                ret_dst,
+                ..
             } => {
                 expr_reads(target, reads);
                 for a in args {
@@ -1464,10 +1492,8 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                     writes.push(r.to_lowercase());
                 }
             }
-            IrStmt::Branch { cond, .. } => {
-                if let Some(c) = cond {
-                    expr_reads(c, reads);
-                }
+            IrStmt::Branch { cond: Some(c), .. } => {
+                expr_reads(c, reads);
             }
             IrStmt::IndirectBranch { target } => expr_reads(target, reads),
             IrStmt::Return(Some(e)) => expr_reads(e, reads),
@@ -1482,7 +1508,11 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                         stmt_reads_writes(s, reads, writes);
                     }
                 }
-                StructuredNode::If { cond, then, otherwise } => {
+                StructuredNode::If {
+                    cond,
+                    then,
+                    otherwise,
+                } => {
                     expr_reads(cond, reads);
                     walk(then, reads, writes);
                     walk(otherwise, reads, writes);
@@ -1590,7 +1620,10 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                     }
                 }
                 IrStmt::Call {
-                    target, args, ret_dst, ..
+                    target,
+                    args,
+                    ret_dst,
+                    ..
                 } => {
                     expr_reads_ordered(target, params, written);
                     for a in args {
@@ -1600,10 +1633,8 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                         written.insert(r.to_lowercase());
                     }
                 }
-                IrStmt::Branch { cond, .. } => {
-                    if let Some(c) = cond {
-                        expr_reads_ordered(c, params, written);
-                    }
+                IrStmt::Branch { cond: Some(c), .. } => {
+                    expr_reads_ordered(c, params, written);
                 }
                 IrStmt::IndirectBranch { target } => expr_reads_ordered(target, params, written),
                 IrStmt::Return(Some(e)) => expr_reads_ordered(e, params, written),
@@ -1617,7 +1648,11 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                         stmt_ordered(s, params, written);
                     }
                 }
-                StructuredNode::If { cond, then, otherwise } => {
+                StructuredNode::If {
+                    cond,
+                    then,
+                    otherwise,
+                } => {
                     expr_reads_ordered(cond, params, written);
                     ordered_walk(then, params, written);
                     ordered_walk(otherwise, params, written);
@@ -1627,7 +1662,9 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
                     ordered_walk(body, params, written);
                 }
                 StructuredNode::Return(Some(e)) => expr_reads_ordered(e, params, written),
-                StructuredNode::Switch { selector, .. } => expr_reads_ordered(selector, params, written),
+                StructuredNode::Switch { selector, .. } => {
+                    expr_reads_ordered(selector, params, written)
+                }
                 _ => {}
             }
         }
@@ -1649,19 +1686,16 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
             all.insert(parent.to_lowercase());
         }
     }
-    let locals: Vec<String> = all
-        .into_iter()
-        .filter(|r| !params.contains(r))
-        .collect();
+    let locals: Vec<String> = all.into_iter().filter(|r| !params.contains(r)).collect();
     (params, locals)
 }
 
 fn body_has_unresolvable_jump(nodes: &[StructuredNode]) -> bool {
     nodes.iter().any(|n| match n {
         StructuredNode::Goto(_) | StructuredNode::Label(_) => true,
-        StructuredNode::If { then, otherwise, .. } => {
-            body_has_unresolvable_jump(then) || body_has_unresolvable_jump(otherwise)
-        }
+        StructuredNode::If {
+            then, otherwise, ..
+        } => body_has_unresolvable_jump(then) || body_has_unresolvable_jump(otherwise),
         StructuredNode::While { body, .. } | StructuredNode::DoWhile { body, .. } => {
             body_has_unresolvable_jump(body)
         }
@@ -1723,7 +1757,11 @@ fn replace_gotos(
                     StructuredNode::Return(Some(call_expr))
                 }
             }
-            StructuredNode::If { cond, then, otherwise } => StructuredNode::If {
+            StructuredNode::If {
+                cond,
+                then,
+                otherwise,
+            } => StructuredNode::If {
                 cond,
                 then: replace_gotos(then, repl, ret_void),
                 otherwise: replace_gotos(otherwise, repl, ret_void),
@@ -1777,7 +1815,7 @@ pub fn extract_tail_helpers(
         // same rule the inliner applies to fall-throughs — so the helper body
         // is self-contained. Bounded by budget and a visited set.
         let mut spliced: Vec<StructuredNode> = Vec::new();
-        let mut queue: Vec<StructuredNode> = body.drain(..).collect();
+        let mut queue: Vec<StructuredNode> = std::mem::take(&mut body);
         let mut visited: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
         visited.insert(addr);
         queue.reverse();

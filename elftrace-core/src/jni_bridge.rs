@@ -78,7 +78,11 @@ unsafe fn handle_disasm(
     let ctx = &*(handle as *const ElfContext);
     let raw_vaddr = address as u64;
     let e_machine = ctx.get_info().map(|i| i.e_machine).unwrap_or(183);
-    let vaddr = if e_machine == 40 { raw_vaddr & !1 } else { raw_vaddr };
+    let vaddr = if e_machine == 40 {
+        raw_vaddr & !1
+    } else {
+        raw_vaddr
+    };
 
     let offset = match ctx.vaddr_to_offset(vaddr) {
         Some(off) => off as usize,
@@ -126,7 +130,8 @@ unsafe fn handle_disasm(
             let name = sym.demangled.as_deref().unwrap_or(sym.sym.as_str());
             return Some(name.to_string());
         }
-        ctx.get_string_at_vaddr(v).map(|s| format!("\"{}\"", s))
+        ctx.get_string_at_vaddr(v)
+            .map(|s| crate::decompiler::c_string_literal(&s))
     };
     match crate::disasm::disassemble_with_resolver(
         code_slice,
@@ -188,12 +193,7 @@ unsafe fn handle_strings(env: &JNIEnv, handle: jlong) -> jstring {
     }
 }
 
-unsafe fn handle_write(
-    env: &JNIEnv,
-    handle: jlong,
-    address: jlong,
-    bytes: jbyteArray,
-) -> jboolean {
+unsafe fn handle_write(env: &JNIEnv, handle: jlong, address: jlong, bytes: jbyteArray) -> jboolean {
     // Return 1 only when the patch actually landed. Previously this returned
     // void and swallowed the Err from patch_bytes, so the UI reported
     // "Patched N bytes" even for unmapped addresses / out-of-bounds writes.
@@ -201,7 +201,7 @@ unsafe fn handle_write(
         return 0;
     }
     let ctx = &mut *(handle as *mut ElfContext);
-    match env.convert_byte_array(&jni::objects::JByteArray::from_raw(bytes)) {
+    match env.convert_byte_array(jni::objects::JByteArray::from_raw(bytes)) {
         Ok(byte_vec) => {
             if ctx.patch_bytes(address as u64, &byte_vec).is_ok() {
                 1
@@ -232,9 +232,11 @@ unsafe fn handle_save(env: &mut JNIEnv, handle: jlong) -> jbyteArray {
         // Zero-copy reinterpretation: the JNI API wants &[i8], but the bytes are
         // already in memory. Avoids duplicating the whole file (which can be
         // hundreds of MB for a large .so).
-        let signed_slice: &[i8] =
-            std::slice::from_raw_parts(ctx.raw.as_ptr() as *const i8, len);
-        if env.set_byte_array_region(&jni::objects::JByteArray::from_raw(j_arr), 0, signed_slice).is_err() {
+        let signed_slice: &[i8] = std::slice::from_raw_parts(ctx.raw.as_ptr() as *const i8, len);
+        if env
+            .set_byte_array_region(jni::objects::JByteArray::from_raw(j_arr), 0, signed_slice)
+            .is_err()
+        {
             return std::ptr::null_mut();
         }
     }
@@ -265,9 +267,11 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_info0(
     handle: jlong,
     _flag: jboolean,
 ) -> jstring {
-    guard_jstring(&mut env, "{\"error\":\"panic while parsing ELF info\"}", |env| {
-        handle_info(env, handle)
-    })
+    guard_jstring(
+        &mut env,
+        "{\"error\":\"panic while parsing ELF info\"}",
+        |env| handle_info(env, handle),
+    )
 }
 
 #[no_mangle]
@@ -314,13 +318,13 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_strings0(
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_write0(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     address: jlong,
     bytes: jbyteArray,
 ) -> jboolean {
-    handle_write(&mut env, handle, address, bytes)
+    handle_write(&env, handle, address, bytes)
 }
 
 #[no_mangle]
@@ -424,11 +428,15 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getHierarchy(
     let ctx = &*(handle as *const ElfContext);
     let target_vaddr = address as u64;
 
-    guard_jstring(&mut env, "{\"function_address\":0,\"function_name\":\"\",\"callers\":[],\"callees\":[]}", |env| {
-        let hierarchy = crate::xref::get_hierarchy(ctx, target_vaddr);
-        let json = serde_json::to_string(&hierarchy).unwrap_or_else(|_| "{}".to_string());
-        env.new_string(json).unwrap().as_raw() as jstring
-    })
+    guard_jstring(
+        &mut env,
+        "{\"function_address\":0,\"function_name\":\"\",\"callers\":[],\"callees\":[]}",
+        |env| {
+            let hierarchy = crate::xref::get_hierarchy(ctx, target_vaddr);
+            let json = serde_json::to_string(&hierarchy).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(json).unwrap().as_raw() as jstring
+        },
+    )
 }
 
 #[no_mangle]
@@ -469,12 +477,16 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_quickPatch(
                 || (address & 1) != 0
                 || crate::decompiler::find_function_range(ctx, address as u64).thumb)
     };
-    guard_jstring(&mut env, "{\"success\":false,\"error\":\"panic while patching\"}", |env| {
-        let ctx = &mut *(handle as *mut ElfContext);
-        let res = crate::patcher::apply_quick_patch(ctx, address as u64, ptype, is_thumb);
-        let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-        env.new_string(json).unwrap().as_raw() as jstring
-    })
+    guard_jstring(
+        &mut env,
+        "{\"success\":false,\"error\":\"panic while patching\"}",
+        |env| {
+            let ctx = &mut *(handle as *mut ElfContext);
+            let res = crate::patcher::apply_quick_patch(ctx, address as u64, ptype, is_thumb);
+            let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(json).unwrap().as_raw() as jstring
+        },
+    )
 }
 
 #[no_mangle]
@@ -500,12 +512,16 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_assemblePatch(
                 .as_raw() as jstring
         }
     };
-    guard_jstring(&mut env, "{\"success\":false,\"error\":\"panic while patching\"}", |env| {
-        let ctx = &mut *(handle as *mut ElfContext);
-        let res = crate::patcher::assemble_and_patch(ctx, address as u64, &text);
-        let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-        env.new_string(json).unwrap().as_raw() as jstring
-    })
+    guard_jstring(
+        &mut env,
+        "{\"success\":false,\"error\":\"panic while patching\"}",
+        |env| {
+            let ctx = &mut *(handle as *mut ElfContext);
+            let res = crate::patcher::assemble_and_patch(ctx, address as u64, &text);
+            let json = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(json).unwrap().as_raw() as jstring
+        },
+    )
 }
 
 #[no_mangle]
@@ -553,14 +569,21 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_getBinaryFacts(
     handle: jlong,
 ) -> jstring {
     if handle == 0 {
-        return env.new_string("{\"rpath\":null,\"init_constructors\":0}").unwrap().as_raw() as jstring;
+        return env
+            .new_string("{\"rpath\":null,\"init_constructors\":0}")
+            .unwrap()
+            .as_raw() as jstring;
     }
     let ctx = &*(handle as *const ElfContext);
-    guard_jstring(&mut env, "{\"rpath\":null,\"init_constructors\":0}", |env| {
-        let facts = crate::scanner::build_binary_facts(ctx);
-        let json = serde_json::to_string(&facts).unwrap_or_else(|_| "{}".to_string());
-        env.new_string(json).unwrap().as_raw() as jstring
-    })
+    guard_jstring(
+        &mut env,
+        "{\"rpath\":null,\"init_constructors\":0}",
+        |env| {
+            let facts = crate::scanner::build_binary_facts(ctx);
+            let json = serde_json::to_string(&facts).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(json).unwrap().as_raw() as jstring
+        },
+    )
 }
 
 #[no_mangle]
@@ -723,12 +746,16 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_applyPluginPatch(
                 .as_raw() as jstring;
         }
     };
-    guard_jstring(&mut env, "{\"success\":false,\"error\":\"panic while applying plugin patch\"}", |env| {
-        let ctx = &mut *(handle as *mut ElfContext);
-        let res = crate::plugins::apply_plugin_patch(ctx, address as u64, &mode, &value);
-        let out = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
-        env.new_string(out).unwrap().as_raw() as jstring
-    })
+    guard_jstring(
+        &mut env,
+        "{\"success\":false,\"error\":\"panic while applying plugin patch\"}",
+        |env| {
+            let ctx = &mut *(handle as *mut ElfContext);
+            let res = crate::plugins::apply_plugin_patch(ctx, address as u64, &mode, &value);
+            let out = serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string());
+            env.new_string(out).unwrap().as_raw() as jstring
+        },
+    )
 }
 
 /// Patch Propagation: spread one seed patch across the binary.
@@ -782,7 +809,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_propagatePatch(
             } else {
                 false
             };
-            let prop_mode = crate::propagation::PropagationMode::from_i32(mode as i32);
+            let prop_mode = crate::propagation::PropagationMode::from_i32(mode);
             let seed_patch = match crate::propagation::resolve_seed_patch(
                 ctx,
                 &p_mode,

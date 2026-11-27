@@ -92,7 +92,7 @@ fn arm32_a32_masks_register_fields_only() {
     assert_eq!(mask & 0x0FF0_0000, 0x0FF0_0000);
 
     // All three register fields must be cleared in value and ignored in mask.
-    let reg_bits: u32 = (0xF << 0) | (0xF << 12) | (0xF << 16);
+    let reg_bits: u32 = 0xF | (0xF << 12) | (0xF << 16);
     assert_eq!(val & reg_bits, 0);
     assert_eq!(mask & reg_bits, 0);
 }
@@ -112,8 +112,8 @@ fn thumb_seed_patch_uses_thumb_encoding() {
     // resolved with the Thumb flag when the seed lives in Thumb code, or every
     // propagated clone receives A32 bytes (8-byte mov pc-relative encoding)
     // instead of the 4-byte Thumb sequence.
-    use elftrace::patcher::QuickPatchType;
     use elftrace::patcher::quick_patch_bytes;
+    use elftrace::patcher::QuickPatchType;
 
     assert_eq!(
         quick_patch_bytes(40, QuickPatchType::ReturnTrue, true),
@@ -141,7 +141,11 @@ fn arm32_register_differences_still_match() {
     let (va, ma) = seed_insn_mask(40, false, a);
     let (vb, mb) = seed_insn_mask(40, false, b);
     assert_eq!(ma, mb);
-    assert_eq!(va & ma, vb & mb, "operand-only differences must not affect the masked comparison");
+    assert_eq!(
+        va & ma,
+        vb & mb,
+        "operand-only differences must not affect the masked comparison"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +186,10 @@ fn propagate_exact_applies_to_all_clones() {
         &mut ctx,
         seed,
         &[0x1f, 0x20, 0x03, 0xd5], // nop
-        &PropagateOptions { dry_run: true, ..Default::default() },
+        &PropagateOptions {
+            dry_run: true,
+            ..Default::default()
+        },
     );
     assert_eq!(dry.mode, PropagationMode::ExactClone.name());
     assert!(dry.error.is_none(), "dry-run error: {:?}", dry.error);
@@ -199,10 +206,17 @@ fn propagate_exact_applies_to_all_clones() {
         &mut ctx,
         seed,
         &[0x1f, 0x20, 0x03, 0xd5],
-        &PropagateOptions { dry_run: false, ..Default::default() },
+        &PropagateOptions {
+            dry_run: false,
+            ..Default::default()
+        },
     );
     assert!(applied.error.is_none(), "apply error: {:?}", applied.error);
-    assert!(applied.applied >= 1, "expected >=1 applied, got {}", applied.applied);
+    assert!(
+        applied.applied >= 1,
+        "expected >=1 applied, got {}",
+        applied.applied
+    );
 
     // The buffer actually changed, and only at reported addresses.
     assert_ne!(ctx.raw, orig, "applied propagation must mutate the buffer");

@@ -14,14 +14,21 @@ fn builtin_scripts_run_without_script_errors() {
         .expect("plugin dir")
         .map(|e| e.unwrap().path())
         .collect();
-    assert!(entries.len() >= 16, "expected >=16 manifests, got {}", entries.len());
+    assert!(
+        entries.len() >= 16,
+        "expected >=16 manifests, got {}",
+        entries.len()
+    );
 
     for path in entries {
         let json = std::fs::read_to_string(&path).unwrap();
         let ctx = ElfContext::stub();
         let report = run_plugin(&ctx, &json);
-        let arch_gated = report.error.as_deref()
-            .map(|e| e.contains("but loaded binary is unknown")).unwrap_or(false);
+        let arch_gated = report
+            .error
+            .as_deref()
+            .map(|e| e.contains("but loaded binary is unknown"))
+            .unwrap_or(false);
         assert!(
             arch_gated || report.error.is_none(),
             "{} returned script error: {:?}",

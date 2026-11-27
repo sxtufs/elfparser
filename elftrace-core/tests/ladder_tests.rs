@@ -7,6 +7,7 @@
 //!   1. $ELFTRACE_FIXTURES_DIR/libpowerampcore.so  (CI)
 //!   2. /workspace/test_fixtures/accuracy/libpowerampcore.so (CI fallback)
 //!   3. ../test_fixtures/accuracy/libpowerampcore.so (repo-relative)
+//!
 //! If none exist the tests SKIP (return), matching the other fixture tests.
 
 use elftrace::decompiler::{decompile_to_c, decompile_to_c_structured};
@@ -64,7 +65,10 @@ fn test_poweramp_jni_onload_baseline() {
     );
 
     let structured = decompile_to_c_structured(&ctx, addr);
-    assert!(!structured.is_empty(), "structured decompile must be non-empty");
+    assert!(
+        !structured.is_empty(),
+        "structured decompile must be non-empty"
+    );
 
     let gotos = count_occurrences(&structured, "goto loc_");
     let partial = structured.contains("partial structure");
@@ -123,10 +127,7 @@ fn test_poweramp_jni_onload_baseline() {
     // the Android device itself) we skip silently — the brace/label checks
     // above still gate correctness deterministically.
     if let Some((cc, target_args)) = aarch64_compiler() {
-        let tu = format!(
-            "#include <stdint.h>\n#include <stddef.h>\n{}\n",
-            structured
-        );
+        let tu = format!("#include <stdint.h>\n#include <stddef.h>\n{}\n", structured);
         let tmp = std::env::temp_dir().join("elftrace_poweramp_jni_onload.c");
         std::fs::write(&tmp, &tu).unwrap();
         let out = std::process::Command::new(cc)

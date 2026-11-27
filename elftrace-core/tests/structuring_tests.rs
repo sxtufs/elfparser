@@ -702,7 +702,9 @@ fn chained_join_ladder_gotos(n_arms: usize, name: &str, chain_len: usize) {
     // Blocks 0..N: arms; then `chain_len` join labels falling through to each
     // other; final block: Return.
     let join_base = 0x50u64;
-    let join_addrs: Vec<u64> = (0..chain_len).map(|k| join_base + k as u64 * 0x10).collect();
+    let join_addrs: Vec<u64> = (0..chain_len)
+        .map(|k| join_base + k as u64 * 0x10)
+        .collect();
     let epilogue = join_base + chain_len as u64 * 0x10;
 
     let mut blocks: Vec<IrBlock> = (0..n_arms)
@@ -845,31 +847,41 @@ fn test_inline_shared_joins_unit() {
     use elftrace::decompiler::structuring::regions::inline_shared_joins;
     use elftrace::decompiler::structuring::StructuredNode;
     let g = |t: u64| StructuredNode::Goto(t);
-    let blk = |name: &str| StructuredNode::Block(IrBlock {
-        id: 0,
-        start_address: 0,
-        end_address: 0,
-        stmts: vec![IrStmt::Call {
-            target: IrExpr::Const(0),
-            name: Some(name.to_string()),
-            args: vec![],
-            ret_dst: None,
-        }],
-    });
+    let blk = |name: &str| {
+        StructuredNode::Block(IrBlock {
+            id: 0,
+            start_address: 0,
+            end_address: 0,
+            stmts: vec![IrStmt::Call {
+                target: IrExpr::Const(0),
+                name: Some(name.to_string()),
+                args: vec![],
+                ret_dst: None,
+            }],
+        })
+    };
     // flat: blk(arm0), goto(0x50), blk(arm1), goto(0x50), Label(0x50), blk(log), Return
     let nodes = vec![
-        blk("arm0"), g(0x50),
-        blk("arm1"), g(0x50),
+        blk("arm0"),
+        g(0x50),
+        blk("arm1"),
+        g(0x50),
         StructuredNode::Label(0x50),
         blk("log"),
         StructuredNode::Return(None),
     ];
     let out = inline_shared_joins(nodes);
-    let count_gotos = |ns: &[StructuredNode]| ns.iter().filter(|n| matches!(n, StructuredNode::Goto(0x50))).count();
+    let count_gotos = |ns: &[StructuredNode]| {
+        ns.iter()
+            .filter(|n| matches!(n, StructuredNode::Goto(0x50)))
+            .count()
+    };
     assert_eq!(count_gotos(&out), 1, "one kept goto; nodes: {:?}", out);
     // refs=2 -> 1 inlined copy + 1 kept goto: arm0, arm1, log, copy(log).
     assert_eq!(
-        out.iter().filter(|n| matches!(n, StructuredNode::Block(_))).count(),
+        out.iter()
+            .filter(|n| matches!(n, StructuredNode::Block(_)))
+            .count(),
         4,
         "arm0, arm1, log, one inlined copy"
     );

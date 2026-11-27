@@ -13,17 +13,20 @@ pub mod propagation;
 pub mod scanner;
 pub mod xref;
 
+pub use discovery::{discover, DiscoveredFunction, DiscoveryReport, MAX_SCANNED_BYTES};
 pub use elf_parser::ElfContext;
-pub use discovery::{discover, DiscoveryReport, DiscoveredFunction, MAX_SCANNED_BYTES};
 pub use il2cpp::{load_global_metadata, load_script_json};
 pub use jni_resolver::resolve_jni_offset;
 pub use model::{CodeIns, ElfInfo, SData};
 pub use patcher::{apply_quick_patch, assemble_and_patch, PatchResult, QuickPatchType};
+pub use plugins::{
+    apply_plugin_patch, run_plugin, PluginFinding, PluginManifest, PluginPatch, PluginReport,
+    PluginRule,
+};
 pub use propagation::{
     propagate_callers, propagate_exact, resolve_seed_patch, PatchPropagationReport,
     PropagateOptions, PropagatedPatch, PropagationMode,
 };
-pub use plugins::{apply_plugin_patch, run_plugin, PluginFinding, PluginManifest, PluginPatch, PluginReport, PluginRule};
 pub use scanner::{
     calculate_entropy_report, scan_security, EntropyReport, ScanReport, SectionEntropy,
     SecurityFinding,

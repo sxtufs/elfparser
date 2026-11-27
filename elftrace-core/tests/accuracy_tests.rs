@@ -16,8 +16,22 @@ fn assert_compiles(c_code: &str, label: &str) {
     std::fs::write(&path, tu).unwrap();
     let mut ok = false;
     for (cc, base_args) in [
-        ("aarch64-linux-gnu-gcc", &["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..]),
-        ("clang", &["--target=aarch64-linux-gnu", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..]),
+        (
+            "aarch64-linux-gnu-gcc",
+            &["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..],
+        ),
+        (
+            "clang",
+            &[
+                "--target=aarch64-linux-gnu",
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-pedantic",
+                "-c",
+            ][..],
+        ),
     ] {
         match std::process::Command::new(cc)
             .args(base_args)
@@ -26,8 +40,16 @@ fn assert_compiles(c_code: &str, label: &str) {
             .arg("/dev/null")
             .output()
         {
-            Ok(o) if o.status.success() => { ok = true; break; }
-            Ok(o) => panic!("{} FAILED on {}:\n{}", cc, label, String::from_utf8_lossy(&o.stderr)),
+            Ok(o) if o.status.success() => {
+                ok = true;
+                break;
+            }
+            Ok(o) => panic!(
+                "{} FAILED on {}:\n{}",
+                cc,
+                label,
+                String::from_utf8_lossy(&o.stderr)
+            ),
             Err(_) => continue,
         }
     }
@@ -316,7 +338,10 @@ fn test_item6_sxtw_shift_pair_renders_at_64_bits() {
     assert_eq!(c, "(int64_t)((uint64_t)(uint32_t)x23 << 0x20) >> 0x20");
     // The widening must happen on the left shift and the ShrS must stay signed.
 
-    let c_code = format!("int64_t probe(int64_t x23) {{ int64_t x24; x24 = {}; return x24; }}", c);
+    let c_code = format!(
+        "int64_t probe(int64_t x23) {{ int64_t x24; x24 = {}; return x24; }}",
+        c
+    );
     assert_compiles(&c_code, "sxtw_shift_pair");
 }
 
@@ -1247,8 +1272,22 @@ fn try_compile(c_code: &str) -> Result<(), String> {
     // Decompiled output contains AArch64 inline asm; must cross-compile.
     let mut tried_any = false;
     for (cc, base_args) in [
-        ("aarch64-linux-gnu-gcc", &["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..]),
-        ("clang", &["--target=aarch64-linux-gnu", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..]),
+        (
+            "aarch64-linux-gnu-gcc",
+            &["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic", "-c"][..],
+        ),
+        (
+            "clang",
+            &[
+                "--target=aarch64-linux-gnu",
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-pedantic",
+                "-c",
+            ][..],
+        ),
     ] {
         let out = match std::process::Command::new(cc)
             .args(base_args)
@@ -1563,7 +1602,9 @@ fn test_batch_e_movi_simd_asm() {
         assert!(
             matches!(stmts[0], IrStmt::Asm(_)),
             "{} {} must emit Asm, got: {:?}",
-            mnem, ops, stmts[0]
+            mnem,
+            ops,
+            stmts[0]
         );
     }
 
@@ -1571,7 +1612,8 @@ fn test_batch_e_movi_simd_asm() {
     let stmts = lifter.lift(&ctx, 0x1000, "movi", "w0, #0", &[0; 4]);
     assert!(
         matches!(stmts[0], IrStmt::Assign { .. }),
-        "movi w0, #0 must still emit Assign, got: {:?}", stmts[0]
+        "movi w0, #0 must still emit Assign, got: {:?}",
+        stmts[0]
     );
 }
 
@@ -1580,9 +1622,7 @@ fn test_batch_e_movi_simd_asm() {
 fn test_batch_e_indirect_call_cast() {
     use elftrace::decompiler::arch::ArchKind;
     use elftrace::decompiler::codegen::CodeGenerator;
-    use elftrace::decompiler::ir::{
-        IrBlock, IrExpr, IrFunction, IrStmt, IrType,
-    };
+    use elftrace::decompiler::ir::{IrBlock, IrExpr, IrFunction, IrStmt, IrType};
 
     // Synthesize an IrFunction with a single call through x8.
     let ctx = ElfContext::stub();
@@ -1674,13 +1714,15 @@ fn test_batch_e_cpp_demangle_fallback() {
         assert!(
             !c.contains(bad_name),
             "C++ demangled name {:?} must not appear in C output. Got:\n{}",
-            bad_name, c
+            bad_name,
+            c
         );
         // Must fall back to the function-pointer cast using the address.
         assert!(
             c.contains("((int64_t(*)(uint64_t))0xdead0000)"),
             "C++ demangle {:?} must fall back to address cast. Got:\n{}",
-            bad_name, c
+            bad_name,
+            c
         );
     }
 }
@@ -1719,11 +1761,26 @@ fn test_batch_e_assemble_patch_compiles_clean() {
     };
     let c = decompile_to_c(&ctx, addr);
 
-    assert!(!c.contains("v0.2d"), "SIMD lane identifier leaked into output:\n{}", c);
-    assert!(!c.contains("v0.4s"), "SIMD lane identifier leaked into output:\n{}", c);
+    assert!(
+        !c.contains("v0.2d"),
+        "SIMD lane identifier leaked into output:\n{}",
+        c
+    );
+    assert!(
+        !c.contains("v0.4s"),
+        "SIMD lane identifier leaked into output:\n{}",
+        c
+    );
     // No bare `xN()` calls (would require regex; approximate by checking known reg names)
-    for reg in ["x0(", "x1(", "x2(", "x3(", "x4(", "x5(", "x6(", "x7(", "x8(", "x9("] {
-        assert!(!c.contains(reg), "Bare register call {} in output:\n{}", reg, c);
+    for reg in [
+        "x0(", "x1(", "x2(", "x3(", "x4(", "x5(", "x6(", "x7(", "x8(", "x9(",
+    ] {
+        assert!(
+            !c.contains(reg),
+            "Bare register call {} in output:\n{}",
+            reg,
+            c
+        );
     }
 
     assert_compiles(&c, "batch_e_assemblePatch");
@@ -1804,7 +1861,8 @@ fn test_batch_f_blr_respects_explicit_args() {
     match &stmts[0] {
         IrStmt::Call { args, .. } => {
             assert_eq!(
-                args.len(), 2,
+                args.len(),
+                2,
                 "blr with 2 explicit arg writes must emit exactly 2 args. Got: {:?}",
                 args
             );
@@ -1881,17 +1939,20 @@ fn test_batch_g_sub_register_aliasing() {
     // Sub-register write must zero-extend into parent x8
     assert!(
         c.contains("x8 = (uint64_t)(uint32_t)"),
-        "w8 write must zero-extend to x8. Got:\n{}", c
+        "w8 write must zero-extend to x8. Got:\n{}",
+        c
     );
     // Sub-register read must truncate the parent
     assert!(
         c.contains("(uint32_t)x8"),
-        "w8 read must truncate x8. Got:\n{}", c
+        "w8 read must truncate x8. Got:\n{}",
+        c
     );
     // w8 must NOT appear as a declared local
     assert!(
         !c.contains("int32_t w8;"),
-        "w8 must not be a declared local. Got:\n{}", c
+        "w8 must not be a declared local. Got:\n{}",
+        c
     );
 }
 
@@ -1907,12 +1968,13 @@ fn test_disasm_supported_architectures_still_decode() {
         ("x86", 3, &[0x90], "nop"),
     ];
     for (name, e_machine, bytes, expected) in cases {
-        let out = elftrace::disasm::disassemble(bytes, 0x1000, bytes.len() as u64, *e_machine, false)
-            .unwrap_or_else(|e| panic!("{} disassembly failed: {}", name, e));
+        let out =
+            elftrace::disasm::disassemble(bytes, 0x1000, bytes.len() as u64, *e_machine, false)
+                .unwrap_or_else(|e| panic!("{} disassembly failed: {}", name, e));
         assert!(!out.data.is_empty(), "{} produced no instructions", name);
         let mnemonics: Vec<&str> = out.data.iter().map(|i| i.mnemonic.as_str()).collect();
         assert!(
-            mnemonics.contains(&expected),
+            mnemonics.contains(expected),
             "{} should decode `{}`, got {:?}",
             name,
             expected,
@@ -1933,15 +1995,12 @@ fn test_disasm_unsupported_architecture_is_rejected() {
         ("mips", 8, &[0x00, 0x00, 0x00, 0x00]),
     ];
     for (name, e_machine, bytes) in cases {
-        let err = elftrace::disasm::disassemble(
-            bytes,
-            0x1000,
-            bytes.len() as u64,
-            *e_machine,
-            false,
-        )
-        .err()
-        .unwrap_or_else(|| panic!("{} (e_machine {}) must not disassemble", name, e_machine));
+        let err =
+            elftrace::disasm::disassemble(bytes, 0x1000, bytes.len() as u64, *e_machine, false)
+                .err()
+                .unwrap_or_else(|| {
+                    panic!("{} (e_machine {}) must not disassemble", name, e_machine)
+                });
         assert!(
             err.contains("Unsupported architecture"),
             "{} error should say the architecture is unsupported, got: {}",

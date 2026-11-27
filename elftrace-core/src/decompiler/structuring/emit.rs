@@ -501,11 +501,10 @@ fn emit_block_stmts(
                 // the source, matching ARM64 w-writes / x86-64 32-bit writes.
                 if let IrExpr::Reg(dst_r, _) = dst {
                     let dst_lower = dst_r.to_lowercase();
-                    if let Some((parent, _)) = crate::decompiler::codegen::sub_register_info(&dst_lower) {
-                        let parent_name = param_map
-                            .get(&parent)
-                            .cloned()
-                            .unwrap_or(parent);
+                    if let Some((parent, _)) =
+                        crate::decompiler::codegen::sub_register_info(&dst_lower)
+                    {
+                        let parent_name = param_map.get(&parent).cloned().unwrap_or(parent);
                         let src_str = codegen.format_expr(
                             src,
                             param_map,
@@ -561,11 +560,11 @@ fn emit_block_stmts(
                     // vtable load) assigned to a scalar register must go
                     // through uintptr_t, or the C compiler rejects it as a
                     // pointer -> integer conversion.
-                    if src_str.contains("*)(") || (src_str.contains("*)") && !src_str.contains(" *("))
+                    if (src_str.contains("*)(")
+                        || (src_str.contains("*)") && !src_str.contains(" *(")))
+                        && !dst_str.contains('*')
                     {
-                        if !dst_str.contains('*') {
-                            src_str = format!("(int64_t)(uintptr_t)({})", src_str);
-                        }
+                        src_str = format!("(int64_t)(uintptr_t)({})", src_str);
                     }
                     // A pointer-typed source register (a pointer param in a
                     // non-JNI function) assigned to a scalar local must be
@@ -1027,16 +1026,31 @@ pub fn prune_unused_labels(body: String) -> String {
 /// Names that gcc treats as built-ins: declaring them variadically would
 /// conflict, so they get their real libc prototypes instead.
 const LIBC_PROTO: &[(&str, &str)] = &[
-    ("memcpy", "void *memcpy(void *, const void *, unsigned long)"),
-    ("memmove", "void *memmove(void *, const void *, unsigned long)"),
+    (
+        "memcpy",
+        "void *memcpy(void *, const void *, unsigned long)",
+    ),
+    (
+        "memmove",
+        "void *memmove(void *, const void *, unsigned long)",
+    ),
     ("memset", "void *memset(void *, int, unsigned long)"),
-    ("memcmp", "int memcmp(const void *, const void *, unsigned long)"),
+    (
+        "memcmp",
+        "int memcmp(const void *, const void *, unsigned long)",
+    ),
     ("strlen", "unsigned long strlen(const char *)"),
     ("strcpy", "char *strcpy(char *, const char *)"),
-    ("strncpy", "char *strncpy(char *, const char *, unsigned long)"),
+    (
+        "strncpy",
+        "char *strncpy(char *, const char *, unsigned long)",
+    ),
     ("strcat", "char *strcat(char *, const char *)"),
     ("strcmp", "int strcmp(const char *, const char *)"),
-    ("strncmp", "int strncmp(const char *, const char *, unsigned long)"),
+    (
+        "strncmp",
+        "int strncmp(const char *, const char *, unsigned long)",
+    ),
 ];
 
 /// True for plain register-shaped names (x0, w19, q8, v3): a call "name" like
@@ -1047,7 +1061,10 @@ fn looks_like_register_name(s: &str) -> bool {
     b.len() >= 2
         && matches!(b[0], b'x' | b'w' | b'q' | b'v' | b'd' | b's' | b'h' | b'b')
         && b[1..].iter().all(|c| c.is_ascii_digit())
-        && s.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+        && s.chars()
+            .next()
+            .map(|c| c.is_ascii_lowercase())
+            .unwrap_or(false)
 }
 
 /// Collect the names of every called function in the node tree, deduped in
@@ -1058,19 +1075,19 @@ fn collect_extern_calls(nodes: &[StructuredNode], out: &mut Vec<String>) {
         match n {
             StructuredNode::Block(b) => {
                 for s in &b.stmts {
-                    if let IrStmt::Call { name, .. } = s {
-                        if let Some(nm) = name {
-                            if is_valid_c_ident(nm)
-                                && !looks_like_register_name(nm)
-                                && !out.contains(nm)
-                            {
-                                out.push(nm.clone());
-                            }
+                    if let IrStmt::Call { name: Some(nm), .. } = s {
+                        if is_valid_c_ident(nm)
+                            && !looks_like_register_name(nm)
+                            && !out.contains(nm)
+                        {
+                            out.push(nm.clone());
                         }
                     }
                 }
             }
-            StructuredNode::If { then, otherwise, .. } => {
+            StructuredNode::If {
+                then, otherwise, ..
+            } => {
                 collect_extern_calls(then, out);
                 collect_extern_calls(otherwise, out);
             }
@@ -1085,10 +1102,17 @@ fn collect_extern_calls(nodes: &[StructuredNode], out: &mut Vec<String>) {
 /// Registers passed as arguments to tail-helper calls (`return
 /// tail_XXXXXXXX(x19, ...)`): they must be declared in the caller even though
 /// the assignments that produced them may have moved into the helper body.
-fn collect_tail_call_arg_regs(nodes: &[StructuredNode], assigned_regs: &mut HashMap<String, IrType>) {
+fn collect_tail_call_arg_regs(
+    nodes: &[StructuredNode],
+    assigned_regs: &mut HashMap<String, IrType>,
+) {
     fn expr_args(e: &IrExpr, out: &mut Vec<String>) {
         match e {
-            IrExpr::Call { name: Some(n), args, .. } if n.starts_with("tail_") => {
+            IrExpr::Call {
+                name: Some(n),
+                args,
+                ..
+            } if n.starts_with("tail_") => {
                 for a in args {
                     if let IrExpr::Reg(r, _) = a {
                         out.push(r.to_lowercase());
@@ -1100,7 +1124,12 @@ fn collect_tail_call_arg_regs(nodes: &[StructuredNode], assigned_regs: &mut Hash
                 expr_args(l, out);
                 expr_args(r, out);
             }
-            IrExpr::Ternary { cond, true_val, false_val, .. } => {
+            IrExpr::Ternary {
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
                 expr_args(cond, out);
                 expr_args(true_val, out);
                 expr_args(false_val, out);
@@ -1117,7 +1146,12 @@ fn collect_tail_call_arg_regs(nodes: &[StructuredNode], assigned_regs: &mut Hash
                         IrStmt::Return(Some(e)) => expr_args(e, &mut names),
                         IrStmt::Call { target, args, .. } => {
                             let mut push_call = |c: &IrExpr| {
-                                if let IrExpr::Call { name: Some(cn), args: cargs, .. } = c {
+                                if let IrExpr::Call {
+                                    name: Some(cn),
+                                    args: cargs,
+                                    ..
+                                } = c
+                                {
                                     if cn.starts_with("tail_") {
                                         for ca in cargs {
                                             if let IrExpr::Reg(r, _) = ca {
@@ -1141,7 +1175,9 @@ fn collect_tail_call_arg_regs(nodes: &[StructuredNode], assigned_regs: &mut Hash
                     }
                 }
             }
-            StructuredNode::If { then, otherwise, .. } => {
+            StructuredNode::If {
+                then, otherwise, ..
+            } => {
                 for n in then.iter().chain(otherwise.iter()) {
                     walk(n, assigned_regs);
                 }

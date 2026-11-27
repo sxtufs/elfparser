@@ -233,7 +233,7 @@ fn validate_patch_target(
         62 | 3 => 1,   // x86/x64: byte-addressable
         _ => 1,
     };
-    if align > 1 && file_offset % align != 0 {
+    if align > 1 && !file_offset.is_multiple_of(align) {
         return Err(format!(
             "Misaligned patch: address 0x{:08x} (file offset 0x{:x}) is not {}-byte aligned",
             vaddr, file_offset, align
@@ -245,7 +245,7 @@ fn validate_patch_target(
             vaddr
         ));
     }
-    if align > 1 && patch_bytes.len() % align != 0 {
+    if align > 1 && !patch_bytes.len().is_multiple_of(align) {
         return Err(format!(
             "Patch length {} is not a multiple of {} (would split an instruction)",
             patch_bytes.len(),

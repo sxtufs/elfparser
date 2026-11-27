@@ -193,7 +193,11 @@ pub fn scan_string_refs_aarch64(
             let immlo = (word >> 29) & 0x3;
             let immhi = (word >> 5) & 0x7_FFFF;
             let imm = ((immhi << 2) | immlo) as i64;
-            let imm = if imm & (1 << 20) != 0 { imm - (1 << 21) } else { imm };
+            let imm = if imm & (1 << 20) != 0 {
+                imm - (1 << 21)
+            } else {
+                imm
+            };
             let page = (addr & !0xFFF).wrapping_add((imm << 12) as u64);
             adrp_regs.insert(rd, page);
             addr += 4;
@@ -212,7 +216,7 @@ pub fn scan_string_refs_aarch64(
                 }
             }
             adrp_regs.remove(&rd); // conservative: rd overwritten
-            // rd now holds page+off; keep mapping for ldr Xt,[rd] usage:
+                                   // rd now holds page+off; keep mapping for ldr Xt,[rd] usage:
             let combined = adrp_regs.get(&rn).map(|p| p + imm12 as u64);
             adrp_regs.remove(&rd);
             if let Some(c) = combined {
@@ -223,7 +227,7 @@ pub fn scan_string_refs_aarch64(
         }
 
         // LDR Xt, [Xn, #imm12] (size=11, V=0, opc=01, imm12 scaled by 8)
-        if (word >> 22) == 0b11_1_11_01_01 {
+        if (word >> 22) == 0b1_1111_0101 {
             let rt = word & 0x1F;
             let rn = (word >> 5) & 0x1F;
             let imm12 = ((word >> 10) & 0xFFF) as u64 * 8;
@@ -263,7 +267,7 @@ pub fn scan_vtables(
     use std::collections::HashMap;
     let (base, data) = data_rel_ro;
     let (ro_base, ro_data) = rodata;
-    let in_exec = |a: u64| exec.iter().any(|(b, len)| a >= *b && a < b + *len as u64);
+    let in_exec = |a: u64| exec.iter().any(|(b, len)| a >= *b && a < b + *len);
     let read_ptr = |off: usize| -> Option<u64> {
         if off + 8 <= data.len() {
             let raw = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
@@ -294,7 +298,12 @@ pub fn scan_vtables(
                 c.to_digit(10).map(|d| acc * 10 + d as usize)
             });
         let name_len = name_len?;
-        Some(rest.chars().skip_while(|c| c.is_ascii_digit()).take(name_len).collect())
+        Some(
+            rest.chars()
+                .skip_while(|c| c.is_ascii_digit())
+                .take(name_len)
+                .collect(),
+        )
     };
 
     let mut out = Vec::new();
@@ -311,7 +320,7 @@ pub fn scan_vtables(
         // standard Itanium layout where [i-8] is a typeinfo pointer whose
         // first word points at the _ZTS string.
         let class = read_ptr(off - 16)
-            .and_then(|p| class_name_from_ts(p))
+            .and_then(&class_name_from_ts)
             .or_else(|| {
                 read_ptr(off - 8).and_then(|ti| {
                     let ti_off = (ti as usize).checked_sub(base as usize)?;
@@ -348,10 +357,7 @@ pub fn scan_vtables(
         seen_classes.insert(vt_addr, class.clone());
         out.push((vt_addr.wrapping_sub(16), format!("vtable for {}", class)));
         for s in 0..slots {
-            out.push((
-                base + (off + s * 8) as u64,
-                format!("{}::vf{}", class, s),
-            ));
+            out.push((base + (off + s * 8) as u64, format!("{}::vf{}", class, s)));
         }
     }
     out
@@ -361,12 +367,7 @@ pub fn scan_vtables(
 ///
 /// Pure function of (architecture, base address, bytes) so it can be tested
 /// with hand-encoded instructions and no fixture binary.
-pub fn scan_region_for_calls(
-    e_machine: u64,
-    base: u64,
-    data: &[u8],
-    out: &mut HashSet<u64>,
-) {
+pub fn scan_region_for_calls(e_machine: u64, base: u64, data: &[u8], out: &mut HashSet<u64>) {
     match e_machine {
         183 => {
             let mut i = 0usize;
@@ -397,7 +398,8 @@ pub fn scan_region_for_calls(
                     let i1 = (!(j1 ^ s)) & 1;
                     let i2 = (!(j2 ^ s)) & 1;
                     let imm11 = (hw2 & 0x07FF) as i64;
-                    let mut imm = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
+                    let mut imm =
+                        (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
                     if s != 0 {
                         imm |= !0x01FF_FFFF;
                     }
@@ -406,10 +408,10 @@ pub fn scan_region_for_calls(
                 // ARM-mode instructions are 4-byte aligned; decoding them on the
                 // 2-byte halfword walk would read misaligned garbage.
                 let word = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
-                let is_bl = (word & 0x0F00_0000) == 0x0B00_0000
-                    && (word & 0xF000_0000) != 0xF000_0000;
+                let is_bl =
+                    (word & 0x0F00_0000) == 0x0B00_0000 && (word & 0xF000_0000) != 0xF000_0000;
                 let is_blx = (word & 0xFE00_0000) == 0xFA00_0000;
-                if (is_bl || is_blx) && i % 4 == 0 {
+                if (is_bl || is_blx) && i.is_multiple_of(4) {
                     let from = base + i as u64;
                     let mut imm24 = (word & 0x00FF_FFFF) as i64;
                     if (imm24 & 0x0080_0000) != 0 {
@@ -653,8 +655,13 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
                 .copied()
                 .or_else(|| {
                     next_start(addr).and_then(|next| {
-                        let region = regions.iter().find(|(b, d)| addr >= *b && addr < b.saturating_add(d.len() as u64));
-                        region.and_then(|(b, d)| scan_for_function_end_aarch64(*b, d, addr, Some(next)))
+                        let region = regions
+                            .iter()
+                            .find(|(b, d)| addr >= *b && addr < b.saturating_add(d.len() as u64));
+                        region
+                            .and_then(|(b, d)| {
+                                scan_for_function_end_aarch64(*b, d, addr, Some(next))
+                            })
                             .filter(|end| end > &addr)
                             .map(|end| end - addr)
                     })
@@ -686,7 +693,9 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
         report.plt_imports = ctx
             .syms_map
             .iter()
-            .filter(|(a, s)| **a >= plt_lo && **a < plt_hi && !s.sym.starts_with('.') && !s.sym.is_empty())
+            .filter(|(a, s)| {
+                **a >= plt_lo && **a < plt_hi && !s.sym.starts_with('.') && !s.sym.is_empty()
+            })
             .map(|(a, s)| (*a, s.sym.clone()))
             .collect();
         report.plt_imports.sort_by_key(|(a, _)| *a);
@@ -734,7 +743,10 @@ pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
             data,
             (
                 ro_sections.first().map(|(b, _)| *b).unwrap_or(0),
-                ro_sections.last().map(|(b, d)| b + d.len() as u64).unwrap_or(0),
+                ro_sections
+                    .last()
+                    .map(|(b, d)| b + d.len() as u64)
+                    .unwrap_or(0),
             ),
             looks_like_string,
         ) {

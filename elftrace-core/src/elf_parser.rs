@@ -5,6 +5,10 @@ use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+/// View of the relocation data used for PLT/import scanning:
+/// (relocations, is_rela, plt_start, plt_regions).
+type PltRelView<'a> = (&'a [u8], bool, u64, Vec<(u64, &'a [u8])>);
+
 /// File image of the open ELF.
 ///
 /// A private (`MAP_PRIVATE`, copy-on-write) memory map keeps the resident cost
@@ -157,7 +161,8 @@ fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
             let avail = p_filesz.min(raw.len() - p_offset);
             loads.push((p_vaddr, p_offset, avail));
             if (p_flags & 1) != 0 {
-                out.exec_segments.push((p_vaddr, &raw[p_offset..p_offset + avail]));
+                out.exec_segments
+                    .push((p_vaddr, &raw[p_offset..p_offset + avail]));
             }
         } else if p_type == 2 && p_filesz > 0 && p_offset < raw.len() {
             let avail = p_filesz.min(raw.len() - p_offset);
@@ -223,7 +228,11 @@ fn extract_dynamic_tables<'a>(raw: &'a [u8], is_64: bool) -> DynamicTables<'a> {
     out.is_rela = dt_pltrel == 7;
     if dt_strtab != 0 {
         if let Some((off, max_sz)) = va_to_off(dt_strtab) {
-            let sz = if dt_strsz > 0 { dt_strsz.min(max_sz) } else { max_sz };
+            let sz = if dt_strsz > 0 {
+                dt_strsz.min(max_sz)
+            } else {
+                max_sz
+            };
             out.dynstr = &raw[off..off + sz];
         }
     }
@@ -486,15 +495,16 @@ impl ElfContext {
             } else {
                 dyn_tables.dynstr
             };
-            let dynsym_data = if sec_dynsym.len() > dyn_tables.dynsym.len() && sec_dynsym.len() > 256 {
-                sec_dynsym
-            } else if !dyn_tables.dynsym.is_empty() {
-                dyn_tables.dynsym
-            } else {
-                sec_dynsym
-            };
+            let dynsym_data =
+                if sec_dynsym.len() > dyn_tables.dynsym.len() && sec_dynsym.len() > 256 {
+                    sec_dynsym
+                } else if !dyn_tables.dynsym.is_empty() {
+                    dyn_tables.dynsym
+                } else {
+                    sec_dynsym
+                };
 
-            let (rel_data, is_rela, plt_start, plt_regions): (&[u8], bool, u64, Vec<(u64, &[u8])>) =
+            let (rel_data, is_rela, plt_start, plt_regions): PltRelView<'_> =
                 if let (Some(plt), Some(rela_plt)) = (plt_section, rela_plt_section) {
                     let p_bytes = plt.data().unwrap_or(&[]);
                     let r_bytes = rela_plt.data().unwrap_or(&[]);
@@ -556,11 +566,17 @@ impl ElfContext {
                     for &(region_va, plt_bytes) in &plt_regions {
                         let mut off = 0usize;
                         while off + 12 <= plt_bytes.len() {
-                            let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
-                            let w1 = u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
-                            let w2 = u32::from_le_bytes(plt_bytes[off + 8..off + 12].try_into().unwrap());
+                            let w0 =
+                                u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
+                            let w1 =
+                                u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
+                            let w2 = u32::from_le_bytes(
+                                plt_bytes[off + 8..off + 12].try_into().unwrap(),
+                            );
                             let w3 = if off + 16 <= plt_bytes.len() {
-                                u32::from_le_bytes(plt_bytes[off + 12..off + 16].try_into().unwrap())
+                                u32::from_le_bytes(
+                                    plt_bytes[off + 12..off + 16].try_into().unwrap(),
+                                )
                             } else {
                                 0
                             };
@@ -579,8 +595,14 @@ impl ElfContext {
                                 let uimm12 = (((w1 >> 10) & 0xFFF) as u64) * 8;
                                 let got_addr = page.wrapping_add(uimm12);
                                 let stub_start = if off >= 4 {
-                                    let prev = u32::from_le_bytes(plt_bytes[off - 4..off].try_into().unwrap());
-                                    if prev == 0xD503_245F { pc - 4 } else { pc }
+                                    let prev = u32::from_le_bytes(
+                                        plt_bytes[off - 4..off].try_into().unwrap(),
+                                    );
+                                    if prev == 0xD503_245F {
+                                        pc - 4
+                                    } else {
+                                        pc
+                                    }
                                 } else {
                                     pc
                                 };
@@ -593,9 +615,13 @@ impl ElfContext {
                     for &(region_va, plt_bytes) in &plt_regions {
                         let mut off = 0usize;
                         while off + 12 <= plt_bytes.len() {
-                            let w0 = u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
-                            let w1 = u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
-                            let w2 = u32::from_le_bytes(plt_bytes[off + 8..off + 12].try_into().unwrap());
+                            let w0 =
+                                u32::from_le_bytes(plt_bytes[off..off + 4].try_into().unwrap());
+                            let w1 =
+                                u32::from_le_bytes(plt_bytes[off + 4..off + 8].try_into().unwrap());
+                            let w2 = u32::from_le_bytes(
+                                plt_bytes[off + 8..off + 12].try_into().unwrap(),
+                            );
                             if (w0 & 0xFFFF_F000) == 0xE28F_C000
                                 && (w1 & 0xFFFF_F000) == 0xE28C_C000
                                 && (w2 & 0xFFFF_F000) == 0xE5BC_F000
@@ -604,7 +630,10 @@ impl ElfContext {
                                 let imm0 = (w0 & 0xFF).rotate_right(((w0 >> 8) & 0xF) * 2) as u64;
                                 let imm1 = (w1 & 0xFF).rotate_right(((w1 >> 8) & 0xF) * 2) as u64;
                                 let imm2 = (w2 & 0xFFF) as u64;
-                                let got_addr = (pc + 8).wrapping_add(imm0).wrapping_add(imm1).wrapping_add(imm2);
+                                let got_addr = (pc + 8)
+                                    .wrapping_add(imm0)
+                                    .wrapping_add(imm1)
+                                    .wrapping_add(imm2);
                                 got_to_stub.entry(got_addr).or_insert(pc);
                             }
                             off += 4;
@@ -666,9 +695,15 @@ impl ElfContext {
                 }
 
                 let entry_size = if is_64 {
-                    if is_rela { 24 } else { 16 }
+                    if is_rela {
+                        24
+                    } else {
+                        16
+                    }
+                } else if is_rela {
+                    12
                 } else {
-                    if is_rela { 12 } else { 8 }
+                    8
                 };
 
                 let count = rel_data.len() / entry_size;
@@ -680,12 +715,10 @@ impl ElfContext {
                         u32::from_le_bytes(entry[0..4].try_into().unwrap_or([0; 4])) as u64
                     };
                     let sym_idx = if is_64 {
-                        let r_info =
-                            u64::from_le_bytes(entry[8..16].try_into().unwrap_or([0; 8]));
+                        let r_info = u64::from_le_bytes(entry[8..16].try_into().unwrap_or([0; 8]));
                         (r_info >> 32) as usize
                     } else {
-                        let r_info =
-                            u32::from_le_bytes(entry[4..8].try_into().unwrap_or([0; 4]));
+                        let r_info = u32::from_le_bytes(entry[4..8].try_into().unwrap_or([0; 4]));
                         (r_info >> 8) as usize
                     };
 
@@ -955,7 +988,11 @@ impl ElfContext {
                         } else {
                             addr.saturating_add(0x1000)
                         };
-                        (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
+                        (
+                            addr,
+                            end,
+                            sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()),
+                        )
                     })
                     .collect();
                 v.sort_by_key(|e| e.0);
@@ -966,10 +1003,7 @@ impl ElfContext {
             Ok(g) => g,
             Err(_) => return None,
         };
-        let index = match index_guard.as_ref() {
-            Some(v) => v,
-            None => return None,
-        };
+        let index = index_guard.as_ref()?;
         // Find the greatest start <= vaddr, then verify vaddr < its end.
         match index.binary_search_by(|e| {
             if e.0 <= vaddr {
@@ -1008,7 +1042,11 @@ impl ElfContext {
                         } else {
                             addr.saturating_add(0x1000)
                         };
-                        (addr, end, sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()))
+                        (
+                            addr,
+                            end,
+                            sym.demangled.clone().unwrap_or_else(|| sym.sym.clone()),
+                        )
                     })
                     .collect();
                 v.sort_by_key(|e| e.0);

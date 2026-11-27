@@ -353,7 +353,9 @@ fn execute_rhai_script(
 
     let arch_owned = arch_name.to_string();
     engine.register_fn("arch", move || -> String { arch_owned.clone() });
-    engine.register_fn("hex", |val: i64| -> String { format!("0x{:x}", val as u64) });
+    engine.register_fn("hex", |val: i64| -> String {
+        format!("0x{:x}", val as u64)
+    });
     engine.register_fn("parse_addr", |s: &str| -> i64 {
         for part in s.split(',') {
             let t = part
@@ -623,12 +625,7 @@ fn execute_rhai_script(
     let tf2 = Arc::clone(truncated_flag);
     engine.register_fn(
         "report_patch",
-        move |rule_name: &str,
-              addr: i64,
-              severity: &str,
-              desc: &str,
-              mode: &str,
-              value: &str| {
+        move |rule_name: &str, addr: i64, severity: &str, desc: &str, mode: &str, value: &str| {
             // Scripts call this with 6 args (no explicit patch offset). The
             // patch is applied at the reported address, so offset defaults to 0.
             let patch_offset: i64 = 0;
@@ -1036,18 +1033,38 @@ mod tests {
         assert!(!rule_matches("Friday", "frida", true, "contains"));
         // Real frida artifacts are lowercase and must still match.
         assert!(rule_matches("frida", "frida", true, "contains"));
-        assert!(rule_matches("/data/local/tmp/frida-server", "frida", true, "contains"));
+        assert!(rule_matches(
+            "/data/local/tmp/frida-server",
+            "frida",
+            true,
+            "contains"
+        ));
     }
 
     #[test]
     fn word_boundary_rejects_embedded_substring() {
         // "connect" must not match "disconnect" / "reconnect" / "connectivity".
-        assert!(!rule_matches("disconnect", "connect", true, "word_boundary"));
+        assert!(!rule_matches(
+            "disconnect",
+            "connect",
+            true,
+            "word_boundary"
+        ));
         assert!(!rule_matches("reconnect", "connect", true, "word_boundary"));
-        assert!(!rule_matches("connectivity", "connect", true, "word_boundary"));
+        assert!(!rule_matches(
+            "connectivity",
+            "connect",
+            true,
+            "word_boundary"
+        ));
         // Standalone symbol/string must match.
         assert!(rule_matches("connect", "connect", true, "word_boundary"));
-        assert!(rule_matches("posix_connect", "connect", true, "word_boundary"));
+        assert!(rule_matches(
+            "posix_connect",
+            "connect",
+            true,
+            "word_boundary"
+        ));
         assert!(rule_matches("connect()", "connect", true, "word_boundary"));
     }
 
@@ -1075,7 +1092,7 @@ mod tests {
         // Regression: after rejecting the occurrence at 1 (preceded by 'x'),
         // the old scan jumped past it and missed the valid one at 3.
         assert!(word_boundary_contains("xa.a.a", "a.a"));
-        assert!(rule_matches("x/su/su", "/su", true, "word_boundary") == false);
+        assert!(!rule_matches("x/su/su", "/su", true, "word_boundary"));
         assert!(!word_boundary_contains("aa", "aaa"));
     }
 

@@ -34,13 +34,24 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          # Pinned so the clippy/fmt gates can't start failing when stable moves.
+          toolchain: 1.93.1
           targets: aarch64-linux-android
+          components: clippy, rustfmt
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: elftrace-core
           shared-key: "elftrace-android-arm64"
+
+      # Lint/format gates run before the NDK download so a style regression
+      # fails in seconds instead of after a 700 MB toolchain fetch.
+      - name: Rust format check
+        run: cd elftrace-core && cargo fmt --check
+
+      - name: Rust lint (clippy)
+        run: cd elftrace-core && cargo clippy --all-targets -- -D warnings
 
       # Cache the installed cargo-ndk binary so we don't recompile it from
       # source on every run (rust-cache does not cover `cargo install` bins).
@@ -147,7 +158,13 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
+      - name: Run Kotlin unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
       - name: Build Release APK
+        env:
+          # Monotonic per push so each artifact installs as an update.
+          ELFT_VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify .so inside APK

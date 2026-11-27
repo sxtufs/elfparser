@@ -449,10 +449,8 @@ pub fn build_binary_facts(ctx: &ElfContext) -> BinaryFacts {
                                 u32::from_le_bytes(c[4..8].try_into().unwrap()) as u64,
                             )
                         };
-                        if tag == DT_RUNPATH || tag == DT_RPATH {
-                            if rpath.is_none() {
-                                rpath = dynstr_at(ctx, val);
-                            }
+                        if (tag == DT_RUNPATH || tag == DT_RPATH) && rpath.is_none() {
+                            rpath = dynstr_at(ctx, val);
                         }
                     }
                 }
