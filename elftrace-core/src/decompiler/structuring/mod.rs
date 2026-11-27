@@ -68,7 +68,7 @@ pub fn decompile_to_c_structured(ctx: &ElfContext, address: u64) -> String {
         fn_range.thumb,
     ) {
         Ok(f) => f,
-        Err(e) => return format!("// [Decompilation Error] {}\n", e),
+        Err(e) => return format!("// Decompilation error: {}\n", e),
     };
 
     let graph = CfGraph::from_blocks(ir_func.blocks.clone());

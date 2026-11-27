@@ -30,7 +30,7 @@ pub fn emit_structured_c(
         // The wording reflects that: this is a partially-collapsed structure
         // that preserves correctness by keeping gotos to genuine joins.
         out.push_str(&format!(
-            "// [note: {} goto(s) kept - shared exit/return tail not fully structured]\n",
+            "// Note: {} goto(s) kept - shared exit/return tail not fully structured\n",
             goto_count
         ));
     }

@@ -149,7 +149,7 @@ pub fn decompile_to_c(ctx: &ElfContext, address: u64) -> String {
             let body = codegen.generate_c_pseudocode(&func);
             self::structuring::emit::prune_unused_labels(body)
         }
-        Err(err) => format!("// [Decompilation Error] {}\n", err),
+        Err(err) => format!("// Decompilation error: {}\n", err),
     }
 }
 
@@ -163,14 +163,14 @@ pub fn generate_disassembly_text(ctx: &ElfContext, address: u64) -> String {
         Some(off) => off as usize,
         None => {
             return format!(
-                "; [Error] Failed to resolve address 0x{:08x} to file offset\n",
+                "; Error: failed to resolve address 0x{:08x} to file offset\n",
                 address
             )
         }
     };
 
     if offset >= ctx.raw.len() {
-        return "; [Error] Offset out of file bounds\n".to_string();
+        return "; Error: offset out of file bounds\n".to_string();
     }
 
     let code_slice = &ctx.raw[offset..];
@@ -192,7 +192,7 @@ pub fn generate_disassembly_text(ctx: &ElfContext, address: u64) -> String {
         is_jni,
     ) {
         Ok(c) => c.data,
-        Err(e) => return format!("; [Disassembly Error] {}\n", e),
+        Err(e) => return format!("; Disassembly error: {}\n", e),
     };
 
     let mut targets = HashSet::new();
@@ -252,21 +252,21 @@ pub fn generate_flowchart_text(ctx: &ElfContext, address: u64) -> String {
         Some(off) => off as usize,
         None => {
             return format!(
-                "; [Error] Failed to resolve address 0x{:08x} to file offset\n",
+                "; Error: failed to resolve address 0x{:08x} to file offset\n",
                 address
             )
         }
     };
 
     if offset >= ctx.raw.len() {
-        return "; [Error] Offset out of file bounds\n".to_string();
+        return "; Error: offset out of file bounds\n".to_string();
     }
 
     if !ctx.is_executable_address(fn_range.start) {
         return format!(
             "// Control Flow Graph unavailable: '{}' is data, not code.\n\
              // It lives in the non-executable section ({}).\n\
-             // Open the [Decompile] or [Hex] tab to inspect it.\n",
+             // Open the Decompile or Hex tab to inspect it.\n",
             fn_range.name,
             ctx.get_section_name_for_vaddr(fn_range.start)
                 .unwrap_or_else(|| "data".to_string())
@@ -284,11 +284,11 @@ pub fn generate_flowchart_text(ctx: &ElfContext, address: u64) -> String {
         fn_range.thumb,
     ) {
         Ok(c) => c.data,
-        Err(e) => return format!("; [Disassembly Error] {}\n", e),
+        Err(e) => return format!("; Disassembly error: {}\n", e),
     };
 
     if insns.is_empty() {
-        return "; [Error] No instructions found\n".to_string();
+        return "; Error: no instructions found\n".to_string();
     }
 
     // Partition instructions into basic blocks

@@ -152,7 +152,7 @@ unsafe fn handle_disasm(
 unsafe fn handle_dec(env: &JNIEnv, mode: jint, handle: jlong, address: jlong) -> jstring {
     if handle == 0 {
         return env
-            .new_string("// [Error] Invalid ELF handle\n")
+            .new_string("// Error: invalid ELF handle\n")
             .unwrap()
             .as_raw() as jstring;
     }
@@ -294,7 +294,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_dec0(
     handle: jlong,
     address: jlong,
 ) -> jstring {
-    guard_jstring(&mut env, "// [Error] panic during decompilation\n", |env| {
+    guard_jstring(&mut env, "// Error: panic during decompilation\n", |env| {
         handle_dec(env, mode, handle, address)
     })
 }

@@ -1027,7 +1027,7 @@ impl<'a> CodeGenerator<'a> {
             Some(o) => o as usize,
             None => {
                 return format!(
-                    "// [Error] Failed to resolve address 0x{:08x} to file offset\n",
+                    "// Error: failed to resolve address 0x{:08x} to file offset\n",
                     address
                 )
             }
