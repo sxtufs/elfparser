@@ -197,3 +197,70 @@ jobs:
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The MCP server is a desktop binary, not part of the APK, so it needs its own
+  # build per OS: an agent client on macOS or Windows cannot use a Linux binary,
+  # and a macOS binary can only be produced on a macOS runner.
+  mcp:
+    name: Build elftrace-mcp (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Pull requests don't need binaries; main-branch pushes and tags do.
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: elftrace-core
+          shared-key: "elftrace-mcp-${{ matrix.os }}"
+
+      - name: Build elftrace-mcp
+        shell: bash
+        working-directory: elftrace-core
+        run: set -euo pipefail; cargo build --release --bin elftrace-mcp
+
+      - name: Stage and smoke-test the binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp elftrace-core/target/release/elftrace-mcp.exe dist/
+            ./dist/elftrace-mcp.exe --version
+          else
+            cp elftrace-core/target/release/elftrace-mcp dist/
+            ./dist/elftrace-mcp --version
+          fi
+
+      # Proves the binary really speaks MCP on stdio, not just that it links.
+      - name: Smoke-test the stdio protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=./dist/elftrace-mcp
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=./dist/elftrace-mcp.exe; fi
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | "$BIN" > responses.jsonl
+          grep -q '"serverInfo"' responses.jsonl
+          grep -q '"elf_info"' responses.jsonl
+          echo "stdio session answered initialize and tools/list"
+
+      - name: Upload elftrace-mcp
+        uses: actions/upload-artifact@v4
+        with:
+          name: elftrace-mcp-${{ matrix.os }}
+          path: dist/*
