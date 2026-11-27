@@ -60,6 +60,7 @@ class McpServerService : Service() {
         // first, then update it with the real result.
         startForegroundCompat(buildNotification("Starting MCP server…", null))
         val token = McpServer.token(this)
+        JNIBridge.setMcpImportDir(cacheDir.absolutePath)
         val result = JNIBridge.startMcp("0.0.0.0:$port", token)
         val url = try {
             JSONObject(result).optString("url", "")

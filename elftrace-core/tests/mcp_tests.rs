@@ -334,7 +334,7 @@ fn binary_serves_a_stdio_session() {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "elftrace-mcp");
     assert_eq!(
         responses[1]["result"]["tools"].as_array().unwrap().len(),
-        21
+        22
     );
     let info_text = responses[2]["result"]["content"][0]["text"]
         .as_str()
@@ -610,4 +610,66 @@ fn tools_work_without_a_path_when_a_file_is_open() {
     mcp::set_current_file(Some(String::new()));
     let (_, is_error) = call_tool(&mut host, "elf_info", json!({}));
     assert!(is_error, "an empty current file must not be used");
+}
+
+#[test]
+fn list_imports_reports_the_import_dir_and_shared_storage_paths_are_refused() {
+    let dir = std::env::temp_dir().join(format!("elftrace-mcp-imports-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create import dir");
+    let old = std::fs::File::create(dir.join("mcp_import_old.so")).expect("old import");
+    old.set_times(
+        std::fs::FileTimes::new().set_modified(
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000),
+        ),
+    )
+    .ok();
+    drop(old);
+    std::fs::write(dir.join("mcp_import_new.so"), b"new").expect("new import");
+    let sub = dir.join("subdir.so");
+    std::fs::create_dir_all(&sub).expect("subdir");
+    mcp::set_import_dir(Some(dir.to_string_lossy().into_owned()));
+    let mut host = Host::new();
+
+    let (listing, is_error) = call_tool(&mut host, "list_imports", json!({}));
+    assert!(!is_error, "list_imports failed: {listing}");
+    assert!(listing.contains("mcp_import_new.so"), "{listing}");
+    assert!(
+        listing.contains("mcp_import_old.so"),
+        "files must be listed: {listing}"
+    );
+    assert!(
+        listing.find("mcp_import_new.so").unwrap() < listing.find("mcp_import_old.so").unwrap(),
+        "newest import must sort first: {listing}"
+    );
+    assert!(
+        !listing.contains("subdir.so"),
+        "directories must not be listed: {listing}"
+    );
+
+    mcp::set_import_dir(None);
+    let (empty, is_error) = call_tool(&mut host, "list_imports", json!({}));
+    assert!(
+        !is_error,
+        "list_imports without a dir must be empty, not an error: {empty}"
+    );
+    assert!(
+        empty.contains("Import a file"),
+        "expected the import hint: {empty}"
+    );
+
+    // A shared-storage path is always a permission error on Android 13+;
+    // refuse it with instructions instead of letting the OS say EACCES.
+    let (_, is_error) = call_tool(
+        &mut host,
+        "elf_info",
+        json!({"path": "/storage/emulated/0/lib.so"}),
+    );
+    assert!(
+        is_error,
+        "shared-storage paths must be refused with a message"
+    );
+    let (_, is_error) = call_tool(&mut host, "elf_info", json!({"path": "/sdcard/lib.so"}));
+    assert!(is_error, "/sdcard paths must be refused too");
+    let _ = std::fs::remove_dir_all(&dir);
 }

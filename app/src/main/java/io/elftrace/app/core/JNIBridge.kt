@@ -24,6 +24,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun stopMcp0(): Boolean
         @JvmStatic private external fun mcpStatus0(): String
         @JvmStatic private external fun setCurrentFile0(path: String?)
+        @JvmStatic private external fun setMcpImportDir0(path: String?)
 
         fun startMcp(addr: String, token: String): String = startMcp0(addr, token)
         fun stopMcp(): Boolean = stopMcp0()
@@ -31,6 +32,9 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
 
         /** Tells the MCP server which file is open, so tools can omit `path`. */
         fun setCurrentFile(path: String?) = setCurrentFile0(path)
+
+        /** Tells the MCP server where 'Import a file' puts files, for the list_imports tool. */
+        fun setMcpImportDir(path: String?) = setMcpImportDir0(path)
 
         @JvmStatic private external fun init0(path: String): Long
         @JvmStatic private external fun finalize0(handle: Long)

@@ -344,6 +344,22 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_setCurrentFile0(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_setMcpImportDir0(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) {
+    let path = if path.is_null() {
+        None
+    } else {
+        env.get_string(&path)
+            .ok()
+            .map(|value| value.to_string_lossy().into_owned())
+    };
+    crate::mcp::set_import_dir(path);
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_save0(
     mut env: JNIEnv,
     _class: JClass,

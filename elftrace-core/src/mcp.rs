@@ -244,8 +244,9 @@ fn is_known_tool(name: &str) -> bool {
     TOOL_NAMES.contains(&name)
 }
 
-const TOOL_NAMES: [&str; 21] = [
+const TOOL_NAMES: [&str; 22] = [
     "current_file",
+    "list_imports",
     "elf_info",
     "list_symbols",
     "disassemble",
@@ -277,6 +278,11 @@ fn tool_definitions() -> Value {
         {
             "name": "current_file",
             "description": "The binary ELFTrace currently has open, as a path every other tool accepts. Call this first when you do not know which file is on screen.",
+            "inputSchema": object_schema(json!({}), &[])
+        },
+        {
+            "name": "list_imports",
+            "description": "Files the user imported into ELFTrace for agent analysis (MCP dialog > Import a file). Returns {name, path, size, modified_unix} per file; pass a returned path to any tool.",
             "inputSchema": object_schema(json!({}), &[])
         },
         {
@@ -539,12 +545,31 @@ fn optional_string(args: &Value, key: &str) -> Option<String> {
 /// lets an agent work on "the binary on screen" without knowing where it lives.
 fn file_arg(args: &Value) -> Result<String, String> {
     if let Some(path) = optional_string(args, "path").filter(|path| !path.trim().is_empty()) {
+        if is_shared_storage_path(&path) {
+            return Err(format!(
+                "Android scoped storage denies this app every path under /storage ({}). \
+                 Import the file instead: in ELFTrace open the MCP dialog and tap 'Import a file', \
+                 then pass the path returned by list_imports.",
+                path
+            ));
+        }
         return Ok(path);
     }
     current_file().ok_or_else(|| {
         "no 'path' given and ELFTrace has no file open; open a binary in the app or pass 'path'"
             .to_string()
     })
+}
+
+/// Shared-storage locations Android blocks from app-private code on API 33+;
+/// a path here is always a permission error, so say so instead of letting the
+/// OS return a bare EACCES.
+fn is_shared_storage_path(path: &str) -> bool {
+    let lowered = path.to_ascii_lowercase();
+    lowered.starts_with("/storage/emulated")
+        || lowered.starts_with("/sdcard")
+        || lowered.starts_with("/mnt/media")
+        || lowered.starts_with("/mnt/sdcard")
 }
 
 fn optional_bool(args: &Value, key: &str, default: bool) -> bool {
@@ -602,6 +627,7 @@ fn hex(value: u64) -> String {
 fn call_tool(host: &mut Host, name: &str, args: &Value) -> Result<String, String> {
     match name {
         "current_file" => tool_current_file(host, args),
+        "list_imports" => tool_list_imports(host, args),
         "elf_info" => tool_elf_info(host, args),
         "list_symbols" => tool_list_symbols(host, args),
         "disassemble" => tool_disassemble(host, args),
@@ -632,6 +658,43 @@ fn tool_current_file(_host: &mut Host, _args: &Value) -> Result<String, String> 
     })
     .to_string())
 }
+
+fn tool_list_imports(_host: &mut Host, _args: &Value) -> Result<String, String> {
+    let Some(dir) = import_dir() else {
+        return Ok(json!({ "files": [], "hint": IMPORT_HINT }).to_string());
+    };
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|age| age.as_secs())
+                .unwrap_or(0);
+            files.push(json!({
+                "name": entry.file_name().to_string_lossy(),
+                "path": entry.path().to_string_lossy(),
+                "size": meta.len(),
+                "modified_unix": modified,
+            }));
+        }
+    }
+    files.sort_by_key(|file| std::cmp::Reverse(file["modified_unix"].as_u64().unwrap_or(0)));
+    let hint = if files.is_empty() {
+        Some(IMPORT_HINT)
+    } else {
+        None
+    };
+    Ok(json!({ "dir": dir, "files": files, "hint": hint }).to_string())
+}
+
+const IMPORT_HINT: &str =
+    "Nothing imported yet. In ELFTrace open the MCP dialog and tap 'Import a file', then call list_imports again.";
 
 fn tool_binary_facts(host: &mut Host, args: &Value) -> Result<String, String> {
     let path = file_arg(args)?;
@@ -1401,6 +1464,28 @@ pub fn set_current_file(path: Option<String>) {
 /// Path of the file the app has open, if any.
 pub fn current_file() -> Option<String> {
     match CURRENT_FILE.lock() {
+        Ok(current) => current.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// Directory inside app storage where the user's "Import a file" picks land.
+/// Android scoped storage keeps the server out of `/storage/emulated/0`, so
+/// this is how an agent reaches a file the app has not opened.
+static IMPORT_DIR: Mutex<Option<String>> = Mutex::new(None);
+
+/// Record (or clear, with `None`) the import directory.
+pub fn set_import_dir(dir: Option<String>) {
+    let mut current = match IMPORT_DIR.lock() {
+        Ok(current) => current,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *current = dir.filter(|dir| !dir.trim().is_empty());
+}
+
+/// The import directory, if the app registered one.
+pub fn import_dir() -> Option<String> {
+    match IMPORT_DIR.lock() {
         Ok(current) => current.clone(),
         Err(poisoned) => poisoned.into_inner().clone(),
     }
