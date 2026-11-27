@@ -121,7 +121,20 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                 if (running) {
                     Spacer(Modifier.height(14.dp))
                     Text("Endpoint", color = colors.textSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "On this phone", color = colors.textSecondary, fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    CopyRow(value = McpServer.localUrl(context), monospace = true, onCopied = {
+                        copyToClipboard(context, McpServer.localUrl(context))
+                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                    })
+                    Text(
+                        "From another device on the same Wi-Fi", color = colors.textSecondary,
+                        fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp)
+                    )
                     CopyRow(value = url, monospace = true, onCopied = {
+                        copyToClipboard(context, url)
                         Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
                     })
 
@@ -146,7 +159,7 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                         }
                     )
                     Text(
-                        "Send it as: Authorization: Bearer <token>",
+                        "Send it as: Authorization: Bearer <token>, or paste the token alone",
                         color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
                     )
                 }

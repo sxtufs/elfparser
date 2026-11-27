@@ -74,6 +74,12 @@ jobs:
           add-to-path: true
 
       - name: Build Rust core for arm64-v8a
+        # cargo-ndk resolves its toolchain from these variables first; without
+        # them it falls back to the highest NDK under $ANDROID_HOME/ndk, which
+        # is the runner's preinstalled r27 (setup-ndk only sets ndk-path + PATH).
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
           cd elftrace-core
@@ -154,6 +160,14 @@ jobs:
             echo "ERROR: strip did not remove .symtab"
             exit 1
           fi
+
+          echo "=== Linked against NDK r30 (not the runner's preinstalled r27) ==="
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -n "$SO" \
+            | grep -q '"r30"' || {
+            echo "ERROR: .so was not linked with NDK r30 — check ANDROID_NDK_HOME for cargo-ndk"
+            "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -n "$SO"
+            exit 1
+          }
 
       - name: Make Gradlew Executable
         run: chmod +x gradlew

@@ -373,8 +373,7 @@ fn http_mode_answers_json_rpc_on_mcp_endpoint() {
         .expect("tool text");
     assert!(serde_json::from_str::<Value>(info_text).is_ok());
 
-    // A foreign Origin is refused (DNS-rebinding guard), and GET is not an
-    // endpoint here.
+    // A foreign Origin is refused (DNS-rebinding guard), and unknown paths 404.
     let response = post_with_origin(address, "/mcp", &body, "https://evil.example");
     assert!(response.starts_with("HTTP/1.1 403"), "{response}");
     let response = post(address, "/nope", &body);
@@ -458,4 +457,33 @@ fn in_app_server_requires_the_token_and_stops_on_request() {
     assert!(refused, "listener should be closed after stop_server");
     // Starting without a token is refused.
     assert!(mcp::start_server("127.0.0.1:0", "").is_err());
+}
+
+#[test]
+fn get_on_mcp_opens_a_server_sent_event_stream() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test port");
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = mcp::serve_http_listener(listener);
+    });
+
+    // Clients open GET before their first POST and read 405 as "unreachable",
+    // so the endpoint must answer with a live text/event-stream.
+    let mut stream = TcpStream::connect(address).expect("connect");
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .unwrap();
+    let request =
+        format!("GET /mcp HTTP/1.1\r\nHost: {address}\r\nAccept: text/event-stream\r\n\r\n");
+    stream.write_all(request.as_bytes()).expect("write request");
+    stream.flush().unwrap();
+    let mut head = [0u8; 512];
+    let read = stream.read(&mut head).expect("read stream head");
+    let head = String::from_utf8_lossy(&head[..read]).into_owned();
+    assert!(head.starts_with("HTTP/1.1 200"), "status: {head}");
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("content-type: text/event-stream"),
+        "content type: {head}"
+    );
 }

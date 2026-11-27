@@ -1063,8 +1063,14 @@ fn serve_listener(
         };
         let host = Arc::clone(&host);
         let token = token.clone();
+        let stop = stop.clone();
         std::thread::spawn(move || {
-            if let Err(e) = handle_connection(stream, &host, token.as_ref().map(|t| t.as_str())) {
+            if let Err(e) = handle_connection(
+                stream,
+                &host,
+                token.as_ref().map(|t| t.as_str()),
+                stop.as_deref(),
+            ) {
                 eprintln!("elftrace-mcp: connection error: {e}");
             }
         });
@@ -1082,7 +1088,8 @@ static RUNNING: Mutex<Option<RunningServer>> = Mutex::new(None);
 /// (`http://<bound>/mcp`).
 ///
 /// `token` is required: once the server listens beyond loopback, every request
-/// must present it as `Authorization: Bearer <token>` (or `X-MCP-Token`).
+/// must present it as `Authorization: Bearer <token>`, as the bare token in
+/// `Authorization`, or as `X-MCP-Token`.
 /// Starting while already running stops the previous instance first.
 pub fn start_server(addr: &str, token: &str) -> Result<String, String> {
     if token.is_empty() {
@@ -1153,6 +1160,7 @@ fn handle_connection(
     mut stream: TcpStream,
     host: &Arc<Mutex<Host>>,
     token: Option<&str>,
+    stop: Option<&AtomicBool>,
 ) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(15)))?;
     stream.set_write_timeout(Some(Duration::from_secs(15)))?;
@@ -1189,23 +1197,28 @@ fn handle_connection(
                 None => write_response(&mut stream, 202, ""),
             }
         }
-        // No server-initiated SSE stream and no resumability, so GET is refused
-        // rather than left hanging.
-        ("GET", "/mcp") => write_response(
-            &mut stream,
-            405,
-            "GET is not supported; POST JSON-RPC to /mcp",
-        ),
+        // The spec's other GET branch: hold the connection open as a server-sent
+        // event stream. Clients probe GET before POST and treat 405 as "no
+        // connection", so an idle stream is what keeps them talking to us.
+        ("GET", "/mcp") | ("GET", "/") => serve_sse_stream(&mut stream, stop),
         ("DELETE", "/mcp") => write_response(&mut stream, 204, ""),
         ("OPTIONS", _) => write_response(&mut stream, 204, ""),
         _ => write_response(&mut stream, 404, "not found"),
     }
 }
 
+/// Accepts `Authorization: Bearer <token>`, the bare token in `Authorization`
+/// (clients whose header field is filled in by hand), and `X-MCP-Token`.
 fn request_has_token(request: &HttpRequest, expected: &str) -> bool {
     let presented = request
         .header("authorization")
-        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(|value| {
+            let value = value.trim();
+            match value.len() >= 7 && value[..7].eq_ignore_ascii_case("bearer ") {
+                true => value[7..].trim(),
+                false => value,
+            }
+        })
         .or_else(|| request.header("x-mcp-token"))
         .unwrap_or_default()
         .trim();
@@ -1314,6 +1327,36 @@ fn find_header_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|w| w == b"\r\n\r\n")
 }
 
+/// Holds the connection open as a `text/event-stream`, which is what the MCP
+/// spec expects for server-initiated messages. Nothing is queued on it yet, so
+/// it carries keep-alive comments only; the point is that a client probing GET
+/// sees a live stream instead of a 405.
+fn serve_sse_stream(stream: &mut TcpStream, stop: Option<&AtomicBool>) -> std::io::Result<()> {
+    let header = "HTTP/1.1 200 OK\r\n\
+         Content-Type: text/event-stream\r\n\
+         Cache-Control: no-cache\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Connection: close\r\n\r\n";
+    stream.write_all(header.as_bytes())?;
+    stream.write_all(b": stream open\n\n")?;
+    stream.flush()?;
+    loop {
+        if let Some(stop) = stop {
+            if stop.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        if stream
+            .write_all(b": keep-alive\n\n")
+            .and_then(|_| stream.flush())
+            .is_err()
+        {
+            return Ok(());
+        }
+    }
+}
+
 fn write_response(stream: &mut TcpStream, status: u16, body: &str) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
@@ -1332,7 +1375,7 @@ fn write_response(stream: &mut TcpStream, status: u16, body: &str) -> std::io::R
          Content-Length: {}\r\n\
          Access-Control-Allow-Origin: *\r\n\
          Access-Control-Allow-Methods: POST, GET, DELETE, OPTIONS\r\n\
-         Access-Control-Allow-Headers: content-type, mcp-session-id, mcp-protocol-version\r\n\
+         Access-Control-Allow-Headers: content-type, authorization, x-mcp-token, mcp-session-id, mcp-protocol-version\r\n\
          Access-Control-Expose-Headers: mcp-session-id\r\n\
          Connection: close\r\n\r\n",
         body.len()
@@ -1361,6 +1404,22 @@ mod tests {
         let args = json!({"address": "0x1000"});
         assert_eq!(address_arg(&args, "address").unwrap(), 0x1000);
         assert!(address_arg(&json!({}), "address").is_err());
+    }
+
+    #[test]
+    fn accepts_the_token_with_and_without_the_bearer_prefix() {
+        let request = |authorization: &str| HttpRequest {
+            method: "POST".into(),
+            path: "/mcp".into(),
+            headers: vec![("Authorization".into(), authorization.into())],
+            body: String::new(),
+        };
+        assert!(request_has_token(&request("Bearer s3cret"), "s3cret"));
+        assert!(request_has_token(&request("bearer s3cret"), "s3cret"));
+        // Clients with a hand-typed header field send the bare token.
+        assert!(request_has_token(&request("s3cret"), "s3cret"));
+        assert!(!request_has_token(&request("Bearer wrong"), "s3cret"));
+        assert!(!request_has_token(&request(""), "s3cret"));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 package io.elftrace.app.core.models
 
 import com.google.gson.Gson
+import io.elftrace.app.core.interfaceRank
+import io.elftrace.app.core.isCellularInterface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -109,5 +111,18 @@ class ElfModelsTest {
         assertEquals(1, rep.total_findings)
         assertEquals("r", rep.findings[0].rule_name)
         assertEquals("sym", rep.findings[0].symbol_name)
+    }
+}
+
+/** The address handed to clients must be the Wi-Fi one, never a carrier address. */
+class McpServerAddressTest {
+    @Test
+    fun wifiIsPreferredAndCellularIsNeverOffered() {
+        assertEquals(0, interfaceRank("wlan0"))
+        assertEquals(1, interfaceRank("rndis0"))
+        assertTrue(interfaceRank("wlan0") < interfaceRank("p2p0"))
+        assertTrue(isCellularInterface("rmnet_data0"))
+        assertTrue(isCellularInterface("ccmni1"))
+        assertFalse(isCellularInterface("wlan1"))
     }
 }

@@ -42,10 +42,17 @@ object McpServer {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_PORT, DEFAULT_PORT)
 
+    /**
+     * Wi-Fi and USB tethering first: those are the interfaces another device can
+     * actually reach. Mobile data is skipped outright, because carrier-grade NAT
+     * hands out 10.x addresses that look site-local but route nowhere else.
+     */
     fun lanAddress(): String? = try {
         NetworkInterface.getNetworkInterfaces()
             .asSequence()
             .filter { it.isUp && !it.isLoopback }
+            .filterNot { isCellularInterface(it.name) }
+            .sortedBy { interfaceRank(it.name) }
             .flatMap { it.inetAddresses.asSequence() }
             .filterIsInstance<Inet4Address>()
             .firstOrNull { it.isSiteLocalAddress }
@@ -53,6 +60,9 @@ object McpServer {
     } catch (_: Exception) {
         null
     }
+
+    /** URL for an MCP client running on this same phone. */
+    fun localUrl(context: Context): String = "http://127.0.0.1:${port(context)}/mcp"
 
     fun clientUrl(context: Context): String {
         val host = lanAddress() ?: "127.0.0.1"
@@ -66,3 +76,18 @@ object McpServer {
         false
     }
 }
+
+/** Lower is better: a Wi-Fi or tethering address is one another device can reach. */
+internal fun interfaceRank(name: String): Int = when {
+    name.startsWith("wlan") || name.startsWith("swlan") || name.startsWith("ap") -> 0
+    name.startsWith("eth") || name.startsWith("rndis") || name.startsWith("usb") -> 1
+    else -> 2
+}
+
+/**
+ * Mobile-data interfaces are excluded rather than ranked: their carrier-grade
+ * NAT addresses are site-local but only exist inside the carrier's network.
+ */
+internal fun isCellularInterface(name: String): Boolean =
+    listOf("rmnet", "rev_rmnet", "ccmni", "pdp", "clat", "dummy", "v4-rmnet")
+        .any { name.startsWith(it) }
