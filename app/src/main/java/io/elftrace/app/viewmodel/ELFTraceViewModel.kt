@@ -72,7 +72,6 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     val codeSubTab = MutableStateFlow(0) // 0: Disasm, 1: Decompile, 2: Flowchart, 3: Hex View
-    val analysisSubTab = MutableStateFlow(0) // 0: Strings, 1: Triage
 
     // Plugins tab scroll position and expanded card live here, not in the screen:
     // jumping to a finding swaps PluginsScreen out of composition, which would
@@ -87,16 +86,6 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     val currentFileName = MutableStateFlow("")
     /** One-shot error when a binary fails to open, shown as a toast. */
     val openError = MutableStateFlow<String?>(null)
-
-    private val _triageReport = MutableStateFlow<TriageReport?>(null)
-    val triageReport: StateFlow<TriageReport?> = _triageReport.asStateFlow()
-
-    fun refreshTriageReport() {
-        viewModelScope.launch(nativeDispatcher) {
-            val b = _bridge.value ?: return@launch
-            _triageReport.value = b.getTriageReport()
-        }
-    }
 
     private val _hexBytes = MutableStateFlow<ByteArray>(ByteArray(0))
     val hexBytes: StateFlow<ByteArray> = _hexBytes.asStateFlow()
@@ -306,6 +295,9 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
     private val _stringsList = MutableStateFlow<List<StringItem>>(emptyList())
     val stringsList: StateFlow<List<StringItem>> = _stringsList.asStateFlow()
 
+    private val _binaryFacts = MutableStateFlow<BinaryFacts?>(null)
+    val binaryFacts: StateFlow<BinaryFacts?> = _binaryFacts.asStateFlow()
+
     private val _scanReport = MutableStateFlow<ScanReport?>(null)
     val scanReport: StateFlow<ScanReport?> = _scanReport.asStateFlow()
 
@@ -394,7 +386,7 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
                 ?: firstSym?.displayName ?: "entry"
             selectFunction(firstAddr, firstName, pushHistory = false)
             _stringsList.value = b.getStrings()
-            _triageReport.value = b.getTriageReport()
+            _binaryFacts.value = b.getBinaryFacts()
         }
     }
 

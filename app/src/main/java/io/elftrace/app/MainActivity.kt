@@ -51,7 +51,6 @@ class MainActivity : ComponentActivity() {
                 val colors = LocalELFTraceColors.current
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 val codeTab by viewModel.codeSubTab.collectAsState()
-                val analysisTab by viewModel.analysisSubTab.collectAsState()
                 val canGoBack by viewModel.canGoBack.collectAsState()
                 // System back walks the in-session function history before it
                 // leaves the app, so stepping into a caller is always reversible.
@@ -159,20 +158,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            Screen.Analysis -> {
-                                Column(modifier = Modifier.fillMaxSize()) {
-                                    ELFTraceTopTabBar(
-                                        selectedTabIndex = analysisTab.coerceIn(0, 1),
-                                        tabs = listOf("Strings", "Triage"),
-                                        onTabSelected = { viewModel.analysisSubTab.value = it }
-                                    )
-
-                                    when (analysisTab) {
-                                        0 -> StringsScreen(viewModel)
-                                        else -> TriageScreen(viewModel)
-                                    }
-                                }
-                            }
+                            Screen.Analysis -> StringsScreen(viewModel)
 
                             Screen.Plugins -> PluginsScreen(viewModel)
                         }

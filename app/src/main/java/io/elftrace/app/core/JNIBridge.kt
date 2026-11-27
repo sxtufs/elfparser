@@ -36,7 +36,7 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         @JvmStatic private external fun quickPatch(handle: Long, address: Long, patchType: Int, thumb: Boolean): String
         @JvmStatic private external fun scanSecurity(handle: Long): String
         @JvmStatic private external fun getEntropyReport(handle: Long): String
-        @JvmStatic private external fun getTriageReport(handle: Long): String
+        @JvmStatic private external fun getBinaryFacts(handle: Long): String
 
         // Unity Il2Cpp Metadata Resolvers
         @JvmStatic private external fun loadScriptJson(handle: Long, path: String): Int
@@ -181,12 +181,12 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
         }
     }
 
-    fun getTriageReport(): TriageReport {
-        val json = getTriageReport(handle)
+    fun getBinaryFacts(): BinaryFacts {
+        val json = getBinaryFacts(handle)
         return try {
-            gson.fromJson(json, TriageReport::class.java) ?: TriageReport()
+            gson.fromJson(json, BinaryFacts::class.java) ?: BinaryFacts()
         } catch (e: Exception) {
-            TriageReport()
+            BinaryFacts()
         }
     }
 

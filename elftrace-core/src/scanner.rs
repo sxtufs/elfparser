@@ -410,69 +410,27 @@ pub fn calculate_entropy_report(ctx: &ElfContext) -> EntropyReport {
 }
 
 // ---------------------------------------------------------------------------
-// Binary triage / security posture (checksec-style report for the Triage tab)
+// Salvaged binary facts shown in the Files tab (former Triage tab, trimmed)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TriageItem {
-    pub name: String,
-    /// "Good" (hardened), "Weak" (missing protection), "Warn" (worth a look),
-    /// "Info" (factual).
-    pub status: String,
-    pub detail: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TriageReport {
-    pub items: Vec<TriageItem>,
-    pub needed_libs: Vec<String>,
-    pub exported_functions: usize,
-    pub init_constructors: usize,
-    /// "Present" or "Stripped" (no non-dynamic symbol table).
-    pub symbol_table: String,
-    /// Number of *_chk FORTIFY_SOURCE wrappers linked in.
-    pub fortify_count: usize,
-}
-
-const DT_BIND_NOW: u64 = 24;
 const DT_RUNPATH: u64 = 29;
-const DT_FLAGS: u64 = 30;
 const DT_RPATH: u64 = 15;
-const DT_FLAGS_1: u64 = 0x6fff_fffb;
 
-pub fn build_triage_report(ctx: &ElfContext) -> TriageReport {
-    let mut items = Vec::new();
-    let mut needed = Vec::new();
-    let mut exported_functions = 0usize;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryFacts {
+    /// Value of DT_RUNPATH / DT_RPATH, if present.
+    pub rpath: Option<String>,
+    /// Number of entries in .init_array.
+    pub init_constructors: usize,
+}
+
+pub fn build_binary_facts(ctx: &ElfContext) -> BinaryFacts {
+    let mut rpath: Option<String> = None;
     let mut init_constructors = 0usize;
-    let mut symbol_table = String::from("Stripped");
-    let mut fortify_count = 0usize;
-    let mut has_canary = false;
-    let mut bind_now = false;
-    let mut runpath: Option<String> = None;
-    let mut has_relro = false;
-    let mut nx_enabled: Option<bool> = None;
-    let mut is_pie = false;
 
     if let Ok(obj_file) = object::File::parse(&*ctx.raw) {
-        // ET_DYN (3) means position-independent for both shared objects and PIE
-        // executables. e_type lives at byte offset 16 of the ELF header.
-        is_pie = ctx.raw.len() > 18 && u16::from_le_bytes([ctx.raw[16], ctx.raw[17]]) == 3;
-
-        // Program-header facts come from the parser's own segment extraction
-        // (get_info reuses the same data the UI shows).
-        if let Ok(info) = ctx.get_info() {
-            for seg in &info.segments {
-                match seg.p_type.as_str() {
-                    "GNU_RELRO" => has_relro = true,
-                    "GNU_STACK" => nx_enabled = Some(!seg.flags.ends_with('X')),
-                    _ => {}
-                }
-            }
-            needed = info.libraries.clone();
-        }
-
         let is64 = obj_file.is_64();
+        use object::{Object, ObjectSection};
         for sec in obj_file.sections() {
             if let Ok(data) = sec.data() {
                 let name = sec.name().unwrap_or("");
@@ -491,16 +449,10 @@ pub fn build_triage_report(ctx: &ElfContext) -> TriageReport {
                                 u32::from_le_bytes(c[4..8].try_into().unwrap()) as u64,
                             )
                         };
-                        match tag {
-                            DT_BIND_NOW => bind_now = true,
-                            DT_FLAGS => bind_now = bind_now || (val & 0x8) != 0,
-                            DT_FLAGS_1 => bind_now = bind_now || (val & 0x1) != 0,
-                            DT_RUNPATH | DT_RPATH => {
-                                if runpath.is_none() {
-                                    runpath = dynstr_at(ctx, val);
-                                }
+                        if tag == DT_RUNPATH || tag == DT_RPATH {
+                            if rpath.is_none() {
+                                rpath = dynstr_at(ctx, val);
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -510,124 +462,11 @@ pub fn build_triage_report(ctx: &ElfContext) -> TriageReport {
                 }
             }
         }
-
-        use object::{Object, ObjectSection, ObjectSymbol};
-        let mut has_nondyn_syms = false;
-        for sym in obj_file.symbols() {
-            if sym.is_definition() || !sym.name_bytes().map(|n| n.is_empty()).unwrap_or(true) {
-                has_nondyn_syms = true;
-            }
-            if let Ok(n) = sym.name() {
-                if n.contains("__stack_chk") {
-                    has_canary = true;
-                }
-                if n.ends_with("_chk") && n.starts_with("__") {
-                    fortify_count += 1;
-                }
-            }
-        }
-        if has_nondyn_syms {
-            symbol_table = "Present".to_string();
-        }
-        for sym in obj_file.dynamic_symbols() {
-            if let object::SymbolKind::Text = sym.kind() {
-                if sym.is_definition() {
-                    exported_functions += 1;
-                }
-            }
-            if let Ok(n) = sym.name() {
-                if n.contains("__stack_chk") {
-                    has_canary = true;
-                }
-                if n.ends_with("_chk") && n.starts_with("__") {
-                    fortify_count += 1;
-                }
-            }
-        }
     }
 
-    // DT_NEEDED comes from the parser (already resolves dynstr).
-
-    items.push(TriageItem {
-        name: "PIE".into(),
-        status: if is_pie { "Good".into() } else { "Weak".into() },
-        detail: if is_pie {
-            "ET_DYN — position independent".into()
-        } else {
-            "Fixed load address (ET_EXEC)".into()
-        },
-    });
-    items.push(TriageItem {
-        name: "RELRO".into(),
-        status: if !has_relro {
-            "Weak".into()
-        } else if bind_now {
-            "Good".into()
-        } else {
-            "Warn".into()
-        },
-        detail: if !has_relro {
-            "No PT_GNU_RELRO segment".into()
-        } else if bind_now {
-            "Full RELRO (BIND_NOW)".into()
-        } else {
-            "Partial RELRO — GOT still writable".into()
-        },
-    });
-    items.push(TriageItem {
-        name: "NX".into(),
-        status: match nx_enabled {
-            Some(true) => "Good".into(),
-            Some(false) => "Weak".into(),
-            None => "Warn".into(),
-        },
-        detail: match nx_enabled {
-            Some(true) => "Stack not executable".into(),
-            Some(false) => "PT_GNU_STACK is executable".into(),
-            None => "No PT_GNU_STACK header (arch-dependent default)".into(),
-        },
-    });
-    items.push(TriageItem {
-        name: "Stack Canary".into(),
-        status: if has_canary { "Good".into() } else { "Weak".into() },
-        detail: if has_canary {
-            "__stack_chk symbols linked".into()
-        } else {
-            "No stack-protector references".into()
-        },
-    });
-    items.push(TriageItem {
-        name: "FORTIFY".into(),
-        status: if fortify_count > 0 { "Good".into() } else { "Warn".into() },
-        detail: format!("{fortify_count} _chk wrapper(s) linked"),
-    });
-    items.push(TriageItem {
-        name: "Symbol Table".into(),
-        status: "Info".into(),
-        detail: format!("{symbol_table} (exported functions: {exported_functions})"),
-    });
-    items.push(TriageItem {
-        name: "Init Constructors".into(),
-        status: "Info".into(),
-        detail: if init_constructors > 0 {
-            format!("{init_constructors} entry(ies) in .init_array")
-        } else {
-            "None".into()
-        },
-    });
-    items.push(TriageItem {
-        name: "RPATH / RUNPATH".into(),
-        status: if runpath.is_some() { "Warn".into() } else { "Good".into() },
-        detail: runpath.clone().unwrap_or_else(|| "None".into()),
-    });
-
-    TriageReport {
-        items,
-        needed_libs: needed,
-        exported_functions,
+    BinaryFacts {
+        rpath,
         init_constructors,
-        symbol_table,
-        fortify_count,
     }
 }
 

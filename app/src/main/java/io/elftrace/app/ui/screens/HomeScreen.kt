@@ -64,6 +64,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     val recentSessions by viewModel.recentSessions.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val openError by viewModel.openError.collectAsState()
+    val binaryFacts by viewModel.binaryFacts.collectAsState()
 
     LaunchedEffect(openError) {
         openError?.let {
@@ -445,6 +446,27 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    binaryFacts?.let { facts ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "init_array: ${facts.init_constructors}",
+                                fontSize = 10.5.sp,
+                                color = colors.textSecondary
+                            )
+                            if (!facts.rpath.isNullOrEmpty()) {
+                                Text(
+                                    text = "RUNPATH: ${facts.rpath}",
+                                    fontSize = 10.5.sp,
+                                    color = colors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
