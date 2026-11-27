@@ -1,9 +1,9 @@
 {
   "id": "builtin-iap-license",
   "name": "License, IAP & Premium Checks",
-  "version": "1.0",
+  "version": "1.1",
   "author": "ELFTrace",
-  "description": "License and IAP checks: billing symbols, premium flags, signature checks.",
+  "description": "License, IAP and premium checks: entitlement symbols, Play Billing client surface, purchase tokens.",
   "rules": [
     {
       "name": "isPremium / isPro",
@@ -52,6 +52,55 @@
         "value": "ret_true",
         "offset": 0
       }
+    },
+    {
+      "name": "BillingClient",
+      "type": "string",
+      "pattern": "BillingClient",
+      "severity": "HIGH",
+      "description": "Play Billing client class; queryPurchases here decides ownership"
+    },
+    {
+      "name": "queryPurchases",
+      "type": "string",
+      "pattern": "queryPurchases",
+      "severity": "HIGH",
+      "description": "Purchase/entitlement query back to Play Billing"
+    },
+    {
+      "name": "BillingFlowParams",
+      "type": "string",
+      "pattern": "BillingFlowParams",
+      "severity": "HIGH",
+      "description": "Purchase flow parameters; setObfuscatedAccountId ties a purchase to an account"
+    },
+    {
+      "name": "getPurchaseToken",
+      "type": "string",
+      "pattern": "getPurchaseToken",
+      "severity": "HIGH",
+      "description": "Purchase token read, usually forwarded to a server for receipt validation"
+    },
+    {
+      "name": "acknowledgePurchase",
+      "type": "string",
+      "pattern": "acknowledgePurchase",
+      "severity": "MEDIUM",
+      "description": "Purchase acknowledgement; skipping it makes Play refund the purchase"
+    },
+    {
+      "name": "consumeAsync",
+      "type": "string",
+      "pattern": "consumeAsync",
+      "severity": "MEDIUM",
+      "description": "Consumable purchase consumption (coin/gem bundles)"
+    },
+    {
+      "name": "SkuDetails",
+      "type": "string",
+      "pattern": "SkuDetails",
+      "severity": "MEDIUM",
+      "description": "Product catalog/pricing query from Play Billing"
     }
   ]
 }
