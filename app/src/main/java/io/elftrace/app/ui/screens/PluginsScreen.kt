@@ -82,7 +82,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                     Text("Plugins & Recipes", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
                     val totalFindings = plugins.sumOf { it.lastReport?.total_findings ?: 0 }
                     Text(
-                        text = "${plugins.size} plugins • $totalFindings findings",
+                        text = "${plural(plugins.size, "plugin")} • ${plural(totalFindings, "finding")}",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textSecondary
                     )
@@ -355,7 +355,7 @@ fun PluginsScreen(viewModel: ELFTraceViewModel) {
                                 val patchObj = if (rulePatch == "none") null else PluginPatch(mode = "quick", value = rulePatch, offset = 0)
                                 val manifest = PluginManifest(
                                     id = "custom-${System.currentTimeMillis()}",
-                                    name = "Custom: $pat",
+                                    name = pat,
                                     version = "1.0",
                                     author = "User",
                                     description = "Custom $ruleType search",
@@ -421,7 +421,7 @@ private fun PluginCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = plugin.manifest.name,
+                        text = plugin.manifest.name.removePrefix("Custom: "),
                         color = colors.textPrimary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
@@ -447,9 +447,18 @@ private fun PluginCard(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        if (!plugin.isBuiltIn) {
+                            Text(
+                                text = "CUSTOM",
+                                color = colors.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp
+                            )
+                        }
                         if (plugin.manifest.rules.isNotEmpty()) {
                             Text(
-                                text = "${plugin.manifest.rules.size} rules",
+                                text = plural(plugin.manifest.rules.size, "rule"),
                                 color = colors.primary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
@@ -458,7 +467,7 @@ private fun PluginCard(
                         if (report != null) {
                             val countColor = if (report.total_findings > 0) AmberAccent else GreenAccent
                             Text(
-                                text = if (report.error != null) "Error" else "${report.total_findings} matches",
+                                text = if (report.error != null) "Error" else plural(report.total_findings, "match"),
                                 color = if (report.error != null) RedAccent else countColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
@@ -489,8 +498,18 @@ private fun PluginCard(
                 }
 
                 if (!plugin.isBuiltIn) {
-                    IconButton(onClick = onRemove) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove", tint = RedAccent)
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier
+                            .padding(start = 2.dp)
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Remove custom plugin",
+                            tint = RedAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
@@ -819,3 +838,6 @@ private fun RhaiEditorDialog(
         }
     }
 }
+
+private fun plural(count: Int, noun: String): String =
+    if (count == 1) "$count $noun" else "$count ${noun}s"

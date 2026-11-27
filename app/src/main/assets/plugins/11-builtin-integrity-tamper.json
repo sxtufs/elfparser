@@ -12,7 +12,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Signature-check routine (verify before patching)"
+      "description": "Signature-check routine"
     },
     {
       "name": "verifySignature",
@@ -21,7 +21,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Signature-verify routine (verify before patching)"
+      "description": "Signature-verify routine"
     },
     {
       "name": "Tamper Check",
@@ -29,7 +29,7 @@
       "pattern": "Tamper",
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Anti-tamper routine (verify before patching)"
+      "description": "Anti-tamper routine"
     },
     {
       "name": "/proc/self/maps Scan",
@@ -54,7 +54,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "PackageManager reference (often benign; check context)"
+      "description": "PackageManager reference (common in most apps)"
     },
     {
       "name": "getPackageInfo",
@@ -63,7 +63,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "getPackageInfo reference (often benign; check context)"
+      "description": "getPackageInfo reference (common in most apps)"
     },
     {
       "name": "toByteArray",

@@ -70,7 +70,7 @@
       "case_sensitive": true,
       "match_mode": "word_boundary",
       "severity": "MEDIUM",
-      "description": "Frida GLib main thread name (exact token)"
+      "description": "Frida GLib main thread name"
     },
     {
       "name": "Frida Default Port",
@@ -78,7 +78,7 @@
       "pattern": "27042",
       "match_mode": "word_boundary",
       "severity": "INFO",
-      "description": "Frida default TCP port 27042 (low signal)"
+      "description": "Frida default TCP port 27042"
     },
     {
       "name": "TracerPid Check",

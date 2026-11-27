@@ -67,7 +67,7 @@
       "type": "symbol",
       "pattern": "SSL_get_peer_certificate",
       "severity": "MEDIUM",
-      "description": "Peer certificate retrieval (often near pin checks)"
+      "description": "Peer certificate retrieval"
     },
     {
       "name": "Cronet TLS Marker",
