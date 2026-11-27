@@ -93,11 +93,12 @@ fn tools_list_is_well_formed_and_read_only() {
             tool["inputSchema"]["properties"].is_object(),
             "{name} properties"
         );
-        // Nothing in this server may write to the analysed file.
-        for prefix in ["apply_", "patch", "write_", "assemble_"] {
+        // Write tools are exposed on purpose: patch, undo and save must say so
+        // in their annotations instead of pretending to be read-only.
+        if ["patch", "undo", "save"].contains(&name) {
             assert!(
-                !name.starts_with(prefix),
-                "{name} looks like a write tool; those must not be exposed here"
+                tool["annotations"]["readOnlyHint"].as_bool() == Some(false),
+                "{name} writes, so readOnlyHint must be false"
             );
         }
     }
@@ -333,7 +334,7 @@ fn binary_serves_a_stdio_session() {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "elftrace-mcp");
     assert_eq!(
         responses[1]["result"]["tools"].as_array().unwrap().len(),
-        13
+        20
     );
     let info_text = responses[2]["result"]["content"][0]["text"]
         .as_str()
@@ -494,4 +495,94 @@ fn get_on_mcp_opens_a_server_sent_event_stream() {
             .contains("content-type: text/event-stream"),
         "content type: {head}"
     );
+}
+
+#[test]
+fn every_advertised_tool_dispatches_and_declares_annotations() {
+    let mut host = Host::new();
+    let response = rpc(
+        &mut host,
+        json!({"jsonrpc": "2.0", "id": 9, "method": "tools/list"}),
+    );
+    let tools = response["result"]["tools"].as_array().expect("tools array");
+    let write_tools = ["patch", "undo", "save"];
+
+    for tool in tools {
+        let name = tool["name"].as_str().expect("tool name");
+        let read_only = tool["annotations"]["readOnlyHint"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{name} needs a readOnlyHint annotation"));
+        assert_eq!(
+            read_only,
+            !write_tools.contains(&name),
+            "{name} has the wrong readOnlyHint"
+        );
+
+        // A tool with no dispatch arm answers "unknown tool" whatever its
+        // arguments are, so a bogus path is enough to tell the two apart.
+        let call = rpc(
+            &mut host,
+            json!({
+                "jsonrpc": "2.0", "id": 10, "method": "tools/call",
+                "params": {"name": name, "arguments": {"path": "/nonexistent.so"}}
+            }),
+        );
+        let text = call["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            !text.contains("unknown tool"),
+            "{name} is advertised but has no dispatch arm"
+        );
+    }
+}
+
+#[test]
+fn patch_undo_and_save_round_trip_on_a_real_elf() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    let (info, is_error) = call_tool(&mut host, "elf_info", json!({"path": path}));
+    assert!(!is_error, "elf_info failed: {info}");
+    let info: Value = serde_json::from_str(&info).expect("elf_info JSON");
+    let entry = info["entry"].as_str().expect("entry point");
+    let entry = u64::from_str_radix(entry.trim_start_matches("0x"), 16).expect("entry hex");
+
+    let (patched, is_error) = call_tool(
+        &mut host,
+        "patch",
+        json!({"path": path, "address": entry, "bytes": "9090"}),
+    );
+    assert!(!is_error, "patch refused: {patched}");
+
+    let (after, is_error) = call_tool(
+        &mut host,
+        "read_bytes",
+        json!({"path": path, "address": entry, "length": 2}),
+    );
+    assert!(!is_error, "read_bytes failed: {after}");
+    assert!(
+        after.contains("90 90"),
+        "patched bytes not visible: {after}"
+    );
+
+    let (undo, is_error) = call_tool(&mut host, "undo", json!({"path": path}));
+    assert!(!is_error, "undo failed: {undo}");
+    assert!(undo.contains("restored"), "undo result: {undo}");
+
+    let output = std::env::temp_dir().join("elftrace-mcp-save-test.so");
+    let (saved, is_error) = call_tool(
+        &mut host,
+        "save",
+        json!({"path": path, "output": output.to_string_lossy()}),
+    );
+    assert!(!is_error, "save refused: {saved}");
+    let wrote = std::fs::read(&output).expect("saved file");
+    assert_eq!(
+        wrote,
+        std::fs::read(&elf).expect("source"),
+        "saved copy differs"
+    );
+    let _ = std::fs::remove_file(&output);
 }

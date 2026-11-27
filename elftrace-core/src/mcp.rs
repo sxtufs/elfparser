@@ -78,6 +78,12 @@ impl Host {
         self.files.truncate(MAX_CACHED_FILES);
         Ok(&self.files[0].1)
     }
+
+    /// Same cache, mutable: the patch/rename/save tools change the in-memory image.
+    pub fn context_mut(&mut self, path: &str) -> Result<&mut ElfContext, String> {
+        self.context(path)?;
+        Ok(&mut self.files[0].1)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +244,7 @@ fn is_known_tool(name: &str) -> bool {
     TOOL_NAMES.contains(&name)
 }
 
-const TOOL_NAMES: [&str; 13] = [
+const TOOL_NAMES: [&str; 20] = [
     "elf_info",
     "list_symbols",
     "disassemble",
@@ -252,10 +258,21 @@ const TOOL_NAMES: [&str; 13] = [
     "list_plugins",
     "run_plugin",
     "read_bytes",
+    "binary_facts",
+    "resolve_jni",
+    "rename_function",
+    "assemble",
+    "patch",
+    "undo",
+    "save",
 ];
 
+/// Tools that change the in-memory image or write files. Everything else is
+/// read-only, and `tools/list` says so through `annotations`.
+const WRITE_TOOLS: [&str; 3] = ["patch", "undo", "save"];
+
 fn tool_definitions() -> Value {
-    json!([
+    let defs = json!([
         {
             "name": "elf_info",
             "description": "ELF header, architecture, soname, DT_NEEDED libraries, program segments and sections. Symbol count only; use list_symbols for names.",
@@ -368,8 +385,103 @@ fn tool_definitions() -> Value {
                 "address": address_prop("Virtual address"),
                 "length": int_prop("Bytes to read (default 64, max 4096)")
             }), &["path", "address"])
+        },
+        {
+            "name": "binary_facts",
+            "description": "Binary-level facts that the section tables do not show: DT_RUNPATH/DT_RPATH and the number of DT_INIT/INIT_ARRAY constructors.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file")
+            }), &["path"])
+        },
+        {
+            "name": "resolve_jni",
+            "description": "Map a JNIEnv vtable byte offset (the displacement of an `ldr x9, [x9, #offset]` in a Java_* function) to the JNI method name, e.g. 0x2b8 -> FindClass.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "offset": address_prop("Byte offset into the JNIEnv vtable, as written in the load instruction")
+            }), &["path", "offset"])
+        },
+        {
+            "name": "rename_function",
+            "description": "Give a function a readable name for the rest of this session. Changes names only in memory; no bytes are written. Later disassemble/decompile/xrefs calls use the new name.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "address": address_prop("Virtual address of the function"),
+                "name": string_prop("New function name")
+            }), &["path", "address", "name"])
+        },
+        {
+            "name": "assemble",
+            "description": "Assemble one AArch64/ARM instruction at an address and return its bytes without applying them. Use it to check syntax and encoding before calling patch.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "address": address_prop("Virtual address the instruction would be placed at"),
+                "instruction": string_prop("Assembly text, e.g. 'mov w0, #0' or 'ret'")
+            }), &["path", "address", "instruction"])
+        },
+        {
+            "name": "patch",
+            "description": "Write bytes into the loaded image and record an undo entry. Either 'kind' (nop, true, false, void) or 'bytes' (hex string). Nothing is written to disk until save. Rejects misaligned and non-executable targets.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "address": address_prop("Virtual address to patch"),
+                "kind": string_prop("Quick patch: nop, true, false or void"),
+                "bytes": string_prop("Raw replacement bytes as hex, e.g. '1f2003d5'")
+            }), &["path", "address"])
+        },
+        {
+            "name": "undo",
+            "description": "Revert the most recent patches. Returns the addresses that were restored; use count to undo several at once.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "count": int_prop("How many patches to revert (default 1)")
+            }), &["path"])
+        },
+        {
+            "name": "save",
+            "description": "Write the current, patched image to a new file. Never overwrites the input: the output path must differ from the source.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "output": string_prop("Path to write the patched copy to")
+            }), &["path", "output"])
         }
-    ])
+    ]);
+
+    with_annotations(defs)
+}
+
+/// Attach MCP tool annotations so clients can label write tools before running
+/// them instead of guessing from descriptions.
+fn with_annotations(list: Value) -> Value {
+    let Value::Array(tools) = list else {
+        return list;
+    };
+    Value::Array(
+        tools
+            .into_iter()
+            .map(|mut tool| {
+                let write = tool["name"]
+                    .as_str()
+                    .is_some_and(|name| WRITE_TOOLS.contains(&name));
+                tool["annotations"] = if write {
+                    json!({
+                        "readOnlyHint": false,
+                        "destructiveHint": true,
+                        "idempotentHint": false,
+                        "openWorldHint": false,
+                    })
+                } else {
+                    json!({
+                        "readOnlyHint": true,
+                        "destructiveHint": false,
+                        "idempotentHint": true,
+                        "openWorldHint": false,
+                    })
+                };
+                tool
+            })
+            .collect(),
+    )
 }
 
 fn object_schema(properties: Value, required: &[&str]) -> Value {
@@ -480,8 +592,165 @@ fn call_tool(host: &mut Host, name: &str, args: &Value) -> Result<String, String
         "list_plugins" => tool_list_plugins(args),
         "run_plugin" => tool_run_plugin(host, args),
         "read_bytes" => tool_read_bytes(host, args),
+        "binary_facts" => tool_binary_facts(host, args),
+        "resolve_jni" => tool_resolve_jni(host, args),
+        "rename_function" => tool_rename_function(host, args),
+        "assemble" => tool_assemble(host, args),
+        "patch" => tool_patch(host, args),
+        "undo" => tool_undo(host, args),
+        "save" => tool_save(host, args),
         other => Err(format!("unknown tool: {other}")),
     }
+}
+fn tool_binary_facts(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let ctx = host.context(&path)?;
+    let facts = crate::scanner::build_binary_facts(ctx);
+    serde_json::to_string(&facts).map_err(|e| e.to_string())
+}
+
+fn tool_resolve_jni(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let offset = address_arg(args, "offset")?;
+    let ctx = host.context(&path)?;
+    let is_64 = ctx.get_info().map(|info| info.is_64).unwrap_or(true);
+    let width = if is_64 { 8 } else { 4 };
+    Ok(json!({
+        "offset": hex(offset),
+        "index": offset / width,
+        "method": crate::jni_resolver::resolve_jni_offset(offset, is_64),
+    })
+    .to_string())
+}
+
+fn tool_rename_function(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let address = address_arg(args, "address")?;
+    let name = string_arg(args, "name")?;
+    let ctx = host.context_mut(&path)?;
+    ctx.rename_function(address, &name);
+    Ok(json!({"address": hex(address & !1), "name": name}).to_string())
+}
+
+fn tool_assemble(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let address = address_arg(args, "address")?;
+    let instruction = string_arg(args, "instruction")?;
+    let ctx = host.context(&path)?;
+    let bytes = crate::patcher::assemble_instruction(&instruction, address)?;
+    let rendered: Vec<String> = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(json!({
+        "address": hex(address),
+        "length": bytes.len(),
+        "bytes": rendered.join(" "),
+        "predictable": !ctx.raw.is_empty(),
+    })
+    .to_string())
+}
+
+fn tool_patch(host: &mut Host, args: &Value) -> Result<String, String> {
+    use crate::patcher::QuickPatchType;
+
+    let path = string_arg(args, "path")?;
+    let address = address_arg(args, "address")?;
+    let kind = optional_string(args, "kind");
+    let bytes = optional_string(args, "bytes");
+    let ctx = host.context_mut(&path)?;
+
+    let result = match (kind, bytes) {
+        (Some(kind), None) => {
+            let patch_type = match kind.to_ascii_lowercase().as_str() {
+                "nop" => QuickPatchType::Nop,
+                "true" => QuickPatchType::ReturnTrue,
+                "false" => QuickPatchType::ReturnFalse,
+                "void" => QuickPatchType::ReturnVoid,
+                other => return Err(format!("unknown patch kind: {other}")),
+            };
+            let is_thumb = ctx
+                .get_info()
+                .map(|info| info.e_machine == 40)
+                .unwrap_or(false);
+            crate::patcher::apply_quick_patch(ctx, address, patch_type, is_thumb)
+        }
+        (None, Some(bytes)) => {
+            let patch = crate::patcher::assemble_instruction(&bytes, address)?;
+            let offset = ctx
+                .vaddr_to_offset(address)
+                .ok_or_else(|| format!("{} is not mapped in any program segment", hex(address)))?;
+            let offset = usize::try_from(offset).map_err(|_| "file offset is too large")?;
+            let end = (offset + patch.len()).min(ctx.raw.len());
+            if end - offset != patch.len() {
+                return Err("patch runs past the end of the file".to_string());
+            }
+            let original = ctx.raw[offset..end].to_vec();
+            ctx.patch_bytes(address, &patch)?;
+            ctx.push_undo(address, original.clone());
+            crate::patcher::PatchResult {
+                address,
+                original_bytes: original,
+                patched_bytes: patch,
+                patch_type: "bytes".to_string(),
+                success: true,
+                error: None,
+            }
+        }
+        _ => return Err("give exactly one of kind or bytes".to_string()),
+    };
+
+    if !result.success {
+        return Err(result.error.unwrap_or_else(|| "patch failed".to_string()));
+    }
+    let original: Vec<String> = result
+        .original_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let patched: Vec<String> = result
+        .patched_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Ok(json!({
+        "address": hex(result.address),
+        "kind": result.patch_type,
+        "original": original.join(" "),
+        "patched": patched.join(" "),
+        "undo_entries": ctx.undo_len(),
+    })
+    .to_string())
+}
+
+fn tool_undo(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let count = optional_usize(args, "count", 1)?.clamp(1, 256);
+    let ctx = host.context_mut(&path)?;
+    let mut restored = Vec::new();
+    for _ in 0..count {
+        match ctx.undo_last() {
+            Some(address) => restored.push(hex(address)),
+            None => break,
+        }
+    }
+    Ok(json!({
+        "restored": restored,
+        "remaining": ctx.undo_len(),
+    })
+    .to_string())
+}
+
+fn tool_save(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = string_arg(args, "path")?;
+    let output = string_arg(args, "output")?;
+    let ctx = host.context(&path)?;
+    let same = match (std::fs::canonicalize(&path), std::fs::canonicalize(&output)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => path == output,
+    };
+    if same {
+        return Err("refusing to overwrite the input file; choose another output path".to_string());
+    }
+    std::fs::write(&output, &ctx.raw[..]).map_err(|e| format!("cannot write {output}: {e}"))?;
+    Ok(json!({"output": output, "bytes": ctx.raw.len()}).to_string())
 }
 
 fn tool_elf_info(host: &mut Host, args: &Value) -> Result<String, String> {
