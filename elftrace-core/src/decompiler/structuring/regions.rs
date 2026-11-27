@@ -1513,7 +1513,6 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
     // body only wrote EARLIER in a nested arm; do a proper ordered pass.
     params.clear();
     written.clear();
-    let mut seen_order: Vec<String> = Vec::new();
     fn ordered_walk(
         nodes: &[StructuredNode],
         params: &mut Vec<String>,
@@ -1634,7 +1633,6 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
         }
     }
     ordered_walk(body, &mut params, &mut written);
-    seen_order = params.clone();
 
     // Locals: every register the body touches (or whose wider parent the
     // emitted text touches — a `w0` write is printed as `x0 = ...`) that is
@@ -1655,7 +1653,6 @@ fn classify_tail_regs(body: &[StructuredNode]) -> (Vec<String>, Vec<String>) {
         .into_iter()
         .filter(|r| !params.contains(r))
         .collect();
-    let _ = &seen_order;
     (params, locals)
 }
 
