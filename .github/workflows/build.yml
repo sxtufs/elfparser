@@ -162,12 +162,17 @@ jobs:
           fi
 
           echo "=== Linked against NDK r30 (not the runner's preinstalled r27) ==="
-          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -n "$SO" \
-            | grep -q '"r30"' || {
-            echo "ERROR: .so was not linked with NDK r30 — check ANDROID_NDK_HOME for cargo-ndk"
-            "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -n "$SO"
-            exit 1
-          }
+          # .note.android.ident stores the NDK release as raw bytes ("r30" =
+          # 72 33 30), which is how readelf prints the note.
+          NOTES=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -n "$SO")
+          case "$NOTES" in
+            *"72 33 30 00"*) echo "NDK release: r30" ;;
+            *)
+              echo "ERROR: .so was not linked with NDK r30 — check ANDROID_NDK_HOME for cargo-ndk"
+              echo "$NOTES"
+              exit 1
+              ;;
+          esac
 
       - name: Make Gradlew Executable
         run: chmod +x gradlew
