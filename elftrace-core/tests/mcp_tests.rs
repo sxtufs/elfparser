@@ -654,8 +654,8 @@ fn list_imports_reports_the_import_dir_and_shared_storage_paths_are_refused() {
         "list_imports without a dir must be empty, not an error: {empty}"
     );
     assert!(
-        empty.contains("Import a file"),
-        "expected the import hint: {empty}"
+        empty.contains("Open a binary"),
+        "expected the open-file hint: {empty}"
     );
 
     // A shared-storage path is always a permission error on Android 13+;

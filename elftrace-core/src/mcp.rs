@@ -282,7 +282,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "list_imports",
-            "description": "Files the user imported into ELFTrace for agent analysis (MCP dialog > Import a file). Returns {name, path, size, modified_unix} per file; pass a returned path to any tool.",
+            "description": "Binary files in the app's own storage (the file ELFTrace has open, plus anything it has cached). Returns {name, path, size, modified_unix} per file, newest first; pass a returned path to any tool.",
             "inputSchema": object_schema(json!({}), &[])
         },
         {
@@ -548,8 +548,9 @@ fn file_arg(args: &Value) -> Result<String, String> {
         if is_shared_storage_path(&path) {
             return Err(format!(
                 "Android scoped storage denies this app every path under /storage ({}). \
-                 Import the file instead: in ELFTrace open the MCP dialog and tap 'Import a file', \
-                 then pass the path returned by list_imports.",
+                 Open the file in ELFTrace (Files > Open) so it becomes the current file, \
+                 then call the tool without 'path'. Files the app has opened are listed by \
+                 list_imports.",
                 path
             ));
         }
@@ -694,7 +695,7 @@ fn tool_list_imports(_host: &mut Host, _args: &Value) -> Result<String, String> 
 }
 
 const IMPORT_HINT: &str =
-    "Nothing imported yet. In ELFTrace open the MCP dialog and tap 'Import a file', then call list_imports again.";
+    "Nothing available yet. Open a binary in ELFTrace (Files > Open) and it becomes the current file.";
 
 fn tool_binary_facts(host: &mut Host, args: &Value) -> Result<String, String> {
     let path = file_arg(args)?;

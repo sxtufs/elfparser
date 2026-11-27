@@ -7,9 +7,9 @@ open (reported by `current_file`). The ELF is parsed once per path and cached,
 so repeated calls on the same file are cheap.
 
 Android note: paths under `/storage/emulated/0` are refused with instructions —
-scoped storage keeps app-private code out. Use the app's MCP dialog
-"Import a file" pick (it copies into app storage and becomes the current file),
-then `list_imports` to see what is available.
+scoped storage keeps app-private code out. Open the binary in the app
+(Files > Open) and it becomes the current file, so tools can be called with no
+`path`; `list_imports` shows what is available in app storage.
 
 `tools/list` marks write tools with `"readOnlyHint": false`; everything else is
 read-only. Nothing is written to disk unless you call `save`.
@@ -19,7 +19,7 @@ read-only. Nothing is written to disk unless you call `save`.
 | Tool | Arguments | Returns |
 | --- | --- | --- |
 | `current_file` | — | Path of the file the app has open, if any |
-| `list_imports` | — | Files imported through the app's MCP dialog, newest first |
+| `list_imports` | — | Binaries in app storage (the open file plus cached copies), newest first |
 | `elf_info` | `path`? | Header, machine, soname, `DT_NEEDED`, segments, sections, symbol count |
 | `list_symbols` | `path`?, `filter`, `limit` | Function symbols with addresses |
 | `disassemble` | `path`?, `address`, `count`, `symbol` | Instructions with symbol and string resolution |

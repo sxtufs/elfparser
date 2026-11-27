@@ -5,7 +5,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
-import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,13 +23,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import io.elftrace.app.core.JNIBridge
 import io.elftrace.app.core.McpServer
 import io.elftrace.app.core.McpServerService
 import io.elftrace.app.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
 
 /**
  * MCP server toggle: switch, client URL and access token.
@@ -49,7 +46,6 @@ fun McpServerDialog(onDismiss: () -> Unit) {
     var url by remember { mutableStateOf(McpServer.clientUrl(context)) }
     var token by remember { mutableStateOf(McpServer.token(context)) }
     var showToken by remember { mutableStateOf(false) }
-    var lastImport by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         url = McpServer.clientUrl(context)
@@ -69,32 +65,6 @@ fun McpServerDialog(onDismiss: () -> Unit) {
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { enableServer() }
-
-    // Scoped storage keeps the agent out of /storage/emulated/0, so a file the
-    // user wants analysed goes through the picker into app storage, and becomes
-    // the MCP "current file" straight away.
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            val copied = runCatching {
-                val name = pickedDisplayName(context, uri) ?: "import.so"
-                val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                val dest = File(context.cacheDir, "mcp_import_$safe")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    dest.outputStream().use { output -> input.copyTo(output) }
-                } ?: error("cannot open the picked file")
-                dest.absolutePath
-            }.getOrNull()
-            if (copied == null) {
-                Toast.makeText(context, "Import failed", Toast.LENGTH_SHORT).show()
-            } else {
-                JNIBridge.setCurrentFile(copied)
-                lastImport = copied
-                Toast.makeText(context, "Imported — the agent can analyse it now", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     fun toggle(on: Boolean) {
         if (!on) {
@@ -197,28 +167,6 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(14.dp))
-                FieldLabel("Import for agent analysis")
-                Text(
-                    "Android hides /storage from tools. Pick a file here and the agent reaches it in app storage.",
-                    color = colors.textSecondary, fontSize = 10.5.sp, lineHeight = 14.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                TextButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) {
-                    Text("Import a file…", color = CyanAccent)
-                }
-                lastImport?.let { path ->
-                    CopyRow(
-                        value = path,
-                        monospace = true,
-                        maxLines = 2,
-                        onCopied = {
-                            copyToClipboard(context, path)
-                            Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
                 Text(
                     "Anyone on this network with the token can read the binaries you open. " +
                         "Turn the server off when you are done.",
@@ -291,9 +239,3 @@ private fun copyToClipboard(context: Context, text: String) {
     val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     manager.setPrimaryClip(ClipData.newPlainText("ELFTrace MCP", text))
 }
-
-private fun pickedDisplayName(context: Context, uri: android.net.Uri): String? =
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        }
