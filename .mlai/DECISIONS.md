@@ -1,12 +1,32 @@
 # Decisions
 
+## 2026-11-27 — In-app MCP toggle: token-gated HTTP on 8765, desktop CI job removed
+The MCP engine is now switchable from the phone itself, MT-Manager style:
+- `mcp::start_server(addr, token)` / `stop_server()` / `running_url()` in
+  `elftrace-core/src/mcp.rs` run the accept loop on its own thread; the loop
+  polls an `AtomicBool` (non-blocking listener, 50 ms) so Stop closes the socket.
+- `serve_listener` takes `Option<token>`: every request must send
+  `Authorization: Bearer <token>` or `X-MCP-Token`, compared length-independently.
+  The origin guard also accepts RFC1918 LAN origins (10/8, 192.168/16,
+  172.16/12) because the token, not the origin, is the gate once bound to Wi-Fi.
+- JNI: `JNIBridge.startMcp0/stopMcp0/mcpStatus0`; Kotlin `McpServerService`
+  (foreground, `dataSync`, Stop action) keeps it alive, `McpServer` object holds
+  the persisted random token, port and LAN URL.
+- Default port is **8765** (was 8989) for both the desktop `--http` default and
+  the app, to avoid colliding with a local dev server on the same network.
+- The GitHub Actions `mcp` job (ubuntu/macos/windows binary builds) was removed:
+  the product shape is the phone toggle, not desktop side binaries.
+- Tests: `mcp_tests::in_app_server_requires_the_token_and_stops_on_request`
+  covers 401 without/with a wrong token, 200 with the token from a LAN origin,
+  listener closure after stop, and refusal to start with an empty token.
+
 ## 2026-11-27 — MCP server: separate read-only binary, stdio first, HTTP opt-in
 `elftrace-core/src/mcp.rs` + `src/bin/elftrace-mcp.rs` expose the analysis
 engine to MCP clients (Claude Desktop, Cursor, Claude Code). It is a normal
 binary built from the same crate as the `.so` (`crate-type = ["cdylib", "rlib"]`
 already allowed this); the Android app is unchanged and dead-code-strips the
 module.
-- Default transport is stdio (client spawns the binary); `--http 127.0.0.1:8989`
+- Default transport is stdio (client spawns the binary); `--http 127.0.0.1:8765`
   serves the same tools as stateless Streamable HTTP at `/mcp`. No session id,
   GET refused with 405, foreign `Origin` refused with 403 (DNS-rebinding guard).
 - 13 tools, all read-only: elf_info, list_symbols, disassemble, decompile,
@@ -56,21 +76,4 @@ The last structuring pass (`extract_tail_helpers` in regions.rs, wired in
 mod.rs before emit) takes every still-referenced shared exit tail, splices it
 (including explicit-Goto chains into the cyclic canary epilogue, bounded by
 MAX_JOIN_STMTS + a visited set) into a `static int64_t tail_XXXXXXXX(...)`
-helper, and rewrites each goto site into `return tail_...(...)` (void
-functions: call then return). Params are registers the body READS before any
-write (ordered scan, `classify_tail_regs`); everything else is a declared
-local with `(void)` suppression. 4 cyclic tails whose tails end in conditional
-branches to other joins are left as single gotos — splicing branch tails is
-what cascaded in the abandoned single-ref attempt (11 → 50 gotos).
-Poweramp JNI_OnLoad: 11 → 4 gotos, 522 → 698 lines (the inline approach was
-501 → 2628). Output passes `aarch64-linux-gnu-gcc -std=c11 -Wall -Wextra
--Werror -pedantic`. Note: the strict host-clang gate in structuring_tests
-`assert_compiles` rejects this fixture's `extern int64_t signal();` decls
-(-Wstrict-prototypes), so the tail-helper regression test uses the
-ladder_tests-style cross-compiler gate with `-w` instead.
-
-## 2026-11-26 — Plugin count: assets are the only source, no local cache
-The app reads every .json in app/src/main/assets/plugins at each launch
-(ELFTraceViewModel); nothing is extracted to storage. Repo ships 18 manifests
-and origin/main matches local HEAD, so a CI-built APK showing more means the
-workflow ran on an older commit — rebuild on latest main, no code fix.
+helper, and rewrites each goto site into `return tail_...(...)` (void function

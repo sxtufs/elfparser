@@ -18,6 +18,16 @@ class JNIBridge private constructor(val handle: Long, val path: String) : java.i
             return if (handle != 0L) JNIBridge(handle, path) else null
         }
 
+        // In-app MCP server: the same HTTP transport the desktop binary serves,
+        // started and stopped from the UI. Returns JSON.
+        @JvmStatic private external fun startMcp0(addr: String, token: String): String
+        @JvmStatic private external fun stopMcp0(): Boolean
+        @JvmStatic private external fun mcpStatus0(): String
+
+        fun startMcp(addr: String, token: String): String = startMcp0(addr, token)
+        fun stopMcp(): Boolean = stopMcp0()
+        fun mcpStatus(): String = mcpStatus0()
+
         @JvmStatic private external fun init0(path: String): Long
         @JvmStatic private external fun finalize0(handle: Long)
         @JvmStatic private external fun info0(handle: Long, flag: Boolean): String

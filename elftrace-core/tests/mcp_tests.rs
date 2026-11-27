@@ -386,9 +386,23 @@ fn post(address: std::net::SocketAddr, path: &str, body: &str) -> String {
 }
 
 fn post_with_origin(address: std::net::SocketAddr, path: &str, body: &str, origin: &str) -> String {
+    post_with_auth(address, path, body, origin, None)
+}
+
+fn post_with_auth(
+    address: std::net::SocketAddr,
+    path: &str,
+    body: &str,
+    origin: &str,
+    token: Option<&str>,
+) -> String {
     let mut stream = TcpStream::connect(address).expect("connect");
+    let auth = match token {
+        Some(token) => format!("Authorization: Bearer {token}\r\n"),
+        None => String::new(),
+    };
     let request = format!(
-        "POST {path} HTTP/1.1\r\nHost: {address}\r\nOrigin: {origin}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST {path} HTTP/1.1\r\nHost: {address}\r\nOrigin: {origin}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     stream.write_all(request.as_bytes()).expect("write request");
@@ -396,4 +410,52 @@ fn post_with_origin(address: std::net::SocketAddr, path: &str, body: &str, origi
     let mut response = String::new();
     stream.read_to_string(&mut response).expect("read response");
     response
+}
+
+#[test]
+fn in_app_server_requires_the_token_and_stops_on_request() {
+    let url = mcp::start_server("127.0.0.1:0", "s3cret-token").expect("server should start");
+    assert!(url.ends_with("/mcp"), "{url}");
+    let address: std::net::SocketAddr = url
+        .trim_start_matches("http://")
+        .trim_end_matches("/mcp")
+        .parse()
+        .expect("url carries the bound address");
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}},
+    })
+    .to_string();
+
+    let response = post(address, "/mcp", &body);
+    assert!(response.starts_with("HTTP/1.1 401"), "{response}");
+    let response = post_with_auth(address, "/mcp", &body, "http://127.0.0.1", Some("wrong"));
+    assert!(response.starts_with("HTTP/1.1 401"), "{response}");
+
+    // A LAN browser origin is accepted once the token is right.
+    let response = post_with_auth(
+        address,
+        "/mcp",
+        &body,
+        "http://192.168.1.42:3000",
+        Some("s3cret-token"),
+    );
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("protocolVersion"), "{response}");
+
+    assert!(mcp::stop_server());
+    assert!(mcp::running_url().is_none());
+    let mut refused = false;
+    for _ in 0..100 {
+        if TcpStream::connect(address).is_err() {
+            refused = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(refused, "listener should be closed after stop_server");
+    // Starting without a token is refused.
+    assert!(mcp::start_server("127.0.0.1:0", "").is_err());
 }

@@ -5,7 +5,7 @@
 
 use elftrace::mcp;
 
-const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8989";
+const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8765";
 
 fn main() {
     let mut http: Option<String> = None;

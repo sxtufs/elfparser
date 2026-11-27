@@ -1,0 +1,198 @@
+package io.elftrace.app.ui.components
+
+import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import io.elftrace.app.core.McpServer
+import io.elftrace.app.core.McpServerService
+import io.elftrace.app.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/**
+ * MCP server toggle: switch, client URL and access token.
+ *
+ * Copied from MT Manager's shape — a switch you flip in the app, an address to
+ * paste into the client, and a secret the client must send. The server binds
+ * `0.0.0.0`, so the token is not optional.
+ */
+@Composable
+fun McpServerDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val colors = LocalELFTraceColors.current
+    val scope = rememberCoroutineScope()
+
+    var running by remember { mutableStateOf(McpServer.isRunning()) }
+    var url by remember { mutableStateOf(McpServer.clientUrl(context)) }
+    var token by remember { mutableStateOf(McpServer.token(context)) }
+    var showToken by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        url = McpServer.clientUrl(context)
+        token = McpServer.token(context)
+    }
+
+    fun enableServer() {
+        McpServerService.start(context, McpServer.port(context))
+        scope.launch {
+            delay(300)
+            running = McpServer.isRunning()
+            refresh()
+            if (!running) Toast.makeText(context, "MCP server failed to start", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { enableServer() }
+
+    fun toggle(on: Boolean) {
+        if (!on) {
+            McpServerService.stop(context)
+            scope.launch {
+                delay(150)
+                running = McpServer.isRunning()
+            }
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            enableServer()
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.card),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Text("MCP Server", color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Let an AI agent on this Wi-Fi call ELFTrace tools through the Model Context Protocol.",
+                    color = colors.textSecondary, fontSize = 12.sp, lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(14.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (running) "Server running" else "Server off",
+                            color = if (running) GreenAccent else colors.textSecondary,
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            if (running) "Listening on all interfaces" else "Turn on to accept connections",
+                            color = colors.textSecondary, fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = running,
+                        onCheckedChange = { toggle(it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = GreenAccent)
+                    )
+                }
+
+                if (running) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Endpoint", color = colors.textSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                    CopyRow(value = url, monospace = true, onCopied = {
+                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                    })
+
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Token", color = colors.textSecondary, fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            if (showToken) "Hide" else "Show",
+                            color = CyanAccent, fontSize = 11.sp,
+                            modifier = Modifier.clickable { showToken = !showToken }
+                        )
+                    }
+                    CopyRow(
+                        value = if (showToken) token else "•".repeat(24),
+                        monospace = true,
+                        onCopied = {
+                            copyToClipboard(context, token)
+                            Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    Text(
+                        "Send it as: Authorization: Bearer <token>",
+                        color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Anyone on this network with the token can read the binaries you open. " +
+                        "Turn the server off when you are done.",
+                    color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
+                )
+
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) { Text("Close", color = colors.textSecondary) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CopyRow(value: String, monospace: Boolean, onCopied: () -> Unit) {
+    val colors = LocalELFTraceColors.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .background(colors.surface, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Text(
+            value,
+            color = colors.textPrimary,
+            fontSize = 11.5.sp,
+            fontFamily = if (monospace) FontFamily.Monospace else null,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "COPY", color = CyanAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clickable(onClick = onCopied)
+        )
+    }
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    manager.setPrimaryClip(ClipData.newPlainText("ELFTrace MCP", text))
+}

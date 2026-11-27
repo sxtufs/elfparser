@@ -14,6 +14,7 @@
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -1008,11 +1009,16 @@ pub fn serve_stdio() -> std::io::Result<()> {
 // Streamable HTTP transport
 // ---------------------------------------------------------------------------
 
+/// Port the in-app server listens on. Deliberately not 8989: that port is what
+/// the desktop `--http` default used to be, and the phone should not collide
+/// with a local dev server on the same network.
+pub const DEFAULT_HTTP_PORT: u16 = 8765;
+
 /// Serve MCP over Streamable HTTP at `http://<addr>/mcp`.
 ///
 /// Stateless: no `Mcp-Session-Id` is issued or required, and each POST is
-/// handled on its own. There is no authentication, so this must stay bound to
-/// loopback unless the caller puts it behind something that authenticates.
+/// handled on its own. Without a token this must stay bound to loopback; the
+/// in-app server always passes one and may listen on the LAN.
 pub fn serve_http(addr: &str) -> std::io::Result<()> {
     let listener = TcpListener::bind(addr)?;
     let bound = listener.local_addr()?;
@@ -1023,20 +1029,108 @@ pub fn serve_http(addr: &str) -> std::io::Result<()> {
 /// Accept loop split out from [`serve_http`] so tests can bind port 0 and keep
 /// the listener that was actually bound.
 pub fn serve_http_listener(listener: TcpListener) -> std::io::Result<()> {
+    serve_listener(listener, None, None)
+}
+
+/// Shared accept loop. `token` turns on bearer auth; `stop` switches the
+/// listener to non-blocking and makes the loop exit once the flag is set, which
+/// is how the in-app toggle shuts the server down.
+fn serve_listener(
+    listener: TcpListener,
+    token: Option<Arc<String>>,
+    stop: Option<Arc<AtomicBool>>,
+) -> std::io::Result<()> {
+    if stop.is_some() {
+        listener.set_nonblocking(true)?;
+    }
     let host = Arc::new(Mutex::new(Host::new()));
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(s) => s,
+    loop {
+        if let Some(stop) = &stop {
+            if stop.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+        }
+        let stream = match listener.accept() {
+            Ok((stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                stream
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             Err(_) => continue,
         };
         let host = Arc::clone(&host);
+        let token = token.clone();
         std::thread::spawn(move || {
-            if let Err(e) = handle_connection(stream, &host) {
+            if let Err(e) = handle_connection(stream, &host, token.as_ref().map(|t| t.as_str())) {
                 eprintln!("elftrace-mcp: connection error: {e}");
             }
         });
     }
-    Ok(())
+}
+
+struct RunningServer {
+    url: String,
+    stop: Arc<AtomicBool>,
+}
+
+static RUNNING: Mutex<Option<RunningServer>> = Mutex::new(None);
+
+/// Start the in-app HTTP server on `addr` and return the client URL
+/// (`http://<bound>/mcp`).
+///
+/// `token` is required: once the server listens beyond loopback, every request
+/// must present it as `Authorization: Bearer <token>` (or `X-MCP-Token`).
+/// Starting while already running stops the previous instance first.
+pub fn start_server(addr: &str, token: &str) -> Result<String, String> {
+    if token.is_empty() {
+        return Err("an access token is required".to_string());
+    }
+    let listener = TcpListener::bind(addr).map_err(|e| format!("cannot bind {addr}: {e}"))?;
+    let bound = listener.local_addr().map_err(|e| e.to_string())?;
+    let url = format!("http://{bound}/mcp");
+
+    stop_server();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let token = Arc::new(token.to_string());
+    let thread_token = Arc::clone(&token);
+    let thread_stop = Arc::clone(&stop);
+    std::thread::spawn(move || {
+        if let Err(e) = serve_listener(listener, Some(thread_token), Some(thread_stop)) {
+            eprintln!("elftrace-mcp: server stopped: {e}");
+        }
+    });
+
+    let mut running = RUNNING.lock().unwrap_or_else(|p| p.into_inner());
+    *running = Some(RunningServer {
+        url: url.clone(),
+        stop,
+    });
+    Ok(url)
+}
+
+/// Stop the in-app server if it is running. Returns whether one was running.
+pub fn stop_server() -> bool {
+    let mut running = RUNNING.lock().unwrap_or_else(|p| p.into_inner());
+    match running.take() {
+        Some(server) => {
+            server.stop.store(true, Ordering::Relaxed);
+            true
+        }
+        None => false,
+    }
+}
+
+/// URL of the running in-app server, or `None`.
+pub fn running_url() -> Option<String> {
+    RUNNING
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .map(|server| server.url.clone())
 }
 
 struct HttpRequest {
@@ -1055,7 +1149,11 @@ impl HttpRequest {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, host: &Arc<Mutex<Host>>) -> std::io::Result<()> {
+fn handle_connection(
+    mut stream: TcpStream,
+    host: &Arc<Mutex<Host>>,
+    token: Option<&str>,
+) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(15)))?;
     stream.set_write_timeout(Some(Duration::from_secs(15)))?;
     let request = match read_http_request(&mut stream)? {
@@ -1063,8 +1161,17 @@ fn handle_connection(mut stream: TcpStream, host: &Arc<Mutex<Host>>) -> std::io:
         None => return Ok(()),
     };
 
+    // Token auth before anything else: the in-app server may listen on Wi-Fi,
+    // where every neighbour could otherwise read the user's binaries.
+    if let Some(expected) = token {
+        if !request_has_token(&request, expected) {
+            return write_response(&mut stream, 401, "missing or invalid access token");
+        }
+    }
+
     // DNS-rebinding guard from the MCP spec: a browser-originated request from a
-    // foreign origin must not reach a loopback server.
+    // foreign origin must not reach this server. Loopback and private LAN
+    // origins are allowed; the token is the actual gate.
     if let Some(origin) = request.header("origin") {
         if !origin_is_local(origin) {
             return write_response(&mut stream, 403, "origin not allowed");
@@ -1095,6 +1202,25 @@ fn handle_connection(mut stream: TcpStream, host: &Arc<Mutex<Host>>) -> std::io:
     }
 }
 
+fn request_has_token(request: &HttpRequest, expected: &str) -> bool {
+    let presented = request
+        .header("authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .or_else(|| request.header("x-mcp-token"))
+        .unwrap_or_default()
+        .trim();
+    // Length-independent comparison so a wrong token leaks no timing signal.
+    let (a, b) = (presented.as_bytes(), expected.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn origin_is_local(origin: &str) -> bool {
     let host = origin
         .split("://")
@@ -1106,7 +1232,19 @@ fn origin_is_local(origin: &str) -> bool {
         Some(rest) => rest.split(']').next().unwrap_or(rest),
         None => host.split(':').next().unwrap_or(host),
     };
-    matches!(host, "localhost" | "127.0.0.1" | "::1" | "0.0.0.0")
+    if matches!(host, "localhost" | "127.0.0.1" | "::1" | "0.0.0.0") {
+        return true;
+    }
+    // Private LAN ranges: the phone's own Wi-Fi clients (a browser on the same
+    // network) send their address as the origin.
+    let octets: Vec<u8> = host
+        .split('.')
+        .filter_map(|part| part.parse::<u8>().ok())
+        .collect();
+    matches!(
+        octets.as_slice(),
+        [10, ..] | [192, 168, ..] | [172, 16..=31, ..]
+    )
 }
 
 fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Option<HttpRequest>> {
@@ -1234,10 +1372,14 @@ mod tests {
     }
 
     #[test]
-    fn local_origins_only() {
+    fn local_and_lan_origins() {
         assert!(origin_is_local("http://localhost:3000"));
         assert!(origin_is_local("http://127.0.0.1"));
         assert!(origin_is_local("http://[::1]:8989"));
+        assert!(origin_is_local("http://192.168.1.42:8765"));
+        assert!(origin_is_local("http://10.0.0.7"));
+        assert!(origin_is_local("http://172.16.5.4:3000"));
+        assert!(!origin_is_local("http://172.32.5.4"));
         assert!(!origin_is_local("https://evil.example"));
     }
 }

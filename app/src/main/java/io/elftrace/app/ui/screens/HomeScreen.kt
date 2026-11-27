@@ -25,6 +25,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -85,6 +86,10 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     var symFilter by remember { mutableStateOf("all") } // "all", "funcs", "jni"
     var showHeadersDialog by remember { mutableStateOf(false) }
     var headersTab by remember { mutableStateOf(0) } // 0 = Segments, 1 = Sections
+    var showMcpDialog by remember { mutableStateOf(false) }
+    // Re-read the native status when the dialog closes instead of on every
+    // recomposition (it crosses JNI).
+    val mcpRunning = remember(showMcpDialog) { io.elftrace.app.core.McpServer.isRunning() }
 
     val il2cppPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -254,6 +259,13 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showMcpDialog = true }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "MCP server",
+                            tint = if (mcpRunning) GreenAccent else colors.textSecondary
+                        )
+                    }
                     IconButton(onClick = { viewModel.toggleTheme() }) {
                         ThemeToggleIcon(isDark = colors.isDark, tint = if (colors.isDark) Color(0xFFFFD54F) else colors.textSecondary)
                     }
@@ -1003,6 +1015,10 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     }
                 }
             }
+        }
+
+        if (showMcpDialog) {
+            io.elftrace.app.ui.components.McpServerDialog(onDismiss = { showMcpDialog = false })
         }
     }
 }

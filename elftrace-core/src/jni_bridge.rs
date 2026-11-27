@@ -896,3 +896,71 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_undoLen(
     let ctx = &*(handle as *const ElfContext);
     ctx.undo_len().min(i32::MAX as usize) as jint
 }
+
+// In-app MCP server.
+//
+// `mcp.rs` is compiled into the same cdylib as the analysis engine, so the
+// HTTP transport that the desktop binary exposes can be started from the app
+// itself. The listener runs on its own thread; `stop_server` flips a flag that
+// the accept loop polls, then the socket closes. Every request must carry the
+// token the UI generated, because the server may listen on Wi-Fi.
+
+unsafe fn jstring_or_null(env: &mut JNIEnv, value: String) -> jstring {
+    match env.new_string(value) {
+        Ok(s) => s.as_raw() as jstring,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Start the HTTP MCP server on `addr` (e.g. `0.0.0.0:8765`).
+///
+/// Returns `{"url":"http://..."}` on success or `{"error":"..."}`.
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_startMcp0(
+    env: JNIEnv,
+    _class: JClass,
+    addr: JString,
+    token: JString,
+) -> jstring {
+    let mut env = env;
+    let addr: String = match env.get_string(&addr) {
+        Ok(s) => s.into(),
+        Err(_) => return jstring_or_null(&mut env, r#"{"error":"bad address"}"#.to_string()),
+    };
+    let token: String = match env.get_string(&token) {
+        Ok(s) => s.into(),
+        Err(_) => return jstring_or_null(&mut env, r#"{"error":"bad token"}"#.to_string()),
+    };
+    let payload = match crate::mcp::start_server(&addr, &token) {
+        Ok(url) => serde_json::json!({ "url": url }).to_string(),
+        Err(err) => serde_json::json!({ "error": err }).to_string(),
+    };
+    jstring_or_null(&mut env, payload)
+}
+
+/// Stop the in-app MCP server. Returns whether one was running.
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_stopMcp0(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    if crate::mcp::stop_server() {
+        JNI_TRUE
+    } else {
+        0
+    }
+}
+
+/// `{"running":true,"url":"http://..."}` while the server is up.
+#[no_mangle]
+pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_mcpStatus0(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let mut env = env;
+    let payload = match crate::mcp::running_url() {
+        Some(url) => serde_json::json!({ "running": true, "url": url }).to_string(),
+        None => r#"{"running":false}"#.to_string(),
+    };
+    jstring_or_null(&mut env, payload)
+}
