@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-11-27 — MCP endpoint answers real clients: GET stream, bare token, Wi-Fi-only address
+An Android MCP client on the same phone could not connect even on one device.
+Three server-side causes, each fixed and pinned by a test:
+- GET `/mcp` no longer returns 405. It holds the connection open as a
+  `text/event-stream` (the spec's server-initiated branch) with 2 s keep-alive
+  comments and closes when the stop flag flips. Clients probe GET before POST
+  and read 405 as "unreachable"; the stream carries no messages yet.
+- `request_has_token` accepts `Authorization: Bearer <t>`, the bare token in
+  `Authorization:` (clients' header fields are typed by hand) and `X-MCP-Token`.
+  CORS preflight now allows `authorization` and `x-mcp-token`.
+- `McpServer.lanAddress()` ranks wlan/ap/eth/rndis first and skips cellular
+  (`rmnet*`, `ccmni*`, `pdp*`, `clat*`): carrier-grade NAT hands out 10.x
+  addresses that are site-local but unreachable from another device, and the old
+  first-match code could hand the dialog the cellular one. The dialog now shows
+  `127.0.0.1` for a client on this phone and the Wi-Fi URL for another device.
+- CI: `setup-ndk` only exports `ndk-path`/PATH, so cargo-ndk used the runner's
+  preinstalled r27. The build step now sets `ANDROID_NDK_HOME`/`ANDROID_NDK_ROOT`
+  and the verify step fails unless `.note.android.ident` contains `72 33 30 00`
+  ("r30" as hex — readelf prints that note in hex, not as a quoted string).
+- Tests: `mcp_tests::get_on_mcp_opens_a_server_sent_event_stream`,
+  `mcp::tests::accepts_the_token_with_and_without_the_bearer_prefix`,
+  `McpServerAddressTest`.
+
 ## 2026-11-27 — In-app MCP toggle: token-gated HTTP on 8765, desktop CI job removed
 The MCP engine is now switchable from the phone itself, MT-Manager style:
 - `mcp::start_server(addr, token)` / `stop_server()` / `running_url()` in
@@ -28,7 +51,8 @@ already allowed this); the Android app is unchanged and dead-code-strips the
 module.
 - Default transport is stdio (client spawns the binary); `--http 127.0.0.1:8765`
   serves the same tools as stateless Streamable HTTP at `/mcp`. No session id,
-  GET refused with 405, foreign `Origin` refused with 403 (DNS-rebinding guard).
+  GET opens an idle `text/event-stream`, foreign `Origin` refused with 403
+  (DNS-rebinding guard).
 - 13 tools, all read-only: elf_info, list_symbols, disassemble, decompile,
   xrefs, call_hierarchy, security_scan, entropy, strings, discover_functions,
   list_plugins, run_plugin, read_bytes. Patch/write tools are deliberately

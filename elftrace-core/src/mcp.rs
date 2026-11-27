@@ -1143,6 +1143,8 @@ pub fn running_url() -> Option<String> {
 struct HttpRequest {
     method: String,
     path: String,
+    /// Everything after `?` in the request target, without the `?`.
+    query: String,
     headers: Vec<(String, String)>,
     body: String,
 }
@@ -1153,6 +1155,19 @@ impl HttpRequest {
             .iter()
             .find(|(key, _)| key.eq_ignore_ascii_case(name))
             .map(|(_, value)| value.as_str())
+    }
+
+    /// `?token=`/`?key=`/`?access_token=` in the URL. Some clients drop their
+    /// configured headers on the first request, and a bare 401 sends them into
+    /// an OAuth flow this server does not have.
+    fn query_token(&self) -> Option<&str> {
+        self.query.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            match key {
+                "token" | "key" | "access_token" if !value.is_empty() => Some(value),
+                _ => None,
+            }
+        })
     }
 }
 
@@ -1220,6 +1235,7 @@ fn request_has_token(request: &HttpRequest, expected: &str) -> bool {
             }
         })
         .or_else(|| request.header("x-mcp-token"))
+        .or_else(|| request.query_token())
         .unwrap_or_default()
         .trim();
     // Length-independent comparison so a wrong token leaks no timing signal.
@@ -1285,7 +1301,10 @@ fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Option<HttpReque
     let request_line = lines.next().unwrap_or_default();
     let mut parts = request_line.split_whitespace();
     let method = parts.next().unwrap_or_default().to_string();
-    let path = parts.next().unwrap_or("/").to_string();
+    let target = parts.next().unwrap_or("/");
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let path = path.to_string();
+    let query = query.to_string();
     let headers: Vec<(String, String)> = lines
         .filter_map(|line| {
             let (key, value) = line.split_once(':')?;
@@ -1318,6 +1337,7 @@ fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Option<HttpReque
     Ok(Some(HttpRequest {
         method,
         path,
+        query,
         headers,
         body: String::from_utf8_lossy(&body).into_owned(),
     }))
@@ -1411,6 +1431,7 @@ mod tests {
         let request = |authorization: &str| HttpRequest {
             method: "POST".into(),
             path: "/mcp".into(),
+            query: String::new(),
             headers: vec![("Authorization".into(), authorization.into())],
             body: String::new(),
         };
@@ -1420,6 +1441,23 @@ mod tests {
         assert!(request_has_token(&request("s3cret"), "s3cret"));
         assert!(!request_has_token(&request("Bearer wrong"), "s3cret"));
         assert!(!request_has_token(&request(""), "s3cret"));
+        // A token in the URL survives clients that drop their custom headers.
+        let in_url = HttpRequest {
+            method: "POST".into(),
+            path: "/mcp".into(),
+            query: "client=app&token=s3cret".into(),
+            headers: Vec::new(),
+            body: String::new(),
+        };
+        assert!(request_has_token(&in_url, "s3cret"));
+        assert_eq!(
+            HttpRequest {
+                query: String::new(),
+                ..in_url
+            }
+            .query_token(),
+            None
+        );
     }
 
     #[test]

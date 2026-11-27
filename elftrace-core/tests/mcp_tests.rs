@@ -378,6 +378,14 @@ fn http_mode_answers_json_rpc_on_mcp_endpoint() {
     assert!(response.starts_with("HTTP/1.1 403"), "{response}");
     let response = post(address, "/nope", &body);
     assert!(response.starts_with("HTTP/1.1 404"), "{response}");
+
+    // A query string is part of the target, not the path: clients append
+    // `?token=` or their own parameters and must still reach the endpoint.
+    let response = post(address, "/mcp?client=test", &body);
+    assert!(
+        response.starts_with("HTTP/1.1 200"),
+        "query target: {response}"
+    );
 }
 
 fn post(address: std::net::SocketAddr, path: &str, body: &str) -> String {

@@ -137,6 +137,16 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                         copyToClipboard(context, url)
                         Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
                     })
+                    Text(
+                        "Client asks for OAuth? Use this URL instead (token included)",
+                        color = colors.textSecondary, fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    val urlWithToken = "$url?token=" + McpServer.token(context)
+                    CopyRow(value = urlWithToken, monospace = true, onCopied = {
+                        copyToClipboard(context, urlWithToken)
+                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                    })
 
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
