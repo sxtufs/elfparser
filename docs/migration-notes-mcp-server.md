@@ -37,7 +37,9 @@ phone.
   cache and the stdio transport are untouched.
 - The Android analysis/decompile paths do not call into the new code; the JNI
   additions are new symbols only.
-- GET still returns 405; stateless Streamable HTTP at `/mcp` is unchanged.
+- GET on `/mcp` opens a `text/event-stream` (keep-alive comments only, no
+  server-initiated messages yet) instead of returning 405: clients probe GET
+  before POST and read 405 as "unreachable". POST is stateless as before.
 
 ## Cutover and rollback
 
