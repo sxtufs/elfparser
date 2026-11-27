@@ -1,6 +1,6 @@
 {
   "id": "builtin-rhai-xref-tracer",
-  "name": "Rhai: Anti-Debug XRefs",
+  "name": "Anti-Debug XRefs",
   "version": "1.1",
   "author": "ELFTrace",
   "description": "Callers of ptrace and prctl with safe patch suggestions.",

@@ -1,6 +1,6 @@
 {
   "id": "builtin-rhai-root",
-  "name": "Rhai: Root Detector",
+  "name": "Root Detector",
   "version": "1.0",
   "author": "ELFTrace",
   "description": "Root markers: su paths, busybox, Magisk, Superuser artifacts.",

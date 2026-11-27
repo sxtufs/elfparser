@@ -1,6 +1,6 @@
 {
   "id": "builtin-rhai-emulator",
-  "name": "Rhai: Emulator Detector",
+  "name": "Emulator Detector",
   "version": "1.0",
   "author": "ELFTrace",
   "description": "Emulator markers: QEMU pipes, Goldfish, Genymotion, Nox, BlueStacks.",

@@ -1,6 +1,6 @@
 {
   "id": "builtin-rhai-watchdog",
-  "name": "Rhai: Watchdog & Abort",
+  "name": "Watchdog & Abort",
   "version": "1.0",
   "author": "ELFTrace",
   "description": "Thread-based anti-tamper watchdogs and their loop patterns.",
