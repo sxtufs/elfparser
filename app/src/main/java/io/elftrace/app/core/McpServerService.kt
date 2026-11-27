@@ -67,7 +67,9 @@ class McpServerService : Service() {
             ""
         }
         val text = if (url.isNotEmpty()) {
-            "${url.replace("/mcp", "")} · token required"
+            // The bind address is 0.0.0.0, which no client can use: show the
+            // address another device on the same network actually reaches.
+            "${McpServer.clientUrl(this).removeSuffix("/mcp")} · token required"
         } else {
             val error = try {
                 JSONObject(result).optString("error", "unknown error")
@@ -112,13 +114,12 @@ class McpServerService : Service() {
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("MCP server on")
+            .setContentTitle("ELFTrace MCP server")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
-        if (url != null) builder.setSubText(url)
         return builder.build()
     }
 }

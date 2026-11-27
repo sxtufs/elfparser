@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -120,39 +121,29 @@ fun McpServerDialog(onDismiss: () -> Unit) {
 
                 if (running) {
                     Spacer(Modifier.height(14.dp))
-                    Text("Endpoint", color = colors.textSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "On this phone", color = colors.textSecondary, fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp)
+                    FieldLabel("Endpoint")
+                    EndpointRow(
+                        label = "This phone",
+                        value = McpServer.localUrl(context),
+                        onCopied = {
+                            copyToClipboard(context, McpServer.localUrl(context))
+                            Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                        }
                     )
-                    CopyRow(value = McpServer.localUrl(context), monospace = true, onCopied = {
-                        copyToClipboard(context, McpServer.localUrl(context))
-                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
-                    })
-                    Text(
-                        "From another device on the same Wi-Fi", color = colors.textSecondary,
-                        fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp)
+                    EndpointRow(
+                        label = "Same Wi-Fi network",
+                        value = url,
+                        onCopied = {
+                            copyToClipboard(context, url)
+                            Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                        }
                     )
-                    CopyRow(value = url, monospace = true, onCopied = {
-                        copyToClipboard(context, url)
-                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
-                    })
-                    Text(
-                        "Client asks for OAuth? Use this URL instead (token included)",
-                        color = colors.textSecondary, fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                    val urlWithToken = "$url?token=" + McpServer.token(context)
-                    CopyRow(value = urlWithToken, monospace = true, onCopied = {
-                        copyToClipboard(context, urlWithToken)
-                        Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
-                    })
-
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Token", color = colors.textSecondary, fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+                            "TOKEN", color = colors.textSecondary, fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
+                            modifier = Modifier.weight(1f)
                         )
                         Text(
                             if (showToken) "Hide" else "Show",
@@ -163,13 +154,14 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                     CopyRow(
                         value = if (showToken) token else "•".repeat(24),
                         monospace = true,
+                        maxLines = 2,
                         onCopied = {
                             copyToClipboard(context, token)
                             Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
                         }
                     )
                     Text(
-                        "Send it as: Authorization: Bearer <token>, or paste the token alone",
+                        "Header: Authorization: Bearer <token>, or the token alone",
                         color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -191,7 +183,7 @@ fun McpServerDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun CopyRow(value: String, monospace: Boolean, onCopied: () -> Unit) {
+private fun CopyRow(value: String, monospace: Boolean, maxLines: Int = 1, onCopied: () -> Unit) {
     val colors = LocalELFTraceColors.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -199,20 +191,48 @@ private fun CopyRow(value: String, monospace: Boolean, onCopied: () -> Unit) {
             .fillMaxWidth()
             .padding(top = 4.dp)
             .background(colors.surface, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 6.dp)
     ) {
         Text(
             value,
             color = colors.textPrimary,
-            fontSize = 11.5.sp,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
             fontFamily = if (monospace) FontFamily.Monospace else null,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Text(
-            "COPY", color = CyanAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable(onClick = onCopied)
+            "COPY", color = CyanAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier
+                .clickable(onClick = onCopied)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         )
     }
+}
+
+@Composable
+private fun FieldLabel(text: String) {
+    val colors = LocalELFTraceColors.current
+    Text(
+        text.uppercase(),
+        color = colors.textSecondary,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.8.sp
+    )
+}
+
+@Composable
+private fun EndpointRow(label: String, value: String, onCopied: () -> Unit) {
+    val colors = LocalELFTraceColors.current
+    Text(
+        label, color = colors.textSecondary, fontSize = 10.sp,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+    CopyRow(value = value, monospace = true, onCopied = onCopied)
 }
 
 private fun copyToClipboard(context: Context, text: String) {
