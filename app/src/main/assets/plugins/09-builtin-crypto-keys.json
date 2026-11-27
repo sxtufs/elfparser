@@ -53,13 +53,6 @@
       "pattern": "expand 32-byte k",
       "severity": "MEDIUM",
       "description": "ChaCha20/Salsa20 sigma constant \u2014 stream cipher in use"
-    },
-    {
-      "name": "Curve25519 Base Point",
-      "type": "byte_pattern",
-      "pattern": "09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
-      "severity": "LOW",
-      "description": "Curve25519 base point (u-coordinate 9) \u2014 ECDH key exchange"
     }
   ]
 }
