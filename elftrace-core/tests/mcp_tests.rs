@@ -12,6 +12,9 @@ use std::process::{Command, Stdio};
 use elftrace::mcp::{self, Host};
 use serde_json::{json, Value};
 
+/// What the host sink recorded: the file name it was handed and the bytes.
+type SinkRecord = std::sync::Arc<std::sync::Mutex<Option<(String, Vec<u8>)>>>;
+
 fn rpc(host: &mut Host, message: Value) -> Value {
     let text = mcp::handle_message(host, &message.to_string()).expect("expected a response");
     serde_json::from_str(&text).expect("response must be valid JSON")
@@ -607,8 +610,7 @@ fn save_with_a_bare_name_goes_through_the_host_sink() {
 
     // On Android the app registers a sink that writes to public Download/;
     // this stands in for it and records what `save` asked for.
-    let seen: std::sync::Arc<std::sync::Mutex<Option<(String, Vec<u8>)>>> =
-        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let seen: SinkRecord = std::sync::Arc::new(std::sync::Mutex::new(None));
     let recorder = seen.clone();
     mcp::set_publisher(Some(Box::new(move |name: &str, bytes: &[u8]| {
         *recorder.lock().unwrap() = Some((name.to_string(), bytes.to_vec()));
