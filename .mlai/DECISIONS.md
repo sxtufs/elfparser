@@ -43,3 +43,36 @@ The MCP engine is switchable from the phone itself, MT-Manager style:
   the app, to avoid colliding with a local dev server on the same network.
 - The GitHub Actions `mcp` job (ubuntu/macos/windows binary builds) was removed:
   the product shape is the phone toggle, not desktop side binaries.
+
+## 2026-11-28 — MCP settings pane: port and optional token live there
+The main MCP dialog shows only the switch and the two endpoint URLs. Port,
+token and the "Require access token" switch are behind a `Settings` button left
+of `Close`:
+- Port is validated 1024–65535 (`McpServer.MIN_PORT`/`MAX_PORT`); saving while
+  running restarts the server on the new port.
+- The token switch can be turned off, which starts the listener with
+  `token = [redacted] and lets `mcpserver.json` persist that choice; the LAN is then
+  unauthenticated by design.
+- `ThemedSwitch` paints the track with `colors.primary` so switches follow the
+  app accent instead of Material's default purple.
+- The token is always visible in the pane; the Show/Hide link was removed at the
+  user's request, as was the amber "anyone on this Wi-Fi" paragraph.
+
+## 2026-11-28 — Annotation colour is warm sand, not loud amber
+Orange was the loudest thing on the disassembly screen and competed with the
+instruction payload. `ELFTraceColors.annotation` is the single annotation
+colour: `#D4A72C` (warm sand) in dark, `#92702A` (bronze) in light so it stays
+readable on the light card. Rules:
+- Annotation text (in-line comments, the sheet's comment, XREF kind labels, JNI
+  callee names) uses `colors.annotation` at `FontWeight.Normal` — never bold,
+  never the legacy `AmberAccent` (`#FFA000`), which now only survives on status
+  badges (THUMB, exec segment, severity, security findings).
+- `AmberAccent` is a status colour, not an annotation colour; do not reuse it
+  for commentary.
+- In the instruction sheet the warm sand is the accent of the annotation layer:
+  `Patch All` (bulk patch of xrefs) and `Frida Hook` are the only warm actions.
+  Everything else is `colors.primary`; `Undo` takes a red-tinted border
+  (`colors.changedReg` at 50% alpha) and `Export .so` closes the sheet as the
+  last action.
+- Chip rows stay grouped by small grey `SectionLabel`s (PATCH, NAVIGATE, EDIT,
+  GLOBAL) at 10sp, `textSecondary`, letterSpacing 1.2.

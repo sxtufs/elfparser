@@ -140,8 +140,8 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (showSettings) "Where the server listens and who may call it."
-                    else "Let an AI agent on this Wi-Fi call ELFTrace tools through the Model Context Protocol.",
+                    if (showSettings) "Port and access control for the MCP server."
+                    else "Let an AI agent call ELFTrace tools through the Model Context Protocol.",
                     color = colors.textSecondary, fontSize = 12.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(14.dp))
@@ -211,9 +211,8 @@ private fun ServerBody(
 
     if (running) {
         Spacer(Modifier.height(14.dp))
-        FieldLabel("Endpoint")
         EndpointRow(
-            label = "This phone",
+            label = "Local address",
             value = McpServer.localUrl(context),
             onCopied = {
                 copyToClipboard(context, McpServer.localUrl(context))
@@ -221,7 +220,7 @@ private fun ServerBody(
             }
         )
         EndpointRow(
-            label = "Same Wi-Fi network",
+            label = "LAN address",
             value = url,
             onCopied = {
                 copyToClipboard(context, url)
@@ -254,14 +253,6 @@ private fun SettingsBody(
         textStyle = LocalTextStyle.current.copy(
             fontFamily = FontFamily.Monospace, fontSize = 13.sp
         ),
-        supportingText = {
-            Text(
-                if (portError) "Enter a port from ${McpServer.MIN_PORT} to ${McpServer.MAX_PORT}"
-                else "Available range ${McpServer.MIN_PORT}–${McpServer.MAX_PORT}",
-                color = if (portError) RedAccent else colors.textSecondary,
-                fontSize = 10.sp
-            )
-        },
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = colors.primary,
@@ -271,22 +262,30 @@ private fun SettingsBody(
             cursorColor = colors.primary
         )
     )
-    Spacer(Modifier.height(10.dp))
+    Text(
+        if (portError) "Enter a port from ${McpServer.MIN_PORT} to ${McpServer.MAX_PORT}"
+        else "Available range ${McpServer.MIN_PORT}–${McpServer.MAX_PORT}",
+        color = if (portError) RedAccent else colors.textSecondary,
+        fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
+    )
+    Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Require access token",
-                color = colors.textPrimary, fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                if (tokenRequired) "Clients send Authorization: Bearer <token>."
-                else "No token: every device on this network is trusted.",
-                color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp
-            )
-        }
+        Text(
+            "Enable Bearer token",
+            color = colors.textPrimary, fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
         ThemedSwitch(checked = tokenRequired, onCheckedChange = onTokenRequiredChange)
     }
+    Spacer(Modifier.height(4.dp))
+    Text(
+        if (tokenRequired) "When enabled, MCP clients need an access token to connect. " +
+            "Paste the token directly into the Bearer Token field. " +
+            "For an Authorization request header, use Bearer <token>."
+        else "No token: every device on this network is trusted.",
+        color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp
+    )
     if (!tokenRequired) {
         Spacer(Modifier.height(8.dp))
         Text(
@@ -297,7 +296,7 @@ private fun SettingsBody(
     }
     if (tokenRequired) {
         Spacer(Modifier.height(12.dp))
-        FieldLabel("Token")
+        FieldLabel("Bearer token")
         CopyRow(
             value = token,
             monospace = true,
@@ -308,7 +307,7 @@ private fun SettingsBody(
             }
         )
         Text(
-            "Header: Authorization: Bearer <token>, or the token alone",
+            "Bearer Token field, or Authorization: Bearer <token>",
             color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
         )
     }
