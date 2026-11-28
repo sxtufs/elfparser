@@ -1382,7 +1382,8 @@ pub const DEFAULT_HTTP_PORT: u16 = 8765;
 ///
 /// Stateless: no `Mcp-Session-Id` is issued or required, and each POST is
 /// handled on its own. Without a token this must stay bound to loopback; the
-/// in-app server always passes one and may listen on the LAN.
+/// in-app server passes one unless the user turns auth off, and then may listen
+/// on the LAN.
 pub fn serve_http(addr: &str) -> std::io::Result<()> {
     let listener = TcpListener::bind(addr)?;
     let bound = listener.local_addr()?;
@@ -1444,6 +1445,8 @@ fn serve_listener(
 struct RunningServer {
     url: String,
     stop: Arc<AtomicBool>,
+    /// Whether auth is on for this instance.
+    auth: bool,
 }
 
 static RUNNING: Mutex<Option<RunningServer>> = Mutex::new(None);
@@ -1495,14 +1498,12 @@ pub fn import_dir() -> Option<String> {
 /// Start the in-app HTTP server on `addr` and return the client URL
 /// (`http://<bound>/mcp`).
 ///
-/// `token` is required: once the server listens beyond loopback, every request
-/// must present it as `Authorization: Bearer <token>`, as the bare token in
-/// `Authorization`, or as `X-MCP-Token`.
+/// A non-empty `token` turns on auth: every request must present it as
+/// `Authorization: Bearer <token>`, as the bare token in `Authorization`, or as
+/// `X-MCP-Token`. An empty `token` serves without auth (the app's switch for
+/// clients that cannot send headers); `running_auth` reports which mode is up.
 /// Starting while already running stops the previous instance first.
 pub fn start_server(addr: &str, token: &str) -> Result<String, String> {
-    if token.is_empty() {
-        return Err("an access token is required".to_string());
-    }
     let listener = TcpListener::bind(addr).map_err(|e| format!("cannot bind {addr}: {e}"))?;
     let bound = listener.local_addr().map_err(|e| e.to_string())?;
     let url = format!("http://{bound}/mcp");
@@ -1510,11 +1511,12 @@ pub fn start_server(addr: &str, token: &str) -> Result<String, String> {
     stop_server();
 
     let stop = Arc::new(AtomicBool::new(false));
-    let token = Arc::new(token.to_string());
-    let thread_token = Arc::clone(&token);
+    let token = token.trim();
+    let auth = !token.is_empty();
+    let token = auth.then(|| Arc::new(token.to_string()));
     let thread_stop = Arc::clone(&stop);
     std::thread::spawn(move || {
-        if let Err(e) = serve_listener(listener, Some(thread_token), Some(thread_stop)) {
+        if let Err(e) = serve_listener(listener, token, Some(thread_stop)) {
             eprintln!("elftrace-mcp: server stopped: {e}");
         }
     });
@@ -1523,6 +1525,7 @@ pub fn start_server(addr: &str, token: &str) -> Result<String, String> {
     *running = Some(RunningServer {
         url: url.clone(),
         stop,
+        auth,
     });
     Ok(url)
 }
@@ -1546,6 +1549,15 @@ pub fn running_url() -> Option<String> {
         .unwrap_or_else(|p| p.into_inner())
         .as_ref()
         .map(|server| server.url.clone())
+}
+
+/// Whether the running server demands a token, or `None` when it is stopped.
+pub fn running_auth() -> Option<bool> {
+    RUNNING
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .map(|server| server.auth)
 }
 
 struct HttpRequest {

@@ -59,7 +59,9 @@ server binds only while the switch is on.
 - `cd elftrace-core && cargo test --all` → 140 passed, 0 failed (includes
   `mcp_tests::in_app_server_requires_the_token_and_stops_on_request`: 401
   without/with a wrong token, 200 with the token from a LAN origin, listener
-  closed after stop, empty token refused).
+  closed after stop). That test's last assertion changed later, when the dialog
+  gained a token switch: an empty token now starts an unauthenticated server and
+  the test asserts the 200 instead of a refusal.
 - `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` clean.
 - `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` and
   `:app:assembleRelease` → BUILD SUCCESSFUL.

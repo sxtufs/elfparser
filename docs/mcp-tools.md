@@ -1,6 +1,7 @@
 # MCP tools
 
-Served by the in-app server on `http://<ip>:8765/mcp` and by the standalone
+Served by the in-app server on `http://<ip>:8765/mcp` (port and token are
+configurable in the dialog's Settings panel) and by the standalone
 `elftrace-mcp` binary (stdio, or `--http 127.0.0.1:<port>`). Every tool takes an
 optional `path` argument: with no `path`, the tool works on the file the app has
 open (reported by `current_file`). The ELF is parsed once per path and cached,
@@ -13,6 +14,10 @@ scoped storage keeps app-private code out. Open the binary in the app
 
 `tools/list` marks write tools with `"readOnlyHint": false`; everything else is
 read-only. Nothing is written to disk unless you call `save`.
+
+Auth: with the token on (default) every request needs `Authorization: Bearer
+<token>` or `X-MCP-Token`. With it off, requests need no header at all — and
+any device on the network can then call `patch` and `save`.
 
 ## Read-only
 

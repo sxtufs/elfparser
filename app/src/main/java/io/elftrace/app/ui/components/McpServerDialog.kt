@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,11 +32,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * MCP server toggle: switch, client URL and access token.
+ * MCP server toggle: switch, client URL and access token, plus a settings panel.
  *
  * Copied from MT Manager's shape — a switch you flip in the app, an address to
  * paste into the client, and a secret the client must send. The server binds
- * `0.0.0.0`, so the token is not optional.
+ * `0.0.0.0`, so the token is on by default; the Settings panel can turn it off
+ * for clients that cannot send headers, and change the port.
  */
 @Composable
 fun McpServerDialog(onDismiss: () -> Unit) {
@@ -45,11 +48,17 @@ fun McpServerDialog(onDismiss: () -> Unit) {
     var running by remember { mutableStateOf(McpServer.isRunning()) }
     var url by remember { mutableStateOf(McpServer.clientUrl(context)) }
     var token by remember { mutableStateOf(McpServer.token(context)) }
-    var showToken by remember { mutableStateOf(false) }
+
+    var showSettings by remember { mutableStateOf(false) }
+    var portText by remember { mutableStateOf(McpServer.port(context).toString()) }
+    var tokenRequired by remember { mutableStateOf(McpServer.tokenRequired(context)) }
+    var portError by remember { mutableStateOf(false) }
 
     fun refresh() {
         url = McpServer.clientUrl(context)
         token = McpServer.token(context)
+        portText = McpServer.port(context).toString()
+        tokenRequired = McpServer.tokenRequired(context)
     }
 
     fun enableServer() {
@@ -60,6 +69,37 @@ fun McpServerDialog(onDismiss: () -> Unit) {
             refresh()
             if (!running) Toast.makeText(context, "MCP server failed to start", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    fun applySettings() {
+        val port = portText.trim().toIntOrNull()
+        if (port == null || !McpServer.isValidPort(port)) {
+            portError = true
+            return
+        }
+        val restart = running &&
+            (port != McpServer.port(context) || tokenRequired != McpServer.tokenRequired(context))
+        McpServer.setPort(context, port)
+        McpServer.setTokenRequired(context, tokenRequired)
+        refresh()
+        if (restart) {
+            // The listener closes on its own thread, so give it time before the
+            // new instance tries the same port.
+            McpServerService.stop(context)
+            scope.launch {
+                delay(400)
+                McpServerService.start(context, McpServer.port(context))
+                delay(400)
+                running = McpServer.isRunning()
+                refresh()
+            }
+        }
+        showSettings = false
+        Toast.makeText(
+            context,
+            if (restart) "Saved — server restarted" else "Settings saved",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -92,93 +132,221 @@ fun McpServerDialog(onDismiss: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(18.dp)) {
-                Text("MCP Server", color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (showSettings) "MCP Settings" else "MCP Server",
+                    color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Let an AI agent on this Wi-Fi call ELFTrace tools through the Model Context Protocol.",
+                    if (showSettings) "Where the server listens and who may call it."
+                    else "Let an AI agent on this Wi-Fi call ELFTrace tools through the Model Context Protocol.",
                     color = colors.textSecondary, fontSize = 12.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(14.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (running) "Server running" else "Server off",
-                            color = if (running) GreenAccent else colors.textSecondary,
-                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            if (running) "Listening on all interfaces" else "Turn on to accept connections",
-                            color = colors.textSecondary, fontSize = 11.sp
-                        )
-                    }
-                    Switch(
-                        checked = running,
-                        onCheckedChange = { toggle(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = GreenAccent)
+                if (showSettings) {
+                    SettingsBody(
+                        portText = portText,
+                        portError = portError,
+                        tokenRequired = tokenRequired,
+                        onPortChange = { input ->
+                            portText = input.filter(Char::isDigit).take(5)
+                            portError = false
+                        },
+                        onTokenRequiredChange = { tokenRequired = it }
+                    )
+                } else {
+                    ServerBody(
+                        running = running,
+                        url = url,
+                        token = token,
+                        tokenRequired = tokenRequired,
+                        onToggle = { toggle(it) }
                     )
                 }
-
-                if (running) {
-                    Spacer(Modifier.height(14.dp))
-                    FieldLabel("Endpoint")
-                    EndpointRow(
-                        label = "This phone",
-                        value = McpServer.localUrl(context),
-                        onCopied = {
-                            copyToClipboard(context, McpServer.localUrl(context))
-                            Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    EndpointRow(
-                        label = "Same Wi-Fi network",
-                        value = url,
-                        onCopied = {
-                            copyToClipboard(context, url)
-                            Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "TOKEN", color = colors.textSecondary, fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            if (showToken) "Hide" else "Show",
-                            color = CyanAccent, fontSize = 11.sp,
-                            modifier = Modifier.clickable { showToken = !showToken }
-                        )
-                    }
-                    CopyRow(
-                        value = if (showToken) token else "•".repeat(24),
-                        monospace = true,
-                        maxLines = 2,
-                        onCopied = {
-                            copyToClipboard(context, token)
-                            Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    Text(
-                        "Header: Authorization: Bearer <token>, or the token alone",
-                        color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "Anyone on this network with the token can read the binaries you open. " +
-                        "Turn the server off when you are done.",
-                    color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
-                )
 
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDismiss) { Text("Close", color = colors.textSecondary) }
+                    if (showSettings) {
+                        TextButton(onClick = { showSettings = false }) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+                        TextButton(onClick = { applySettings() }) { Text("Save", color = CyanAccent) }
+                    } else {
+                        TextButton(onClick = { showSettings = true }) {
+                            Text("Settings", color = CyanAccent)
+                        }
+                        TextButton(onClick = onDismiss) { Text("Close", color = colors.textSecondary) }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ServerBody(
+    running: Boolean,
+    url: String,
+    token: String,
+    tokenRequired: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    val colors = LocalELFTraceColors.current
+    var showToken by remember { mutableStateOf(false) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (running) "Server running" else "Server off",
+                color = if (running) GreenAccent else colors.textSecondary,
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                if (running) "Listening on all interfaces" else "Turn on to accept connections",
+                color = colors.textSecondary, fontSize = 11.sp
+            )
+        }
+        Switch(
+            checked = running,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(checkedTrackColor = GreenAccent)
+        )
+    }
+
+    if (running) {
+        Spacer(Modifier.height(14.dp))
+        FieldLabel("Endpoint")
+        EndpointRow(
+            label = "This phone",
+            value = McpServer.localUrl(context),
+            onCopied = {
+                copyToClipboard(context, McpServer.localUrl(context))
+                Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+            }
+        )
+        EndpointRow(
+            label = "Same Wi-Fi network",
+            value = url,
+            onCopied = {
+                copyToClipboard(context, url)
+                Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+            }
+        )
+        Spacer(Modifier.height(12.dp))
+        if (tokenRequired) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "TOKEN", color = colors.textSecondary, fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (showToken) "Hide" else "Show",
+                    color = CyanAccent, fontSize = 11.sp,
+                    modifier = Modifier.clickable { showToken = !showToken }
+                )
+            }
+            CopyRow(
+                value = if (showToken) token else "•".repeat(24),
+                monospace = true,
+                maxLines = 2,
+                onCopied = {
+                    copyToClipboard(context, token)
+                    Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
+                }
+            )
+            Text(
+                "Header: Authorization: Bearer <token>, or the token alone",
+                color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
+            )
+        } else {
+            Text(
+                "No token — any device on this network can call these tools.",
+                color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
+            )
+        }
+    }
+
+    Spacer(Modifier.height(14.dp))
+    Text(
+        if (tokenRequired) {
+            "Anyone on this network with the token can read the binaries you open. " +
+                "Turn the server off when you are done."
+        } else {
+            "Anyone on this network can read the binaries you open. " +
+                "Turn the server off when you are done."
+        },
+        color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
+    )
+}
+
+@Composable
+private fun SettingsBody(
+    portText: String,
+    portError: Boolean,
+    tokenRequired: Boolean,
+    onPortChange: (String) -> Unit,
+    onTokenRequiredChange: (Boolean) -> Unit
+) {
+    val colors = LocalELFTraceColors.current
+
+    FieldLabel("Port")
+    Spacer(Modifier.height(4.dp))
+    OutlinedTextField(
+        value = portText,
+        onValueChange = onPortChange,
+        singleLine = true,
+        isError = portError,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        textStyle = LocalTextStyle.current.copy(
+            fontFamily = FontFamily.Monospace, fontSize = 13.sp
+        ),
+        supportingText = {
+            Text(
+                if (portError) "Enter a port from ${McpServer.MIN_PORT} to ${McpServer.MAX_PORT}"
+                else "Default ${McpServer.DEFAULT_PORT}. Saved on this device only.",
+                color = if (portError) RedAccent else colors.textSecondary,
+                fontSize = 10.sp
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colors.primary,
+            unfocusedBorderColor = colors.border,
+            focusedTextColor = colors.textPrimary,
+            unfocusedTextColor = colors.textPrimary,
+            cursorColor = colors.primary
+        )
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Require access token",
+                color = colors.textPrimary, fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                if (tokenRequired) "Clients send Authorization: Bearer <token>."
+                else "No token: every device on this network is trusted.",
+                color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp
+            )
+        }
+        Switch(
+            checked = tokenRequired,
+            onCheckedChange = onTokenRequiredChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = CyanAccent)
+        )
+    }
+    if (!tokenRequired) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Without a token any app on this Wi-Fi can read, patch and save the " +
+                "binaries you open. Keep it on unless the client cannot send headers.",
+            color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
+        )
     }
 }
 

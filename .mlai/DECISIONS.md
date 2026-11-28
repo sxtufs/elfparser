@@ -1,18 +1,23 @@
 # Decisions
 
-## 2026-11-27 — MCP import flow instead of All files access
+## 2026-11-27 — MCP reaches files through the open binary, not a permission
 Reading `/storage/emulated/0/*.so` from MCP tools is blocked by scoped storage
 (`targetSdk 36`; `READ_EXTERNAL_STORAGE` capped at API 32), and Play policy
 lists "file selection where the user manually selects individual files" as an
-invalid use of `MANAGE_EXTERNAL_STORAGE`. So instead of a permission:
-- MCP dialog "Import a file" (SAF `OpenDocument`) copies the pick to
-  `cacheDir/mcp_import_<name>.so` and calls `setCurrentFile` on it.
-- JNI `setMcpImportDir0` registers cacheDir at service start;
-  `list_imports` (tool #22) lists those files newest-first.
+invalid use of `MANAGE_EXTERNAL_STORAGE`. So:
+- Every tool's `path` is optional and falls back to the file the app has open
+  (`current_file`, `CURRENT_FILE` static, set by `loadElf` via JNI
+  `setCurrentFile0`).
+- `list_imports` (tool #22) lists binaries in app storage — the open file plus
+  cached copies — newest first; JNI `setMcpImportDir0` registers cacheDir at
+  service start.
 - `file_arg` refuses shared-storage paths (`/storage/emulated`, `/sdcard`,
-  `/mnt/media`, `/mnt/sdcard`) with import instructions instead of EACCES.
-- Every tool's `path` is optional and falls back to the open file
-  (`current_file`, `CURRENT_FILE` static).
+  `/mnt/media`, `/mnt/sdcard`) telling the user to open the file in the app,
+  instead of returning EACCES.
+- The manual "Import a file" picker was built and then removed (commit
+  `8bddba6`) at the user's request: the open file already reaches the agent,
+  and the extra step only cluttered the MCP dialog. Do not reintroduce a second
+  user step in that dialog without asking.
 
 ## 2026-11-27 — MCP write tools exposed at user request
 The earlier "patch/write tools are deliberately absent" rule was reversed when

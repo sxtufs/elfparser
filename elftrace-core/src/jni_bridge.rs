@@ -946,7 +946,8 @@ unsafe fn jstring_or_null(env: &mut JNIEnv, value: String) -> jstring {
 
 /// Start the HTTP MCP server on `addr` (e.g. `0.0.0.0:8765`).
 ///
-/// Returns `{"url":"http://..."}` on success or `{"error":"..."}`.
+/// An empty `token` serves without auth. Returns `{"url":"http://..."}` on
+/// success or `{"error":"..."}`.
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_startMcp0(
     env: JNIEnv,
@@ -983,7 +984,7 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_stopMcp0(
     }
 }
 
-/// `{"running":true,"url":"http://..."}` while the server is up.
+/// `{"running":true,"url":"http://...","auth":true}` while the server is up.
 #[no_mangle]
 pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_mcpStatus0(
     env: JNIEnv,
@@ -991,7 +992,12 @@ pub unsafe extern "C" fn Java_io_elftrace_app_core_JNIBridge_mcpStatus0(
 ) -> jstring {
     let mut env = env;
     let payload = match crate::mcp::running_url() {
-        Some(url) => serde_json::json!({ "running": true, "url": url }).to_string(),
+        Some(url) => serde_json::json!({
+            "running": true,
+            "url": url,
+            "auth": crate::mcp::running_auth().unwrap_or(false),
+        })
+        .to_string(),
         None => r#"{"running":false}"#.to_string(),
     };
     jstring_or_null(&mut env, payload)

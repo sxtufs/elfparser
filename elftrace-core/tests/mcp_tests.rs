@@ -464,8 +464,20 @@ fn in_app_server_requires_the_token_and_stops_on_request() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     assert!(refused, "listener should be closed after stop_server");
-    // Starting without a token is refused.
-    assert!(mcp::start_server("127.0.0.1:0", "").is_err());
+
+    // An empty token serves without auth: the app's switch for clients that
+    // cannot send headers.
+    let url = mcp::start_server("127.0.0.1:0", "").expect("tokenless server should start");
+    let address: std::net::SocketAddr = url
+        .trim_start_matches("http://")
+        .trim_end_matches("/mcp")
+        .parse()
+        .expect("url carries the bound address");
+    assert_eq!(mcp::running_auth(), Some(false));
+    let response = post(address, "/mcp", &body);
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("protocolVersion"), "{response}");
+    assert!(mcp::stop_server());
 }
 
 #[test]
