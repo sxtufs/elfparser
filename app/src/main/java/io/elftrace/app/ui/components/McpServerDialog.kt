@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -259,7 +260,9 @@ private fun SettingsBody(
         textStyle = LocalTextStyle.current.copy(
             fontFamily = FontFamily.Monospace, fontSize = 13.sp
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = colors.primary,
             unfocusedBorderColor = colors.border,
@@ -323,12 +326,20 @@ private fun ThemedSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val trackHeight = 20.dp
     val inset = 3.dp
     val thumbSize = 12.dp
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         // 44×32dp tap target around the 36×20dp pill, flush with the row's
-        // right edge like the M3 switch it replaces.
+        // right edge like the M3 switch it replaces. No indication: the
+        // ripple/state layer was the grey block the pill sat inside on tap.
         modifier = Modifier
             .size(width = 44.dp, height = 32.dp)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+            .toggleable(
+                value = checked,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            ),
         contentAlignment = Alignment.CenterEnd
     ) {
         Box(
@@ -355,12 +366,17 @@ private fun ThemedSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
 @Composable
 private fun CopyRow(value: String, monospace: Boolean, maxLines: Int = 1, onCopied: () -> Unit) {
     val colors = LocalELFTraceColors.current
+    val shape = RoundedCornerShape(8.dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 4.dp)
-            .background(colors.surface, RoundedCornerShape(8.dp))
+            // `surface` is white in light mode, the same colour as the dialog
+            // card, so the chip vanished there; `bg` plus a hairline reads as
+            // a field in both themes.
+            .background(if (colors.isDark) colors.surface else colors.bg, shape)
+            .border(1.dp, colors.border.copy(alpha = if (colors.isDark) 0f else 1f), shape)
             .padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 6.dp)
     ) {
         Text(
