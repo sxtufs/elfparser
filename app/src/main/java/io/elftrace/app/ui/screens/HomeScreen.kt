@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.elftrace.app.core.McpServer
@@ -237,96 +238,115 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             .background(colors.bg)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.card),
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+        Box(Modifier.fillMaxWidth()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.card),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = "ELFTrace",
-                        fontSize = 16.sp,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "Binary & APK analysis",
-                        fontSize = 10.5.sp,
-                        color = colors.textSecondary,
-                        lineHeight = 12.sp
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        mcpRunning = McpServer.isRunning()
-                        showSettingsMenu = true
-                    }) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = colors.textSecondary
-                        )
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    OutlinedButton(
-                        onClick = {
-                            isLoadingApps = true
-                            coroutineScope.launch(Dispatchers.IO) {
-                                val apps = loadInstalledApps(context.packageManager)
-                                withContext(Dispatchers.Main) {
-                                    isLoadingApps = false
-                                    if (apps.isEmpty()) {
-                                        Toast.makeText(context, "No installed apps found", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        installedApps = apps
-                                        showInstalledPicker = true
-                                    }
-                                }
-                            }
-                        },
-                        shape = RoundedCornerShape(50),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
                         Text(
-                            text = "Apps",
+                            text = "ELFTrace",
+                            fontSize = 16.sp,
                             color = colors.textPrimary,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
-                            softWrap = false
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Binary & APK analysis",
+                            fontSize = 10.5.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 12.sp
                         )
                     }
-                    Spacer(Modifier.width(6.dp))
-                    Button(
-                        onClick = { filePicker.launch(arrayOf("*/*")) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.primary,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(50),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            mcpRunning = McpServer.isRunning()
+                            showSettingsMenu = true
+                        }) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = colors.textSecondary
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        OutlinedButton(
+                            onClick = {
+                                isLoadingApps = true
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val apps = loadInstalledApps(context.packageManager)
+                                    withContext(Dispatchers.Main) {
+                                        isLoadingApps = false
+                                        if (apps.isEmpty()) {
+                                            Toast.makeText(context, "No installed apps found", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            installedApps = apps
+                                            showInstalledPicker = true
+                                        }
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "Apps",
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                         Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Open",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                        Button(
+                            onClick = { filePicker.launch(arrayOf("*/*")) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primary,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Open",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
+            }
+            // Anchor at the card's bottom-right corner so the menu opens below the toolbar.
+            Box(Modifier.align(Alignment.BottomEnd).size(1.dp)) {
+                SettingsMenu(
+                    expanded = showSettingsMenu,
+                    isDark = isDark,
+                    mcpRunning = mcpRunning,
+                    onDismiss = { showSettingsMenu = false },
+                    onToggleTheme = {
+                        showSettingsMenu = false
+                        viewModel.toggleTheme()
+                    },
+                    onOpenMcp = {
+                        showSettingsMenu = false
+                        showMcpDialog = true
+                    }
+                )
             }
         }
 
@@ -1026,22 +1046,6 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
-        if (showSettingsMenu) {
-            SettingsMenuDialog(
-                isDark = isDark,
-                mcpRunning = mcpRunning,
-                onToggleTheme = {
-                    showSettingsMenu = false
-                    viewModel.toggleTheme()
-                },
-                onOpenMcp = {
-                    showSettingsMenu = false
-                    showMcpDialog = true
-                },
-                onDismiss = { showSettingsMenu = false }
-            )
-        }
-
         if (showMcpDialog) {
             io.elftrace.app.ui.components.McpServerDialog(
                 onDismiss = { showMcpDialog = false }
@@ -1193,86 +1197,60 @@ private fun MenuValueChip(text: String, color: Color) {
     )
 }
 
-/** The gear's panel: a small centred card, so it never lands on the toolbar. */
+/** The gear's menu: a dropdown below the header card, clear of the toolbar buttons. */
 @Composable
-private fun SettingsMenuDialog(
+private fun SettingsMenu(
+    expanded: Boolean,
     isDark: Boolean,
     mcpRunning: Boolean,
+    onDismiss: () -> Unit,
     onToggleTheme: () -> Unit,
-    onOpenMcp: () -> Unit,
-    onDismiss: () -> Unit
+    onOpenMcp: () -> Unit
 ) {
     val colors = LocalELFTraceColors.current
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = colors.card),
-            shape = RoundedCornerShape(16.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(vertical = 6.dp)) {
-                Text(
-                    text = "Settings",
-                    color = colors.textSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp)
-                )
-                SettingsMenuRow(
-                    label = "Theme",
-                    value = if (isDark) "Dark" else "Light",
-                    valueColor = colors.textSecondary,
-                    onClick = onToggleTheme
-                ) {
-                    ThemeToggleIcon(
-                        isDark = isDark,
-                        tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
-                    )
-                }
-                HorizontalDivider(
-                    color = colors.border,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                SettingsMenuRow(
-                    label = "MCP Server",
-                    value = if (mcpRunning) "Running" else "Off",
-                    valueColor = if (mcpRunning) colors.address else colors.textSecondary,
-                    onClick = onOpenMcp
-                ) {
-                    McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsMenuRow(
-    label: String,
-    value: String,
-    valueColor: Color,
-    onClick: () -> Unit,
-    icon: @Composable () -> Unit
-) {
-    val colors = LocalELFTraceColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) {}
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        offset = DpOffset(0.dp, 6.dp),
+        containerColor = colors.card,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+        modifier = Modifier.width(232.dp)
     ) {
-        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { icon() }
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = label,
-            color = colors.textPrimary,
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
+        DropdownMenuItem(
+            text = {
+                Text("Theme", color = colors.textPrimary, fontSize = 14.sp)
+            },
+            leadingIcon = {
+                ThemeToggleIcon(
+                    isDark = isDark,
+                    tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
+                )
+            },
+            trailingIcon = {
+                MenuValueChip(if (isDark) "Dark" else "Light", colors.textSecondary)
+            },
+            onClick = onToggleTheme
         )
-        MenuValueChip(value, valueColor)
+        HorizontalDivider(
+            color = colors.border,
+            thickness = 1.dp,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
+        DropdownMenuItem(
+            text = {
+                Text("MCP Server", color = colors.textPrimary, fontSize = 14.sp)
+            },
+            leadingIcon = {
+                McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
+            },
+            trailingIcon = {
+                MenuValueChip(
+                    if (mcpRunning) "Running" else "Off",
+                    if (mcpRunning) colors.address else colors.textSecondary
+                )
+            },
+            onClick = onOpenMcp
+        )
     }
 }
