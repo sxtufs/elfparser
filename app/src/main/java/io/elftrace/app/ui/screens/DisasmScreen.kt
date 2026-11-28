@@ -447,11 +447,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.annotation.copy(alpha = 0.5f)),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.annotation, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -475,7 +475,10 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             },
                             enabled = undoDepth > 0,
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (undoDepth > 0) colors.changedReg.copy(alpha = 0.5f) else colors.border
+                            ),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
@@ -643,7 +646,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                         }
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                            Text("[${ref.kind}] in ${ref.caller_func ?: "sub_" + "%06X".format(ref.from_address)}", color = AmberAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("[${ref.kind}] in ${ref.caller_func ?: "sub_" + "%06X".format(ref.from_address)}", color = colors.annotation, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Normal)
                                             Text("0x${"%08X".format(ref.from_address)}: ${ref.instruction}", color = colors.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                                         }
                                     }
@@ -658,7 +661,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             if (callers.isNotEmpty()) {
                                 TextButton(onClick = { confirmPatchAll = true }) {
-                                    Text("Patch All", color = colors.annotation, fontWeight = FontWeight.Bold)
+                                    Text("Patch All", color = colors.annotation, fontWeight = FontWeight.Normal)
                                 }
                             }
                             TextButton(onClick = { showXrefDialog = false }) {
@@ -804,7 +807,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text(callee.target_name, color = if (callee.target_name.startsWith("JNI:")) AmberAccent else colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Text(callee.target_name, color = if (callee.target_name.startsWith("JNI:")) colors.annotation else colors.primary, fontSize = 11.sp, fontWeight = if (callee.target_name.startsWith("JNI:")) FontWeight.Normal else FontWeight.Bold)
                                                     if (callee.target_address != 0L) {
                                                         Text("0x${"%08X".format(callee.target_address)}  (${callee.instruction})", color = colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                                                     } else {
