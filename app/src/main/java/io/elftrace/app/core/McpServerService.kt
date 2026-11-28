@@ -59,7 +59,6 @@ class McpServerService : Service() {
         // startForeground must come quickly on Android 8+; post a placeholder
         // first, then update it with the real result.
         startForegroundCompat(buildNotification("Starting MCP server…", null))
-        val requiresToken = McpServer.tokenRequired(this)
         val token = McpServer.activeToken(this)
         JNIBridge.setMcpImportDir(cacheDir.absolutePath)
         val result = JNIBridge.startMcp("0.0.0.0:$port", token)
@@ -71,8 +70,7 @@ class McpServerService : Service() {
         val text = if (url.isNotEmpty()) {
             // The bind address is 0.0.0.0, which no client can use: show the
             // address another device on the same network actually reaches.
-            val suffix = if (requiresToken) "token required" else "no token — open to the network"
-            "${McpServer.clientUrl(this).removeSuffix("/mcp")} · $suffix"
+            McpServer.clientUrl(this).removeSuffix("/mcp")
         } else {
             val error = try {
                 JSONObject(result).optString("error", "unknown error")
@@ -120,6 +118,7 @@ class McpServerService : Service() {
             .setContentTitle("ELFTrace MCP server")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setShowWhen(false)
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(0, "Stop", stop)

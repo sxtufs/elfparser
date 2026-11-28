@@ -9,9 +9,10 @@ import java.security.SecureRandom
  * Settings and helpers for the in-app MCP server.
  *
  * The token is generated once and kept in SharedPreferences: while it is on it
- * is the only thing standing between the user's Wi-Fi and their binaries, so it
- * must be long, random and stable across app restarts. The user may turn it off
- * in the dialog's settings, which makes every device on the network trusted.
+ * is the only thing standing between the user's network and their binaries, so
+ * it must be long, random and stable across app restarts. The token switch is
+ * off by default; turning it on in the dialog's settings is what makes the
+ * server demand it.
  */
 object McpServer {
     const val DEFAULT_PORT = 8765
@@ -51,7 +52,7 @@ object McpServer {
     /** False when the user turned the barrier off in the dialog's settings. */
     fun tokenRequired(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_TOKEN_REQUIRED, true)
+            .getBoolean(KEY_TOKEN_REQUIRED, false)
 
     fun setTokenRequired(context: Context, required: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

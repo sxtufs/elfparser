@@ -53,11 +53,10 @@ keys, no protocol change.
   Show/Hide link, and the amber "anyone on this network…" paragraph are gone
   from it.
 - Settings: port field (hint `Available range 1024–65535`, error text from
-  `McpServer.MIN_PORT`/`MAX_PORT`), the "Enable Bearer token" switch, and —
-  while the token is required — the full token with COPY under a "Bearer token"
-  label, plus the `Bearer Token field, or Authorization: Bearer <token>` hint.
-  The amber warning now lives here and appears only when the token switch is
-  turned off.
+  `McpServer.MIN_PORT`/`MAX_PORT`), the "Enable token" switch (off by default),
+  and — while the token is required — the full token with COPY under a "Token"
+  label. The description under the switch names the `Token` field and the
+  `Authorization: Bearer <token>` header. No amber warning text remains.
 - Switches use `LocalELFTraceColors.primary` (`ThemedSwitch`) instead of the M3
   defaults, so the track matches the app accent in both themes.
 

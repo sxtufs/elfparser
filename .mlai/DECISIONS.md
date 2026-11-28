@@ -36,6 +36,10 @@ The MCP engine is switchable from the phone itself, MT-Manager style:
   `Authorization: Bearer <token>` or `X-MCP-Token`, compared length-independently.
   The origin guard also accepts RFC1918 LAN origins (10/8, 192.168/16,
   172.16/12) because the token, not the origin, is the gate once bound to Wi-Fi.
+  A custom header name is not rejected — clients that invent one simply fail
+  auth, which is what triggered the earlier phantom "OAuth required" flow.
+  The header name stays `Authorization` (the standard); `Bearer` is the scheme
+  prefix of its value, not a header name.
 - JNI: `JNIBridge.startMcp0/stopMcp0/mcpStatus0`; Kotlin `McpServerService`
   (foreground, `dataSync`, Stop action) keeps it alive, `McpServer` object holds
   the persisted random token, port and LAN URL.
@@ -45,18 +49,28 @@ The MCP engine is switchable from the phone itself, MT-Manager style:
   the product shape is the phone toggle, not desktop side binaries.
 
 ## 2026-11-28 — MCP settings pane: port and optional token live there
-The main MCP dialog shows only the switch and the two endpoint URLs. Port,
-token and the "Require access token" switch are behind a `Settings` button left
-of `Close`:
+The main MCP dialog shows only the switch and two address rows — `Local address`
+(`127.0.0.1:<port>`) and `LAN address` — with no "ENDPOINT" heading. Port,
+token and the token switch are behind a `Settings` button left of `Close`
+(subtitle: "Port and access control for the MCP server."):
 - Port is validated 1024–65535 (`McpServer.MIN_PORT`/`MAX_PORT`); saving while
-  running restarts the server on the new port.
-- The token switch can be turned off, which starts the listener with
-  `token = [redacted] and lets `mcpserver.json` persist that choice; the LAN is then
-  unauthenticated by design.
+  running restarts the server on the new port. The range hint is plain text
+  flush under the field, not `supportingText`, so it is not indented.
+- The switch is labelled "Enable token" and is **off by default**
+  (`McpServer.tokenRequired` reads the preference with a `false` default), so a
+  fresh install starts unauthenticated; turning it on makes the server require
+  the token.
+- While the token is required the pane shows it in full under a `Token` label
+  with COPY; the description under the switch names the `Token` field and the
+  `Authorization: Bearer <token>` header. There is no separate hint line.
+- No amber warning text: the pane uses the normal `textSecondary` colour, and
+  the "anyone on this Wi-Fi" paragraph was removed at the user's request.
 - `ThemedSwitch` paints the track with `colors.primary` so switches follow the
   app accent instead of Material's default purple.
 - The token is always visible in the pane; the Show/Hide link was removed at the
-  user's request, as was the amber "anyone on this Wi-Fi" paragraph.
+  user's request.
+- The running-server notification shows only the LAN URL: no "token required" /
+  "no token" suffix and `setShowWhen(false)` so no timestamp is rendered.
 
 ## 2026-11-28 — Annotation colour is warm sand, not loud amber
 Orange was the loudest thing on the disassembly screen and competed with the

@@ -15,9 +15,9 @@ scoped storage keeps app-private code out. Open the binary in the app
 `tools/list` marks write tools with `"readOnlyHint": false`; everything else is
 read-only. Nothing is written to disk unless you call `save`.
 
-Auth: with the token on (default) every request needs `Authorization: Bearer
-<token>` or `X-MCP-Token`. With it off, requests need no header at all — and
-any device on the network can then call `patch` and `save`.
+Auth: off by default, so requests need no header — and any device on the network
+can then call `patch` and `save`. With the token switch on, every request needs
+`Authorization: Bearer <token>` or `X-MCP-Token`.
 
 ## Read-only
 

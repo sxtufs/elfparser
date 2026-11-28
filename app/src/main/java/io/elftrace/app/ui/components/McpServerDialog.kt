@@ -37,9 +37,9 @@ import kotlinx.coroutines.launch
  * the port, the access token and the token switch.
  *
  * Copied from MT Manager's shape — a switch you flip in the app, an address to
- * paste into the client, and a secret the client must send. The server binds
- * `0.0.0.0`, so the token is on by default; the Settings panel can turn it off
- * for clients that cannot send headers, and change the port.
+ * paste into the client, and a secret the client may be required to send. The
+ * server binds `0.0.0.0`; the token switch is off by default and the Settings
+ * panel turns it on for clients that can send headers, and changes the port.
  */
 @Composable
 fun McpServerDialog(onDismiss: () -> Unit) {
@@ -271,7 +271,7 @@ private fun SettingsBody(
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "Enable Bearer token",
+            "Enable token",
             color = colors.textPrimary, fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
@@ -280,23 +280,14 @@ private fun SettingsBody(
     }
     Spacer(Modifier.height(4.dp))
     Text(
-        if (tokenRequired) "When enabled, MCP clients need an access token to connect. " +
-            "Paste the token directly into the Bearer Token field. " +
-            "For an Authorization request header, use Bearer <token>."
-        else "No token: every device on this network is trusted.",
+        "When enabled, MCP clients need an access token to connect. " +
+            "Paste the token directly into the Token field. " +
+            "For an Authorization request header, use Bearer <token>.",
         color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp
     )
-    if (!tokenRequired) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Without a token any app on this Wi-Fi can read, patch and save the " +
-                "binaries you open. Keep it on unless the client cannot send headers.",
-            color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
-        )
-    }
     if (tokenRequired) {
         Spacer(Modifier.height(12.dp))
-        FieldLabel("Bearer token")
+        FieldLabel("Token")
         CopyRow(
             value = token,
             monospace = true,
@@ -305,10 +296,6 @@ private fun SettingsBody(
                 copyToClipboard(context, token)
                 Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
             }
-        )
-        Text(
-            "Bearer Token field, or Authorization: Bearer <token>",
-            color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
