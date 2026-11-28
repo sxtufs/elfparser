@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -1183,20 +1182,6 @@ private fun extractSoFromFile(apkPath: String, entryName: String, outFile: File)
     }
 }
 
-@Composable
-private fun MenuValueChip(text: String, color: Color) {
-    val colors = LocalELFTraceColors.current
-    Text(
-        text = text,
-        color = lerp(color, colors.textPrimary, 0.35f),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(50))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-    )
-}
-
 /** The gear's menu: a dropdown below the header card, clear of the toolbar buttons. */
 @Composable
 private fun SettingsMenu(
@@ -1219,16 +1204,17 @@ private fun SettingsMenu(
     ) {
         DropdownMenuItem(
             text = {
-                Text("Theme", color = colors.textPrimary, fontSize = 14.sp)
+                Text(
+                    if (isDark) "Night Mode" else "Day Mode",
+                    color = colors.textPrimary,
+                    fontSize = 14.sp
+                )
             },
             leadingIcon = {
                 ThemeToggleIcon(
                     isDark = isDark,
                     tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
                 )
-            },
-            trailingIcon = {
-                MenuValueChip(if (isDark) "Dark" else "Light", colors.textSecondary)
             },
             onClick = onToggleTheme
         )
@@ -1243,12 +1229,6 @@ private fun SettingsMenu(
             },
             leadingIcon = {
                 McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
-            },
-            trailingIcon = {
-                MenuValueChip(
-                    if (mcpRunning) "Running" else "Off",
-                    if (mcpRunning) colors.address else colors.textSecondary
-                )
             },
             onClick = onOpenMcp
         )
