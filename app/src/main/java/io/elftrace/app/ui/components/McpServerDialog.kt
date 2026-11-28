@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -32,7 +33,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * MCP server toggle: switch, client URL and access token, plus a settings panel.
+ * MCP server toggle: switch and client URLs, plus a settings panel that holds
+ * the port, the access token and the token switch.
  *
  * Copied from MT Manager's shape — a switch you flip in the app, an address to
  * paste into the client, and a secret the client must send. The server binds
@@ -148,6 +150,7 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                     SettingsBody(
                         portText = portText,
                         portError = portError,
+                        token = token,
                         tokenRequired = tokenRequired,
                         onPortChange = { input ->
                             portText = input.filter(Char::isDigit).take(5)
@@ -159,8 +162,6 @@ fun McpServerDialog(onDismiss: () -> Unit) {
                     ServerBody(
                         running = running,
                         url = url,
-                        token = token,
-                        tokenRequired = tokenRequired,
                         onToggle = { toggle(it) }
                     )
                 }
@@ -188,13 +189,10 @@ fun McpServerDialog(onDismiss: () -> Unit) {
 private fun ServerBody(
     running: Boolean,
     url: String,
-    token: String,
-    tokenRequired: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val colors = LocalELFTraceColors.current
-    var showToken by remember { mutableStateOf(false) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -208,11 +206,7 @@ private fun ServerBody(
                 color = colors.textSecondary, fontSize = 11.sp
             )
         }
-        Switch(
-            checked = running,
-            onCheckedChange = onToggle,
-            colors = SwitchDefaults.colors(checkedTrackColor = GreenAccent)
-        )
+        ThemedSwitch(checked = running, onCheckedChange = onToggle)
     }
 
     if (running) {
@@ -234,62 +228,19 @@ private fun ServerBody(
                 Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
             }
         )
-        Spacer(Modifier.height(12.dp))
-        if (tokenRequired) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "TOKEN", color = colors.textSecondary, fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    if (showToken) "Hide" else "Show",
-                    color = CyanAccent, fontSize = 11.sp,
-                    modifier = Modifier.clickable { showToken = !showToken }
-                )
-            }
-            CopyRow(
-                value = if (showToken) token else "•".repeat(24),
-                monospace = true,
-                maxLines = 2,
-                onCopied = {
-                    copyToClipboard(context, token)
-                    Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
-                }
-            )
-            Text(
-                "Header: Authorization: Bearer <token>, or the token alone",
-                color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
-            )
-        } else {
-            Text(
-                "No token — any device on this network can call these tools.",
-                color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
-            )
-        }
     }
-
-    Spacer(Modifier.height(14.dp))
-    Text(
-        if (tokenRequired) {
-            "Anyone on this network with the token can read the binaries you open. " +
-                "Turn the server off when you are done."
-        } else {
-            "Anyone on this network can read the binaries you open. " +
-                "Turn the server off when you are done."
-        },
-        color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
-    )
 }
 
 @Composable
 private fun SettingsBody(
     portText: String,
     portError: Boolean,
+    token: String,
     tokenRequired: Boolean,
     onPortChange: (String) -> Unit,
     onTokenRequiredChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     val colors = LocalELFTraceColors.current
 
     FieldLabel("Port")
@@ -306,7 +257,7 @@ private fun SettingsBody(
         supportingText = {
             Text(
                 if (portError) "Enter a port from ${McpServer.MIN_PORT} to ${McpServer.MAX_PORT}"
-                else "Default ${McpServer.DEFAULT_PORT}. Saved on this device only.",
+                else "Available range ${McpServer.MIN_PORT}–${McpServer.MAX_PORT}",
                 color = if (portError) RedAccent else colors.textSecondary,
                 fontSize = 10.sp
             )
@@ -334,11 +285,7 @@ private fun SettingsBody(
                 color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp
             )
         }
-        Switch(
-            checked = tokenRequired,
-            onCheckedChange = onTokenRequiredChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = CyanAccent)
-        )
+        ThemedSwitch(checked = tokenRequired, onCheckedChange = onTokenRequiredChange)
     }
     if (!tokenRequired) {
         Spacer(Modifier.height(8.dp))
@@ -348,6 +295,39 @@ private fun SettingsBody(
             color = AmberAccent, fontSize = 10.5.sp, lineHeight = 14.sp
         )
     }
+    if (tokenRequired) {
+        Spacer(Modifier.height(12.dp))
+        FieldLabel("Token")
+        CopyRow(
+            value = token,
+            monospace = true,
+            maxLines = 3,
+            onCopied = {
+                copyToClipboard(context, token)
+                Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
+            }
+        )
+        Text(
+            "Header: Authorization: Bearer <token>, or the token alone",
+            color = colors.textSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun ThemedSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val colors = LocalELFTraceColors.current
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        colors = SwitchDefaults.colors(
+            checkedTrackColor = colors.primary,
+            checkedThumbColor = Color.White,
+            uncheckedTrackColor = colors.surface,
+            uncheckedThumbColor = colors.textSecondary,
+            uncheckedBorderColor = colors.border
+        )
+    )
 }
 
 @Composable

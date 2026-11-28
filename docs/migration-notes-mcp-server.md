@@ -41,6 +41,33 @@ phone.
   server-initiated messages yet) instead of returning 405: clients probe GET
   before POST and read 405 as "unreachable". POST is stateless as before.
 
+## UI phase — dialog holds only what a client needs (2026-11-28)
+
+The MCP dialog was split into two screens so the panel the user reads while
+copying is short, and the knobs live behind Settings. All of it is UI only:
+`McpServerDialog.kt` (`ServerBody` / `SettingsBody`), no Rust, no preference
+keys, no protocol change.
+
+- Main panel: the server switch and, while running, the two endpoint URLs
+  (`127.0.0.1:<port>` and the LAN address) with COPY. The token block, its
+  Show/Hide link, and the amber "anyone on this network…" paragraph are gone
+  from it.
+- Settings: port field (hint `Available range 1024–65535`, error text from
+  `McpServer.MIN_PORT`/`MAX_PORT`), the "Require access token" switch, and —
+  while the token is required — the full token with COPY plus the
+  `Authorization: Bearer <token>` hint. The amber warning now lives here and
+  appears only when the token switch is turned off.
+- Switches use `LocalELFTraceColors.primary` (`ThemedSwitch`) instead of the M3
+  defaults, so the track matches the app accent in both themes.
+
+Rollback: revert this commit; the previous dialog carried the token inline and
+`Show`/`Hide`. Nothing persisted changes, so no data step is involved. Bumping
+the port or turning the token off remains reversible from the same panel.
+
+Verification: `./gradlew :app:assembleDebug :app:lintDebug
+:app:testDebugUnitTest` → BUILD SUCCESSFUL, and `cd elftrace-core && cargo test
+--all` → 146 passed, 0 failed. Not verified: rendering on a physical phone.
+
 ## Cutover and rollback
 
 No data migration is involved; the token lives in SharedPreferences and the
