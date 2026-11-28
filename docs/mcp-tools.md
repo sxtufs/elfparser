@@ -40,8 +40,20 @@ can then call `patch` and `save`. With the token switch on, every request needs
 | `read_bytes` | `path`?, `address`, `length` | Hex dump (default 64, max 4096) |
 | `binary_facts` | `path`? | `DT_RUNPATH`/`DT_RPATH`, constructor count |
 | `resolve_jni` | `path`?, `offset` | JNIEnv method name and vtable index for a load displacement |
+| `resolve_import` | `path`?, `address` | Import behind a PLT stub, GOT slot or pointer slot: `kind` plus `symbol` |
+| `function_info` | `path`?, `address` | Start, end, size, thumb and the `.eh_frame` entry of the containing function |
+| `find_pattern` | `path`?, `pattern`, `section` (default `.text`), `max` (default 16, max 128) | Addresses matching a hex pattern with `??` / `f?` wildcards |
+| `list_patches` | `path`? | Patches applied this session, newest first in `undo` order, with original and current bytes |
 | `rename_function` | `path`?, `address`, `name` | Renames in the session only, no bytes written |
 | `assemble` | `path`?, `address`, `instruction` | Encoded bytes, nothing applied |
+
+`resolve_import` tries, in order: a PLT stub, a GOT slot, the pointer the slot
+holds, then a plain symbol — so a `bl` target and a `ldr` slot both name their
+import. `function_info` reports `source` as `symbol`, `eh_frame` or `scan` so the
+caller knows how much the size can be trusted. `find_pattern` scans at most
+16 MiB per call and stops at `max` matches, setting `truncated` when it does.
+`list_patches` reads the same undo stack `undo` pops, which is what `save` would
+write.
 
 ## Write
 

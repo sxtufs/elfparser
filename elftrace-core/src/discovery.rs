@@ -521,6 +521,30 @@ pub fn scan_eh_frame(data: &[u8]) -> Vec<(u64, u64)> {
     out
 }
 
+/// Bounds of the `.eh_frame` FDE that covers `address`, as `(start, size)`.
+///
+/// Cheap on purpose: it parses section headers and scans only `.eh_frame`
+/// instead of running the full discovery pass. Returns `None` when the file has
+/// no `.eh_frame`, when no FDE covers the address, or when the addressing is a
+/// form this scanner does not decode.
+pub fn fde_bounds_for(ctx: &ElfContext, address: u64) -> Option<(u64, u64)> {
+    use object::{Object, ObjectSection};
+
+    let obj_file = object::File::parse(&*ctx.raw).ok()?;
+    let sec = obj_file.section_by_name(".eh_frame")?;
+    let data = sec.data().ok()?;
+    let mut best: Option<(u64, u64)> = None;
+    for (start, size) in scan_eh_frame(data) {
+        if address >= start && address < start.saturating_add(size) {
+            // Nested/duplicate FDEs: keep the innermost, i.e. the latest start.
+            if best.is_none_or(|(prev, _)| start >= prev) {
+                best = Some((start, size));
+            }
+        }
+    }
+    best
+}
+
 /// Discover function starts without mutating the context.
 pub fn discover(ctx: &ElfContext, max_scanned: u64) -> DiscoveryReport {
     use object::{Object, ObjectSection};

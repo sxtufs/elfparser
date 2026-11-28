@@ -337,7 +337,7 @@ fn binary_serves_a_stdio_session() {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "elftrace-mcp");
     assert_eq!(
         responses[1]["result"]["tools"].as_array().unwrap().len(),
-        22
+        26
     );
     let info_text = responses[2]["result"]["content"][0]["text"]
         .as_str()
@@ -782,4 +782,246 @@ fn list_imports_reports_the_import_dir_and_shared_storage_paths_are_refused() {
     let (_, is_error) = call_tool(&mut host, "elf_info", json!({"path": "/sdcard/lib.so"}));
     assert!(is_error, "/sdcard paths must be refused too");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn list_patches_reports_the_session_and_empties_after_undo() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    let (before, is_error) = call_tool(&mut host, "list_patches", json!({"path": path}));
+    assert!(!is_error, "list_patches failed: {before}");
+    let before: Value = serde_json::from_str(&before).expect("list_patches JSON");
+    assert_eq!(before["count"], 0, "a fresh session has no patches");
+    assert!(
+        before["hint"].as_str().unwrap_or_default().contains("unchanged"),
+        "empty listing should say save writes nothing: {before}"
+    );
+
+    let (info, _) = call_tool(&mut host, "elf_info", json!({"path": path}));
+    let info: Value = serde_json::from_str(&info).expect("elf_info JSON");
+    let entry = info["entry"].as_str().expect("entry point");
+    let entry = u64::from_str_radix(entry.trim_start_matches("0x"), 16).expect("entry hex");
+
+    let (patched, is_error) = call_tool(
+        &mut host,
+        "patch",
+        json!({"path": path, "address": entry, "bytes": "9090"}),
+    );
+    assert!(!is_error, "patch refused: {patched}");
+
+    let (listing, is_error) = call_tool(&mut host, "list_patches", json!({"path": path}));
+    assert!(!is_error, "list_patches failed: {listing}");
+    let listing: Value = serde_json::from_str(&listing).expect("list_patches JSON");
+    assert_eq!(listing["count"], 1, "one patch expected: {listing}");
+    let only = &listing["patches"][0];
+    assert_eq!(only["patch"], 1, "the top of the undo stack is patch 1");
+    assert_eq!(
+        only["address"].as_str().unwrap_or_default(),
+        format!("0x{entry:x}")
+    );
+    assert_eq!(only["patched"].as_str().unwrap_or_default(), "90 90");
+    assert_ne!(
+        only["original"].as_str().unwrap_or_default(),
+        "90 90",
+        "original bytes must be the pre-patch ones"
+    );
+
+    let (undo, is_error) = call_tool(&mut host, "undo", json!({"path": path}));
+    assert!(!is_error, "undo failed: {undo}");
+
+    let (after, _) = call_tool(&mut host, "list_patches", json!({"path": path}));
+    let after: Value = serde_json::from_str(&after).expect("list_patches JSON");
+    assert_eq!(after["count"], 0, "undo must empty the listing: {after}");
+}
+
+#[test]
+fn find_pattern_locates_bytes_we_wrote_and_honours_wildcards() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    let (info, _) = call_tool(&mut host, "elf_info", json!({"path": path}));
+    let info: Value = serde_json::from_str(&info).expect("elf_info JSON");
+    let entry = info["entry"].as_str().expect("entry point");
+    let entry = u64::from_str_radix(entry.trim_start_matches("0x"), 16).expect("entry hex");
+
+    // Scan the section that actually holds the entry point: on a PIE the entry
+    // is .text, but do not assume the name, and do not assume .text is first.
+    let sections = info["sections"].as_array().expect("sections array");
+    let entry_section = sections
+        .iter()
+        .find(|sec| {
+            let start = sec["vaddr"].as_u64().unwrap_or(0);
+            let size = sec["size"].as_u64().unwrap_or(0);
+            entry >= start && entry < start.saturating_add(size)
+        })
+        .and_then(|sec| sec["name"].as_str().map(str::to_string))
+        .expect("a section covering the entry point");
+
+    // Two distinct byte runs so the wildcard match cannot be the literal one.
+    let (patched, is_error) = call_tool(
+        &mut host,
+        "patch",
+        json!({"path": path, "address": entry, "bytes": "deadbeef0a0b0c0d"}),
+    );
+    assert!(!is_error, "patch refused: {patched}");
+
+    let (found, is_error) = call_tool(
+        &mut host,
+        "find_pattern",
+        json!({"path": path, "pattern": "de ad be ef 0a 0b 0c 0d", "section": entry_section}),
+    );
+    assert!(!is_error, "find_pattern failed: {found}");
+    let found: Value = serde_json::from_str(&found).expect("find_pattern JSON");
+    let addresses: Vec<&str> = found["matches"]
+        .as_array()
+        .expect("matches array")
+        .iter()
+        .filter_map(|m| m["address"].as_str())
+        .collect();
+    let wanted = format!("0x{entry:x}");
+    assert!(
+        addresses.contains(&wanted.as_str()),
+        "patched bytes not found at {wanted}: {found}"
+    );
+
+    let (wild, is_error) = call_tool(
+        &mut host,
+        "find_pattern",
+        json!({"path": path, "pattern": "de ad be ef ?? ?? ?? ??", "section": entry_section, "max": 128}),
+    );
+    assert!(!is_error, "wildcard search failed: {wild}");
+    let wild: Value = serde_json::from_str(&wild).expect("find_pattern JSON");
+    let wild_addresses: Vec<&str> = wild["matches"]
+        .as_array()
+        .expect("matches array")
+        .iter()
+        .filter_map(|m| m["address"].as_str())
+        .collect();
+    assert!(
+        wild_addresses.contains(&wanted.as_str()),
+        "wildcards must still match the patched bytes: {wild}"
+    );
+
+    let (compact, is_error) = call_tool(
+        &mut host,
+        "find_pattern",
+        json!({"path": path, "pattern": "deadbeef0a0b0c0d", "section": entry_section, "max": 128}),
+    );
+    assert!(!is_error, "compact pattern failed: {compact}");
+    let compact: Value = serde_json::from_str(&compact).expect("find_pattern JSON");
+    let compact_addresses: Vec<&str> = compact["matches"]
+        .as_array()
+        .expect("matches array")
+        .iter()
+        .filter_map(|m| m["address"].as_str())
+        .collect();
+    assert!(
+        compact_addresses.contains(&wanted.as_str()),
+        "compact hex must parse like spaced hex: {compact}"
+    );
+
+    let (_, is_error) = call_tool(
+        &mut host,
+        "find_pattern",
+        json!({"path": path, "pattern": "de adx be ef"}),
+    );
+    assert!(is_error, "a non-hex token must be refused");
+
+    let (undo, is_error) = call_tool(&mut host, "undo", json!({"path": path}));
+    assert!(!is_error, "undo failed: {undo}");
+}
+
+#[test]
+fn function_info_and_resolve_import_answer_questions_about_a_real_elf() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    let (info, _) = call_tool(&mut host, "elf_info", json!({"path": path}));
+    let info: Value = serde_json::from_str(&info).expect("elf_info JSON");
+    let entry = info["entry"].as_str().expect("entry point");
+    let entry = u64::from_str_radix(entry.trim_start_matches("0x"), 16).expect("entry hex");
+
+    let (func, is_error) = call_tool(
+        &mut host,
+        "function_info",
+        json!({"path": path, "address": entry}),
+    );
+    assert!(!is_error, "function_info failed: {func}");
+    let func: Value = serde_json::from_str(&func).expect("function_info JSON");
+    let start = u64::from_str_radix(
+        func["start"].as_str().expect("start").trim_start_matches("0x"),
+        16,
+    )
+    .expect("start hex");
+    let end = u64::from_str_radix(
+        func["end"].as_str().expect("end").trim_start_matches("0x"),
+        16,
+    )
+    .expect("end hex");
+    assert!(start <= entry, "the function must start at or before the entry");
+    assert!(entry < end, "the entry must fall inside the function");
+    assert_eq!(func["size"].as_u64(), Some(end - start));
+    assert!(
+        !func["name"].as_str().unwrap_or_default().is_empty(),
+        "a function needs a name: {func}"
+    );
+    assert!(
+        ["symbol", "eh_frame", "scan"].contains(&func["source"].as_str().unwrap_or("")),
+        "unknown size source: {func}"
+    );
+
+    // A symbol address is not an import, and the tool should say so rather
+    // than pretend the name came from a relocation.
+    let (symbols, _) = call_tool(
+        &mut host,
+        "list_symbols",
+        json!({"path": path, "limit": 500, "filter": ""}),
+    );
+    let symbols: Value = serde_json::from_str(&symbols).expect("list_symbols JSON");
+    let named = symbols["symbols"]
+        .as_array()
+        .expect("symbols array")
+        .iter()
+        .find(|sym| {
+            sym["size"].as_u64().unwrap_or(0) > 0
+                && sym["address"].as_str().unwrap_or("0x0") != "0x0"
+        })
+        .expect("at least one sized symbol in the test binary");
+    let named_address = u64::from_str_radix(
+        named["address"]
+            .as_str()
+            .expect("symbol address")
+            .trim_start_matches("0x"),
+        16,
+    )
+    .expect("symbol hex");
+
+    let (resolved, is_error) = call_tool(
+        &mut host,
+        "resolve_import",
+        json!({"path": path, "address": named_address}),
+    );
+    assert!(!is_error, "resolve_import failed: {resolved}");
+    let resolved: Value = serde_json::from_str(&resolved).expect("resolve_import JSON");
+    assert_ne!(
+        resolved["kind"].as_str().unwrap_or_default(),
+        "unknown",
+        "a real symbol address must resolve: {resolved}"
+    );
+
+    // u64::MAX - 0xf is outside every segment of any real file, so this must
+    // come back as a non-answer rather than a fabricated symbol.
+    let (nothing, is_error) = call_tool(
+        &mut host,
+        "resolve_import",
+        json!({"path": path, "address": 0xffff_ffff_ffff_fff0u64}),
+    );
+    assert!(!is_error, "an unmapped address is an answer, not an error: {nothing}");
+    let nothing: Value = serde_json::from_str(&nothing).expect("resolve_import JSON");
+    assert_eq!(nothing["kind"], "unknown");
+    assert!(nothing["hint"].as_str().unwrap_or_default().contains("relocation"));
 }

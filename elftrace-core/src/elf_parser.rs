@@ -370,6 +370,11 @@ pub struct ElfContext {
     /// patch. `undo_last`/`undo_all` restore them. Shared by every patch path
     /// (quick, assemble, plugin, propagation, hex) so a single Undo covers all.
     undo_stack: Vec<(u64, Vec<u8>)>,
+    /// Imported symbol name per GOT slot (relocation `r_offset`), with the PLT
+    /// stub that jumps through it when the stub was decoded. Filled while the
+    /// relocation tables are parsed, so a slot address can be named later
+    /// without re-reading the ELF.
+    got_imports: HashMap<u64, (String, Option<u64>)>,
 }
 
 impl ElfContext {
@@ -390,6 +395,7 @@ impl ElfContext {
             info_cache: std::sync::RwLock::new(None),
             symbol_index: std::sync::RwLock::new(None),
             undo_stack: Vec::new(),
+            got_imports: HashMap::new(),
         }
     }
 
@@ -400,6 +406,7 @@ impl ElfContext {
         }
 
         let mut syms_map = HashMap::new();
+        let mut got_imports: HashMap<u64, (String, Option<u64>)> = HashMap::new();
         if let Ok(obj_file) = object::File::parse(&*raw) {
             let e_machine = match obj_file.architecture() {
                 object::Architecture::Arm => 40,
@@ -732,6 +739,9 @@ impl ElfContext {
                                     None
                                 }
                             });
+                            got_imports
+                                .entry(r_offset)
+                                .or_insert_with(|| (clean_name.to_string(), stub_addr));
                             if let Some(stub_addr) = stub_addr {
                                 let demangled = demangle_name(clean_name);
                                 syms_map.entry(stub_addr).or_insert(SymsDTO {
@@ -808,6 +818,7 @@ impl ElfContext {
             info_cache: std::sync::RwLock::new(None),
             symbol_index: std::sync::RwLock::new(None),
             undo_stack: Vec::new(),
+            got_imports,
         };
         ctx.scan_dynamic_jni();
         Ok(ctx)
@@ -1480,6 +1491,28 @@ impl ElfContext {
         }
 
         Ok(SData { data: items })
+    }
+
+    /// Snapshot of the undo log, oldest first: `(address, original bytes)`.
+    /// Used by `list_patches` to report what the next `save` would write.
+    pub fn undo_entries(&self) -> Vec<(u64, Vec<u8>)> {
+        self.undo_stack.clone()
+    }
+
+    /// Imported symbol behind a GOT slot (a relocation `r_offset`), with the PLT
+    /// stub that jumps through it when the stub was decoded.
+    pub fn got_import(&self, slot: u64) -> Option<(&str, Option<u64>)> {
+        self.got_imports
+            .get(&slot)
+            .map(|(name, stub)| (name.as_str(), *stub))
+    }
+
+    /// Imported symbol whose PLT stub is `stub`, when the stub was decoded.
+    pub fn stub_import(&self, stub: u64) -> Option<&str> {
+        self.got_imports
+            .values()
+            .find(|(_, slot_stub)| *slot_stub == Some(stub))
+            .map(|(name, _)| name.as_str())
     }
 
     pub fn read_string_at(&self, address: u64, max_len: u64) -> String {

@@ -244,7 +244,7 @@ fn is_known_tool(name: &str) -> bool {
     TOOL_NAMES.contains(&name)
 }
 
-const TOOL_NAMES: [&str; 22] = [
+const TOOL_NAMES: [&str; 26] = [
     "current_file",
     "list_imports",
     "elf_info",
@@ -262,6 +262,10 @@ const TOOL_NAMES: [&str; 22] = [
     "read_bytes",
     "binary_facts",
     "resolve_jni",
+    "resolve_import",
+    "function_info",
+    "find_pattern",
+    "list_patches",
     "rename_function",
     "assemble",
     "patch",
@@ -412,6 +416,39 @@ fn tool_definitions() -> Value {
                 "path": string_prop("Path to the ELF file"),
                 "offset": address_prop("Byte offset into the JNIEnv vtable, as written in the load instruction")
             }), &["path", "offset"])
+        },
+        {
+            "name": "resolve_import",
+            "description": "Name the import behind an address: a PLT stub, a GOT slot, or a pointer slot. Answers 'what library function does this `bl`/`ldr` reach'.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "address": address_prop("Virtual address of a PLT stub or GOT slot")
+            }), &["path", "address"])
+        },
+        {
+            "name": "function_info",
+            "description": "Bounds and unwind facts for the function containing an address: start, end, size, thumb, and the .eh_frame entry when the file has one.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "address": address_prop("Any virtual address inside the function")
+            }), &["path", "address"])
+        },
+        {
+            "name": "find_pattern",
+            "description": "Scan a section for a byte pattern with ?? wildcards (per byte or per nibble), e.g. 'ff 03 01 d1 ?? ?? ?? ??'. Read-only; returns matching virtual addresses.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file"),
+                "pattern": string_prop("Hex bytes with wildcards, space-separated: 'f4 4f 03 a9 ?? ?? ?? ??'"),
+                "section": string_prop("Section name to scan. Defaults to .text"),
+                "max": int_prop("Maximum matches to return. Default 16, max 128")
+            }), &["path", "pattern"])
+        },
+        {
+            "name": "list_patches",
+            "description": "Every patch applied this session, newest first in the order `undo` reverts them: address, original bytes, current bytes. Shows what `save` would write.",
+            "inputSchema": object_schema(json!({
+                "path": string_prop("Path to the ELF file")
+            }), &["path"])
         },
         {
             "name": "rename_function",
@@ -644,6 +681,10 @@ fn call_tool(host: &mut Host, name: &str, args: &Value) -> Result<String, String
         "read_bytes" => tool_read_bytes(host, args),
         "binary_facts" => tool_binary_facts(host, args),
         "resolve_jni" => tool_resolve_jni(host, args),
+        "resolve_import" => tool_resolve_import(host, args),
+        "function_info" => tool_function_info(host, args),
+        "find_pattern" => tool_find_pattern(host, args),
+        "list_patches" => tool_list_patches(host, args),
         "rename_function" => tool_rename_function(host, args),
         "assemble" => tool_assemble(host, args),
         "patch" => tool_patch(host, args),
@@ -718,6 +759,304 @@ fn tool_resolve_jni(host: &mut Host, args: &Value) -> Result<String, String> {
     .to_string())
 }
 
+/// Read `len` bytes at a virtual address from the in-memory image.
+fn read_vaddr(ctx: &ElfContext, address: u64, len: usize) -> Option<Vec<u8>> {
+    let offset = ctx.vaddr_to_offset(address)? as usize;
+    let end = offset.checked_add(len)?;
+    ctx.raw.get(offset..end).map(|bytes| bytes.to_vec())
+}
+
+fn bytes_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn tool_resolve_import(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = file_arg(args)?;
+    let address = address_arg(args, "address")?;
+    let ctx = host.context(&path)?;
+    // ARM32 callers pass the Thumb bit in the address; nothing else uses bit 0.
+    let is_thumb_machine = ctx
+        .get_info()
+        .map(|info| info.e_machine == 40)
+        .unwrap_or(false);
+    let address = if is_thumb_machine { address & !1 } else { address };
+
+    // A PLT stub is the most useful answer for a `bl` target: it names the
+    // library function without the caller having to follow the GOT.
+    if let Some(name) = ctx.stub_import(address) {
+        return Ok(json!({
+            "address": hex(address),
+            "kind": "plt_stub",
+            "symbol": name,
+        })
+        .to_string());
+    }
+    if let Some((name, stub)) = ctx.got_import(address) {
+        return Ok(json!({
+            "address": hex(address),
+            "kind": "got_slot",
+            "symbol": name,
+            "plt_stub": stub.map(hex),
+        })
+        .to_string());
+    }
+
+    let is_64 = ctx.get_info().map(|info| info.is_64).unwrap_or(true);
+    let width = if is_64 { 8 } else { 4 };
+    let pointed = read_vaddr(ctx, address, width).and_then(|bytes| {
+        let mut buf = [0u8; 8];
+        buf[..width].copy_from_slice(&bytes);
+        let target = u64::from_le_bytes(buf);
+        (target != 0).then_some((target, if is_64 { target } else { target & !1 }))
+    });
+    if let Some((slot_target, normalized)) = pointed {
+        // A resolved GOT slot points at the import; an unresolved one points
+        // back into the PLT resolver.
+        if let Some(name) = ctx.stub_import(normalized) {
+            return Ok(json!({
+                "address": hex(address),
+                "kind": "pointer_to_plt_stub",
+                "symbol": name,
+                "target": hex(slot_target),
+            })
+            .to_string());
+        }
+        if let Some(sym) = ctx.syms_map.get(&normalized) {
+            return Ok(json!({
+                "address": hex(address),
+                "kind": "pointer",
+                "symbol": &sym.sym,
+                "target": hex(slot_target),
+            })
+            .to_string());
+        }
+        if let Some((name, _)) = ctx.got_import(normalized) {
+            return Ok(json!({
+                "address": hex(address),
+                "kind": "pointer_to_got_slot",
+                "symbol": name,
+                "target": hex(slot_target),
+            })
+            .to_string());
+        }
+        return Ok(json!({
+            "address": hex(address),
+            "kind": "pointer",
+            "symbol": Value::Null,
+            "target": hex(slot_target),
+            "hint": "The slot points outside every known import; it may be unresolved or rewritten at load time.",
+        })
+        .to_string());
+    }
+
+    if let Some(sym) = ctx.syms_map.get(&address) {
+        return Ok(json!({
+            "address": hex(address),
+            "kind": "symbol",
+            "symbol": sym.sym,
+            "hint": "Not an import: this address carries its own symbol.",
+        })
+        .to_string());
+    }
+
+    Ok(json!({
+        "address": hex(address),
+        "kind": "unknown",
+        "symbol": Value::Null,
+        "hint": "No relocation, stub or symbol covers this address. Check it with read_bytes or xrefs.",
+    })
+    .to_string())
+}
+
+fn tool_function_info(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = file_arg(args)?;
+    let address = address_arg(args, "address")?;
+    let ctx = host.context(&path)?;
+
+    let range = crate::decompiler::find_function_range(ctx, address);
+    let fde = crate::discovery::fde_bounds_for(ctx, address);
+    let exact = ctx.syms_map.get(&range.start);
+
+    // Say where the size came from, so a caller knows how much to trust it:
+    // a declared symbol size and an FDE length are facts, a scan is a guess.
+    let source = if exact.is_some_and(|sym| sym.size > 0) {
+        "symbol"
+    } else if fde.is_some_and(|(start, _)| start == range.start) {
+        "eh_frame"
+    } else {
+        "scan"
+    };
+
+    Ok(json!({
+        "address": hex(address),
+        "name": range.name,
+        "start": hex(range.start),
+        "end": hex(range.start.saturating_add(range.size)),
+        "size": range.size,
+        "thumb": range.thumb,
+        "source": source,
+        "eh_frame": fde.map(|(start, size)| json!({
+            "start": hex(start),
+            "size": size,
+        })),
+    })
+    .to_string())
+}
+
+/// One token of a wildcard pattern: byte value, byte mask, and bits that must
+/// be clear — enough to express `ff`, `f?` / `?f` nibble wildcards and `??`.
+struct PatternByte {
+    value: u8,
+    mask: u8,
+}
+
+fn parse_pattern(pattern: &str) -> Result<Vec<PatternByte>, String> {
+    let mut out = Vec::new();
+    let mut tokens: Vec<String> = pattern.split_whitespace().map(str::to_string).collect();
+    // A single compact token like "ff0301d1" is also accepted.
+    if tokens.len() == 1 && tokens[0].len() > 2 && !tokens[0].contains('?') {
+        let compact = &tokens[0];
+        if !compact.len().is_multiple_of(2) || !compact.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err("pattern: a compact pattern needs an even number of hex digits".into());
+        }
+        tokens = (0..compact.len())
+            .step_by(2)
+            .map(|i| compact[i..i + 2].to_string())
+            .collect();
+    }
+    for token in tokens {
+        if token.len() != 2 {
+            return Err(format!(
+                "pattern: '{token}' is not a byte; write two characters, e.g. ff, f?, ?f or ??"
+            ));
+        }
+        let mut value = 0u8;
+        let mut mask = 0u8;
+        for (index, ch) in token.chars().enumerate() {
+            let shift = if index == 0 { 4 } else { 0 };
+            if let Some(digit) = ch.to_digit(16) {
+                value |= (digit as u8) << shift;
+                mask |= 0x0f << shift;
+            } else if ch != '?' {
+                return Err(format!("pattern: '{token}' has a non-hex character '{ch}'"));
+            }
+        }
+        out.push(PatternByte { value, mask });
+    }
+    if out.is_empty() {
+        return Err("pattern: give at least one byte".into());
+    }
+    Ok(out)
+}
+
+fn pattern_matches(haystack: &[u8], pattern: &[PatternByte]) -> bool {
+    haystack.len() >= pattern.len()
+        && pattern
+            .iter()
+            .zip(haystack)
+            .all(|(want, byte)| byte & want.mask == want.value & want.mask)
+}
+
+fn tool_find_pattern(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = file_arg(args)?;
+    let pattern = optional_string(args, "pattern")
+        .ok_or_else(|| "find_pattern needs a 'pattern' argument, e.g. 'ff 03 01 d1 ?? ?? ?? ??'".to_string())?;
+    let parsed = parse_pattern(&pattern)?;
+    let section = optional_string(args, "section").unwrap_or_else(|| ".text".to_string());
+    let max = optional_usize(args, "max", 16)?.clamp(1, 128);
+    let ctx = host.context(&path)?;
+
+    let info = ctx.get_info().map_err(|e| e.to_string())?;
+    let Some(sec) = info
+        .sections
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&section) || s.name == section.trim_start_matches('.'))
+    else {
+        return Ok(json!({
+            "pattern": pattern,
+            "section": section,
+            "matches": [],
+            "count": 0,
+            "hint": "No such section. elf_info lists the names with their sizes.",
+        })
+        .to_string());
+    };
+
+    // A section is bounded by the file, but cap the walk so one query cannot
+    // stall the server on a huge .text.
+    const MAX_SCAN_BYTES: u64 = 16 * 1024 * 1024;
+    let section_size = sec.size.min(MAX_SCAN_BYTES);
+    let offset = sec.offset as usize;
+    let data = ctx
+        .raw
+        .get(offset..offset + section_size as usize)
+        .unwrap_or(&[]);
+
+    let mut matches = Vec::new();
+    let mut truncated = false;
+    let mut index = 0usize;
+    while index + parsed.len() <= data.len() {
+        if pattern_matches(&data[index..], &parsed) {
+            if matches.len() == max {
+                truncated = true;
+                break;
+            }
+            matches.push(json!({
+                "address": hex(sec.vaddr + index as u64),
+                "section_offset": hex(index as u64),
+            }));
+        }
+        index += 1;
+    }
+
+    Ok(json!({
+        "pattern": pattern,
+        "section": sec.name,
+        "scanned_bytes": data.len(),
+        "count": matches.len(),
+        "truncated": truncated,
+        "matches": matches,
+    })
+    .to_string())
+}
+
+fn tool_list_patches(host: &mut Host, args: &Value) -> Result<String, String> {
+    let path = file_arg(args)?;
+    let ctx = host.context(&path)?;
+    let undo = ctx.undo_entries();
+    let total = undo.len();
+
+    let mut patches = Vec::new();
+    // Undo is LIFO, so the most recent patch is the one `undo` reverts next.
+    for (index, (address, original)) in undo.iter().rev().enumerate() {
+        let patched = read_vaddr(ctx, *address, original.len());
+        patches.push(json!({
+            "patch": index + 1,
+            "address": hex(*address),
+            "original": bytes_hex(original),
+            "patched": patched.as_deref().map(bytes_hex),
+            "length": original.len(),
+        }));
+    }
+
+    let hint = if total == 0 {
+        Some("Nothing patched this session; save would write the file unchanged.")
+    } else {
+        None
+    };
+    Ok(json!({
+        "count": total,
+        "undo_depth": total,
+        "patches": patches,
+        "hint": hint,
+    })
+    .to_string())
+}
+
 fn tool_rename_function(host: &mut Host, args: &Value) -> Result<String, String> {
     let path = file_arg(args)?;
     let address = address_arg(args, "address")?;
@@ -778,8 +1117,8 @@ fn tool_patch(host: &mut Host, args: &Value) -> Result<String, String> {
                 return Err("patch runs past the end of the file".to_string());
             }
             let original = ctx.raw[offset..end].to_vec();
+            // `patch_bytes` records the undo entry itself.
             ctx.patch_bytes(address, &patch)?;
-            ctx.push_undo(address, original.clone());
             crate::patcher::PatchResult {
                 address,
                 original_bytes: original,
@@ -2039,6 +2378,26 @@ mod tests {
         assert!(export_name("../libx.so").is_err());
         assert!(export_name("Download/sub/libx.so").is_err());
         assert!(export_name(".").is_err());
+    }
+
+    #[test]
+    fn patterns_accept_bytes_nibble_wildcards_and_compact_hex() {
+        let pat = parse_pattern("ff 03 ?? f?").expect("valid pattern");
+        assert_eq!(pat.len(), 4);
+        assert_eq!((pat[0].value, pat[0].mask), (0xff, 0xff));
+        assert_eq!((pat[1].value, pat[1].mask), (0x03, 0xff));
+        assert_eq!(pat[2].mask, 0x00, "?? must match anything");
+        assert_eq!((pat[3].value, pat[3].mask), (0xf0, 0xf0));
+        assert!(pattern_matches(&[0xff, 0x03, 0x00, 0xf9], &pat));
+        assert!(!pattern_matches(&[0xff, 0x03, 0x00, 0x08], &pat));
+
+        let compact = parse_pattern("ff0301d1").expect("compact hex");
+        assert_eq!(compact.len(), 4);
+        assert_eq!(compact[3].value, 0xd1);
+
+        assert!(parse_pattern("ff 03 zz").is_err(), "non-hex must be refused");
+        assert!(parse_pattern("ff 0").is_err(), "a short token must be refused");
+        assert!(parse_pattern("   ").is_err(), "an empty pattern must be refused");
     }
 
     #[test]
