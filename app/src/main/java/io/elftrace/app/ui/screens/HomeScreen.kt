@@ -33,7 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -265,61 +268,15 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box {
-                        IconButton(onClick = {
-                            mcpRunning = McpServer.isRunning()
-                            showSettingsMenu = true
-                        }) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = colors.textSecondary
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showSettingsMenu,
-                            onDismissRequest = { showSettingsMenu = false },
-                            containerColor = colors.card,
-                            shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text("Theme", color = colors.textPrimary, fontSize = 14.sp)
-                                },
-                                leadingIcon = {
-                                    ThemeToggleIcon(
-                                        isDark = isDark,
-                                        tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
-                                    )
-                                },
-                                trailingIcon = {
-                                    MenuValueChip(if (isDark) "Dark" else "Light", colors.textSecondary)
-                                },
-                                onClick = {
-                                    showSettingsMenu = false
-                                    viewModel.toggleTheme()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text("MCP Server", color = colors.textPrimary, fontSize = 14.sp)
-                                },
-                                leadingIcon = {
-                                    McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
-                                },
-                                trailingIcon = {
-                                    MenuValueChip(
-                                        if (mcpRunning) "Running" else "Off",
-                                        if (mcpRunning) colors.address else colors.textSecondary
-                                    )
-                                },
-                                onClick = {
-                                    showSettingsMenu = false
-                                    showMcpDialog = true
-                                }
-                            )
-                        }
+                    IconButton(onClick = {
+                        mcpRunning = McpServer.isRunning()
+                        showSettingsMenu = true
+                    }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = colors.textSecondary
+                        )
                     }
                     Spacer(Modifier.width(4.dp))
                     OutlinedButton(
@@ -1069,6 +1026,22 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
             }
         }
 
+        if (showSettingsMenu) {
+            SettingsMenuDialog(
+                isDark = isDark,
+                mcpRunning = mcpRunning,
+                onToggleTheme = {
+                    showSettingsMenu = false
+                    viewModel.toggleTheme()
+                },
+                onOpenMcp = {
+                    showSettingsMenu = false
+                    showMcpDialog = true
+                },
+                onDismiss = { showSettingsMenu = false }
+            )
+        }
+
         if (showMcpDialog) {
             io.elftrace.app.ui.components.McpServerDialog(
                 onDismiss = { showMcpDialog = false }
@@ -1208,13 +1181,98 @@ private fun extractSoFromFile(apkPath: String, entryName: String, outFile: File)
 
 @Composable
 private fun MenuValueChip(text: String, color: Color) {
+    val colors = LocalELFTraceColors.current
     Text(
         text = text,
-        color = color,
+        color = lerp(color, colors.textPrimary, 0.35f),
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
             .background(color.copy(alpha = 0.14f), RoundedCornerShape(50))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     )
+}
+
+/** The gear's panel: a small centred card, so it never lands on the toolbar. */
+@Composable
+private fun SettingsMenuDialog(
+    isDark: Boolean,
+    mcpRunning: Boolean,
+    onToggleTheme: () -> Unit,
+    onOpenMcp: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalELFTraceColors.current
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.card),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                Text(
+                    text = "Settings",
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp)
+                )
+                SettingsMenuRow(
+                    label = "Theme",
+                    value = if (isDark) "Dark" else "Light",
+                    valueColor = colors.textSecondary,
+                    onClick = onToggleTheme
+                ) {
+                    ThemeToggleIcon(
+                        isDark = isDark,
+                        tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
+                    )
+                }
+                HorizontalDivider(
+                    color = colors.border,
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                SettingsMenuRow(
+                    label = "MCP Server",
+                    value = if (mcpRunning) "Running" else "Off",
+                    valueColor = if (mcpRunning) colors.address else colors.textSecondary,
+                    onClick = onOpenMcp
+                ) {
+                    McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsMenuRow(
+    label: String,
+    value: String,
+    valueColor: Color,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    val colors = LocalELFTraceColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { icon() }
+        Spacer(Modifier.width(14.dp))
+        Text(
+            text = label,
+            color = colors.textPrimary,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        MenuValueChip(value, valueColor)
+    }
 }
