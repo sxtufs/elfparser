@@ -409,7 +409,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
@@ -447,11 +447,11 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                                 selectedInsn = null
                             },
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.annotation.copy(alpha = 0.5f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
-                            Text("Frida Hook", color = colors.annotation, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                            Text("Frida Hook", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -475,10 +475,7 @@ fun DisasmScreen(viewModel: ELFTraceViewModel) {
                             },
                             enabled = undoDepth > 0,
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.card),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (undoDepth > 0) colors.changedReg.copy(alpha = 0.5f) else colors.border
-                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f).height(42.dp)
                         ) {
