@@ -254,7 +254,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     Column(Modifier.weight(1f).padding(end = 8.dp)) {
                         Text(
                             text = "ELFTrace",
-                            fontSize = 14.sp,
+                            fontSize = 17.sp,
                             color = colors.textPrimary,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -262,7 +262,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Binary & APK analysis",
+                            text = "Native binary analysis",
                             fontSize = 10.5.sp,
                             color = colors.textSecondary,
                             lineHeight = 12.sp

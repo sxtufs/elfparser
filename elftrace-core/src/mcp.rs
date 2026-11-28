@@ -183,7 +183,10 @@ fn initialize_result(params: &Value) -> Value {
         "serverInfo": {"name": "elftrace-mcp", "version": env!("CARGO_PKG_VERSION")},
         "instructions": "Static analysis for Android/iOS native binaries (.so, .dylib). \
     Call elf_info first to learn the architecture, then list_symbols, then decompile \
-    or disassemble a specific address. All tools are read-only; nothing is patched.",
+    or disassemble a specific address. Most tools are read-only; patch, undo and save \
+    change things: patch edits the in-memory image and records an undo entry, undo \
+    reverts the newest entry, and save writes a new copy to disk. The input file is \
+    never overwritten.",
     })
 }
 
