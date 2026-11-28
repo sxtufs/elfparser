@@ -39,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.elftrace.app.core.McpServer
+import io.elftrace.app.ui.components.ThemeToggleIcon
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
 import io.elftrace.app.viewmodel.Screen
@@ -58,6 +60,7 @@ data class InstalledApp(val label: String, val pkg: String, val apkPaths: List<S
 fun HomeScreen(viewModel: ELFTraceViewModel) {
     val context = LocalContext.current
     val colors = LocalELFTraceColors.current
+    val isDark by viewModel.isDarkMode.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     val elfInfo by viewModel.elfInfo.collectAsState()
@@ -87,6 +90,8 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
     var showHeadersDialog by remember { mutableStateOf(false) }
     var headersTab by remember { mutableStateOf(0) } // 0 = Segments, 1 = Sections
     var showMcpDialog by remember { mutableStateOf(false) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
+    var mcpRunning by remember { mutableStateOf(false) }
 
     val il2cppPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -259,12 +264,65 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { showMcpDialog = true }) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "MCP server",
-                            tint = colors.textSecondary
-                        )
+                    Box {
+                        IconButton(onClick = {
+                            mcpRunning = McpServer.isRunning()
+                            showSettingsMenu = true
+                        }) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = colors.textSecondary
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showSettingsMenu,
+                            onDismissRequest = { showSettingsMenu = false },
+                            containerColor = colors.card,
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = if (isDark) "Theme \u00b7 Dark" else "Theme \u00b7 Light",
+                                        color = colors.textPrimary,
+                                        fontSize = 14.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    ThemeToggleIcon(
+                                        isDark = isDark,
+                                        tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
+                                    )
+                                },
+                                onClick = {
+                                    showSettingsMenu = false
+                                    viewModel.toggleTheme()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text("MCP Server", color = colors.textPrimary, fontSize = 14.sp)
+                                },
+                                trailingIcon = {
+                                    val chipColor = if (mcpRunning) colors.address else colors.textSecondary
+                                    Text(
+                                        text = if (mcpRunning) "Running" else "Off",
+                                        color = chipColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .background(chipColor.copy(alpha = 0.14f), RoundedCornerShape(50))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showSettingsMenu = false
+                                    showMcpDialog = true
+                                }
+                            )
+                        }
                     }
                     Spacer(Modifier.width(4.dp))
                     OutlinedButton(
@@ -1016,9 +1074,7 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
 
         if (showMcpDialog) {
             io.elftrace.app.ui.components.McpServerDialog(
-                onDismiss = { showMcpDialog = false },
-                isDark = colors.isDark,
-                onToggleTheme = { viewModel.toggleTheme() }
+                onDismiss = { showMcpDialog = false }
             )
         }
     }
