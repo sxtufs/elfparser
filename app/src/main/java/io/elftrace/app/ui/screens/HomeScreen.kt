@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.elftrace.app.core.McpServer
+import io.elftrace.app.ui.components.McpServerIcon
 import io.elftrace.app.ui.components.ThemeToggleIcon
 import io.elftrace.app.ui.theme.*
 import io.elftrace.app.viewmodel.ELFTraceViewModel
@@ -284,17 +285,16 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                         ) {
                             DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        text = if (isDark) "Theme \u00b7 Dark" else "Theme \u00b7 Light",
-                                        color = colors.textPrimary,
-                                        fontSize = 14.sp
-                                    )
+                                    Text("Theme", color = colors.textPrimary, fontSize = 14.sp)
                                 },
                                 leadingIcon = {
                                     ThemeToggleIcon(
                                         isDark = isDark,
                                         tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
                                     )
+                                },
+                                trailingIcon = {
+                                    MenuValueChip(if (isDark) "Dark" else "Light", colors.textSecondary)
                                 },
                                 onClick = {
                                     showSettingsMenu = false
@@ -305,16 +305,13 @@ fun HomeScreen(viewModel: ELFTraceViewModel) {
                                 text = {
                                     Text("MCP Server", color = colors.textPrimary, fontSize = 14.sp)
                                 },
+                                leadingIcon = {
+                                    McpServerIcon(if (mcpRunning) colors.address else colors.textSecondary)
+                                },
                                 trailingIcon = {
-                                    val chipColor = if (mcpRunning) colors.address else colors.textSecondary
-                                    Text(
-                                        text = if (mcpRunning) "Running" else "Off",
-                                        color = chipColor,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier
-                                            .background(chipColor.copy(alpha = 0.14f), RoundedCornerShape(50))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    MenuValueChip(
+                                        if (mcpRunning) "Running" else "Off",
+                                        if (mcpRunning) colors.address else colors.textSecondary
                                     )
                                 },
                                 onClick = {
@@ -1207,4 +1204,17 @@ private fun extractSoFromFile(apkPath: String, entryName: String, outFile: File)
     } catch (_: Exception) {
         false
     }
+}
+
+@Composable
+private fun MenuValueChip(text: String, color: Color) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
 }
