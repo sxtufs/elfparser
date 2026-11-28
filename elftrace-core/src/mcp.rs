@@ -783,7 +783,11 @@ fn tool_resolve_import(host: &mut Host, args: &Value) -> Result<String, String> 
         .get_info()
         .map(|info| info.e_machine == 40)
         .unwrap_or(false);
-    let address = if is_thumb_machine { address & !1 } else { address };
+    let address = if is_thumb_machine {
+        address & !1
+    } else {
+        address
+    };
 
     // A PLT stub is the most useful answer for a `bl` target: it names the
     // library function without the caller having to follow the GOT.
@@ -963,19 +967,18 @@ fn pattern_matches(haystack: &[u8], pattern: &[PatternByte]) -> bool {
 
 fn tool_find_pattern(host: &mut Host, args: &Value) -> Result<String, String> {
     let path = file_arg(args)?;
-    let pattern = optional_string(args, "pattern")
-        .ok_or_else(|| "find_pattern needs a 'pattern' argument, e.g. 'ff 03 01 d1 ?? ?? ?? ??'".to_string())?;
+    let pattern = optional_string(args, "pattern").ok_or_else(|| {
+        "find_pattern needs a 'pattern' argument, e.g. 'ff 03 01 d1 ?? ?? ?? ??'".to_string()
+    })?;
     let parsed = parse_pattern(&pattern)?;
     let section = optional_string(args, "section").unwrap_or_else(|| ".text".to_string());
     let max = optional_usize(args, "max", 16)?.clamp(1, 128);
     let ctx = host.context(&path)?;
 
     let info = ctx.get_info().map_err(|e| e.to_string())?;
-    let Some(sec) = info
-        .sections
-        .iter()
-        .find(|s| s.name.eq_ignore_ascii_case(&section) || s.name == section.trim_start_matches('.'))
-    else {
+    let Some(sec) = info.sections.iter().find(|s| {
+        s.name.eq_ignore_ascii_case(&section) || s.name == section.trim_start_matches('.')
+    }) else {
         return Ok(json!({
             "pattern": pattern,
             "section": section,
@@ -2395,9 +2398,18 @@ mod tests {
         assert_eq!(compact.len(), 4);
         assert_eq!(compact[3].value, 0xd1);
 
-        assert!(parse_pattern("ff 03 zz").is_err(), "non-hex must be refused");
-        assert!(parse_pattern("ff 0").is_err(), "a short token must be refused");
-        assert!(parse_pattern("   ").is_err(), "an empty pattern must be refused");
+        assert!(
+            parse_pattern("ff 03 zz").is_err(),
+            "non-hex must be refused"
+        );
+        assert!(
+            parse_pattern("ff 0").is_err(),
+            "a short token must be refused"
+        );
+        assert!(
+            parse_pattern("   ").is_err(),
+            "an empty pattern must be refused"
+        );
     }
 
     #[test]

@@ -795,7 +795,10 @@ fn list_patches_reports_the_session_and_empties_after_undo() {
     let before: Value = serde_json::from_str(&before).expect("list_patches JSON");
     assert_eq!(before["count"], 0, "a fresh session has no patches");
     assert!(
-        before["hint"].as_str().unwrap_or_default().contains("unchanged"),
+        before["hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unchanged"),
         "empty listing should say save writes nothing: {before}"
     );
 
@@ -953,7 +956,10 @@ fn function_info_and_resolve_import_answer_questions_about_a_real_elf() {
     assert!(!is_error, "function_info failed: {func}");
     let func: Value = serde_json::from_str(&func).expect("function_info JSON");
     let start = u64::from_str_radix(
-        func["start"].as_str().expect("start").trim_start_matches("0x"),
+        func["start"]
+            .as_str()
+            .expect("start")
+            .trim_start_matches("0x"),
         16,
     )
     .expect("start hex");
@@ -962,7 +968,10 @@ fn function_info_and_resolve_import_answer_questions_about_a_real_elf() {
         16,
     )
     .expect("end hex");
-    assert!(start <= entry, "the function must start at or before the entry");
+    assert!(
+        start <= entry,
+        "the function must start at or before the entry"
+    );
     assert!(entry < end, "the entry must fall inside the function");
     assert_eq!(func["size"].as_u64(), Some(end - start));
     assert!(
@@ -1020,8 +1029,14 @@ fn function_info_and_resolve_import_answer_questions_about_a_real_elf() {
         "resolve_import",
         json!({"path": path, "address": 0xffff_ffff_ffff_fff0u64}),
     );
-    assert!(!is_error, "an unmapped address is an answer, not an error: {nothing}");
+    assert!(
+        !is_error,
+        "an unmapped address is an answer, not an error: {nothing}"
+    );
     let nothing: Value = serde_json::from_str(&nothing).expect("resolve_import JSON");
     assert_eq!(nothing["kind"], "unknown");
-    assert!(nothing["hint"].as_str().unwrap_or_default().contains("relocation"));
+    assert!(nothing["hint"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("relocation"));
 }
