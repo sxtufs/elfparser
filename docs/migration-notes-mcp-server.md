@@ -57,8 +57,41 @@ keys, no protocol change.
   and — while the token is required — the full token with COPY under a "Token"
   label. The description under the switch names the `Token` field and the
   `Authorization: Bearer <token>` header. No amber warning text remains.
-- Switches use `LocalELFTraceColors.primary` (`ThemedSwitch`) instead of the M3
-  defaults, so the track matches the app accent in both themes.
+- Switches are a custom outlined pill (`ThemedSwitch`, 36×20dp, theme-coloured
+  border and thumb) instead of the M3 default's filled accent track — the
+  filled 52×32dp switch read louder than the rest of the panel.
+- Title is `MCP Server`; the foreground notification says the same (it used to
+  read `ELFTrace MCP server`).
+
+## `save` phase — exports land in public Download/ (2026-11-28)
+
+`save` used to require a client-chosen `output` path, which inside the app could
+only mean private storage (`cacheDir`) — a file the user cannot open from a file
+manager. It now writes where the app's own export goes.
+
+- `elftrace-core/src/mcp.rs`: `output` is optional. A bare name,
+  `Download/<name>`, `Downloads/<name>` or `/sdcard/Download/<name>` all mean
+  public `Download/` and only the base name survives (`export_name`); omitting
+  it yields `<stem>_patched.<ext>` (`default_output_name`). An absolute path is
+  still written verbatim on a desktop build. Path escapes, empty names and the
+  input's own name are refused before anything is written.
+- `publish_file` hands the bytes to a sink the app installs with
+  `set_publisher`; without a sink (desktop binary, tests) it writes into the
+  import directory, or the temp directory when none is registered.
+- `elftrace-core/src/jni_bridge.rs`: `JNI_OnLoad` caches the `JavaVM` and a
+  global ref to `io.elftrace.app.core.McpExport` and registers
+  `publish_to_downloads`, which attaches the MCP thread and calls the static
+  `publish(String, byte[])`. The class is cached at load time because
+  `FindClass` on that thread cannot see app classes.
+- `McpExport.kt` (JNI target, kept by `proguard-rules.pro`) and
+  `BinaryExport.kt` (the MediaStore / legacy-path writer) hold the Kotlin side;
+  `ELFTraceViewModel` now calls the same `BinaryExport` for its own export, so
+  both paths cannot drift.
+- `McpServerService` calls `McpExport.init(this)` before starting the server.
+
+Rollback: revert this commit. Old clients that pass an absolute path keep the
+previous behaviour on desktop; inside the app that path is not writable, so the
+tool reports the filesystem error instead of silently writing somewhere else.
 
 Rollback: revert this commit; the previous dialog carried the token inline and
 `Show`/`Hide`. Nothing persisted changes, so no data step is involved. Bumping

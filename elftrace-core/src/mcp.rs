@@ -6,10 +6,10 @@
 //! runtime. Transport is newline-delimited JSON-RPC 2.0 on stdio (what desktop
 //! clients spawn) or Streamable HTTP (`elftrace-mcp --http`).
 //!
-//! Every tool here is read-only: it parses the target ELF and returns text.
-//! Nothing in this module writes to the file, so a client that can only reach
-//! this server cannot corrupt a binary. Patch tools, when they come, belong
-//! behind separate names with an explicit approval step.
+//! Most tools only parse the target ELF and return text. The patch set
+//! (`patch`, `undo`, `save`) changes an in-memory copy and, for `save`, writes a
+//! new file — never the input. `tools/list` marks those with
+//! `readOnlyHint: false` so a client can gate them before calling.
 
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -451,11 +451,11 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "save",
-            "description": "Write the current, patched image to a new file. Never overwrites the input: the output path must differ from the source.",
+            "description": "Write the current, patched image to a new file. Never overwrites the input. In the app the file lands in the phone's Download/ folder (the same place the app's own export goes); a bare name or 'Download/<name>' picks the name there, and an absolute path is used as given on a desktop build. Omit output for '<name>_patched.so'.",
             "inputSchema": object_schema(json!({
                 "path": string_prop("Path to the ELF file"),
-                "output": string_prop("Path to write the patched copy to")
-            }), &["path", "output"])
+                "output": string_prop("Optional file name saved to Download/ (e.g. 'libfoo_patched.so'), or an absolute path on a desktop build")
+            }), &["path"])
         }
     ]);
 
@@ -835,17 +835,45 @@ fn tool_undo(host: &mut Host, args: &Value) -> Result<String, String> {
 
 fn tool_save(host: &mut Host, args: &Value) -> Result<String, String> {
     let path = file_arg(args)?;
-    let output = string_arg(args, "output")?;
     let ctx = host.context(&path)?;
-    let same = match (std::fs::canonicalize(&path), std::fs::canonicalize(&output)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => path == output,
-    };
-    if same {
-        return Err("refusing to overwrite the input file; choose another output path".to_string());
+    let output = optional_string(args, "output").unwrap_or_default();
+    let output = output.trim();
+    let input_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+
+    if is_absolute_output(output) {
+        let same = match (std::fs::canonicalize(&path), std::fs::canonicalize(output)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => path == output,
+        };
+        if same {
+            return Err(
+                "refusing to overwrite the input file; choose another output path".to_string(),
+            );
+        }
+        std::fs::write(output, &ctx.raw[..]).map_err(|e| format!("cannot write {output}: {e}"))?;
+        return Ok(json!({"output": output, "bytes": ctx.raw.len()}).to_string());
     }
-    std::fs::write(&output, &ctx.raw[..]).map_err(|e| format!("cannot write {output}: {e}"))?;
-    Ok(json!({"output": output, "bytes": ctx.raw.len()}).to_string())
+
+    let name = if output.is_empty() {
+        default_output_name(&path)
+    } else {
+        export_name(output)?
+    };
+    if input_name.as_deref() == Some(name.as_str()) {
+        return Err(format!(
+            "refusing to overwrite the input file; pass a different name than '{name}'"
+        ));
+    }
+    let saved = publish_file(&name, &ctx.raw)?;
+    Ok(json!({
+        "output": saved,
+        "name": name,
+        "bytes": ctx.raw.len(),
+        "where": "Download/"
+    })
+    .to_string())
 }
 
 fn tool_elf_info(host: &mut Host, args: &Value) -> Result<String, String> {
@@ -1495,6 +1523,100 @@ pub fn import_dir() -> Option<String> {
     }
 }
 
+/// Hands a finished export to the host so it lands somewhere the user can open.
+type Publisher = Box<dyn Fn(&str, &[u8]) -> Result<String, String> + Send + Sync>;
+
+static PUBLISHER: Mutex<Option<Publisher>> = Mutex::new(None);
+
+/// Install (or clear, with `None`) the export sink. The Android app registers
+/// one in `JNI_OnLoad`; it writes through MediaStore into public `Download/`,
+/// which the engine itself cannot reach because shared storage is not readable
+/// from the app's sandbox.
+pub fn set_publisher(publisher: Option<Publisher>) {
+    let mut current = match PUBLISHER.lock() {
+        Ok(current) => current,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *current = publisher;
+}
+
+/// Save `bytes` under `name` where the user can find them and return the path
+/// to report back. Without a publisher (desktop binary, tests) the file goes to
+/// the import directory, or the temp directory when the app registered none.
+pub fn publish_file(name: &str, bytes: &[u8]) -> Result<String, String> {
+    {
+        let current = match PUBLISHER.lock() {
+            Ok(current) => current,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if let Some(publisher) = current.as_ref() {
+            return publisher(name, bytes);
+        }
+    }
+    let dir = match import_dir() {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => std::env::temp_dir(),
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let target = dir.join(name);
+    std::fs::write(&target, bytes)
+        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// The file name inside `output`. `Download/x.so`, `Downloads/x.so` and the
+/// shared-storage path all name the same public place, so only the base name
+/// survives; anything else means the whole string is the name.
+fn export_name(output: &str) -> Result<String, String> {
+    let mut name = output.trim().replace('\\', "/");
+    for prefix in [
+        "/storage/emulated/0/Download/",
+        "/sdcard/Download/",
+        "Download/",
+        "Downloads/",
+        "download/",
+        "downloads/",
+    ] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            name = rest.to_string();
+            break;
+        }
+    }
+    let valid = !name.is_empty()
+        && !name.contains('/')
+        && !name.contains('\0')
+        && !name.contains("..")
+        && name != ".";
+    if !valid {
+        return Err(format!(
+            "'{output}' is not a file name. Pass a name such as 'libfoo_patched.so' \
+             (it is saved to Download/), or an absolute directory path."
+        ));
+    }
+    Ok(name)
+}
+
+/// `<stem>_patched.<ext>` for the file being saved, used when the client does
+/// not pick a name.
+fn default_output_name(path: &str) -> String {
+    let file = std::path::Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "image".to_string());
+    match file.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => format!("{stem}_patched.{ext}"),
+        _ => format!("{file}_patched"),
+    }
+}
+
+/// A path the caller wrote out in full. Only a desktop build can honour one:
+/// on Android the app has no write access to shared storage.
+fn is_absolute_output(output: &str) -> bool {
+    output.starts_with('/')
+        || output.starts_with("~/")
+        || (output.len() > 2 && output.as_bytes()[1] == b':' && output.as_bytes()[2] == b'\\')
+}
+
 /// Start the in-app HTTP server on `addr` and return the client URL
 /// (`http://<bound>/mcp`).
 ///
@@ -1898,5 +2020,43 @@ mod tests {
         assert!(origin_is_local("http://172.16.5.4:3000"));
         assert!(!origin_is_local("http://172.32.5.4"));
         assert!(!origin_is_local("https://evil.example"));
+    }
+
+    #[test]
+    fn save_output_names_strip_the_download_prefix() {
+        for output in [
+            "libx.so",
+            "Download/libx.so",
+            "Downloads/libx.so",
+            "download/libx.so",
+            "/sdcard/Download/libx.so",
+            "/storage/emulated/0/Download/libx.so",
+        ] {
+            assert_eq!(export_name(output).unwrap(), "libx.so", "{output}");
+        }
+        assert!(export_name("").is_err());
+        assert!(export_name("   ").is_err());
+        assert!(export_name("../libx.so").is_err());
+        assert!(export_name("Download/sub/libx.so").is_err());
+        assert!(export_name(".").is_err());
+    }
+
+    #[test]
+    fn save_defaults_to_a_patched_copy_of_the_input_name() {
+        assert_eq!(
+            default_output_name("/data/app/libpowerampcore.so"),
+            "libpowerampcore_patched.so"
+        );
+        assert_eq!(default_output_name("libfoo"), "libfoo_patched");
+        assert_eq!(default_output_name(".hidden"), ".hidden_patched");
+    }
+
+    #[test]
+    fn only_desktop_style_outputs_are_written_verbatim() {
+        assert!(is_absolute_output("/tmp/out.so"));
+        assert!(is_absolute_output("~/out.so"));
+        assert!(is_absolute_output(r"C:\out\app.so"));
+        assert!(!is_absolute_output("out.so"));
+        assert!(!is_absolute_output("Download/out.so"));
     }
 }

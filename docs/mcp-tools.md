@@ -49,7 +49,7 @@ can then call `patch` and `save`. With the token switch on, every request needs
 | --- | --- | --- |
 | `patch` | `path`?, `address` + `kind` (`nop`, `true`, `false`, `void`) or `bytes` (hex) | Writes into the loaded image, records an undo entry |
 | `undo` | `count` (default 1) | Restores the most recent patches, returns the addresses |
-| `save` | `path`?, `output` | Writes the patched copy; refuses to overwrite the input |
+| `save` | `path`?, `output`? | Writes the patched copy to public `Download/` in the app (a bare name, `Download/<name>`, or no name for `<stem>_patched.<ext>`); an absolute path is written as given on a desktop build. Refuses to overwrite the input |
 
 `patch` and `undo` change memory only. The client sees the result through later
 `disassemble`/`read_bytes` calls; `save` is the only step that touches the disk.

@@ -3,6 +3,10 @@
 # Native JNI bridge: JNI method names in libelftrace.so map to exact Java class
 # and method names, so they must not be renamed.
 -keep class io.elftrace.app.core.JNIBridge { *; }
+
+# MCP export sink: libelftrace.so looks the class and `publish` up by name from
+# the MCP server thread, so neither may be renamed or removed.
+-keep class io.elftrace.app.core.McpExport { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }

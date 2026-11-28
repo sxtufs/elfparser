@@ -61,6 +61,7 @@ class McpServerService : Service() {
         startForegroundCompat(buildNotification("Starting MCP server…", null))
         val token = McpServer.activeToken(this)
         JNIBridge.setMcpImportDir(cacheDir.absolutePath)
+        McpExport.init(this)
         val result = JNIBridge.startMcp("0.0.0.0:$port", token)
         val url = try {
             JSONObject(result).optString("url", "")
@@ -115,7 +116,7 @@ class McpServerService : Service() {
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("ELFTrace MCP server")
+            .setContentTitle("MCP Server")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setShowWhen(false)

@@ -600,6 +600,102 @@ fn patch_undo_and_save_round_trip_on_a_real_elf() {
 }
 
 #[test]
+fn save_with_a_bare_name_goes_through_the_host_sink() {
+    let elf = std::env::current_exe().expect("test binary path");
+    let path = elf.to_string_lossy().into_owned();
+    let mut host = Host::new();
+
+    // On Android the app registers a sink that writes to public Download/;
+    // this stands in for it and records what `save` asked for.
+    let seen: std::sync::Arc<std::sync::Mutex<Option<(String, Vec<u8>)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let recorder = seen.clone();
+    mcp::set_publisher(Some(Box::new(move |name: &str, bytes: &[u8]| {
+        *recorder.lock().unwrap() = Some((name.to_string(), bytes.to_vec()));
+        Ok(format!("Download/{name}"))
+    })));
+
+    let (saved, is_error) = call_tool(
+        &mut host,
+        "save",
+        json!({"path": path, "output": "Download/libx_patched.so"}),
+    );
+    assert!(!is_error, "save refused: {saved}");
+    assert!(saved.contains("Download/libx_patched.so"), "{saved}");
+    let (name, bytes) = seen.lock().unwrap().take().expect("sink must be called");
+    assert_eq!(
+        name, "libx_patched.so",
+        "only the file name reaches the sink"
+    );
+    assert_eq!(
+        bytes,
+        std::fs::read(&elf).expect("source"),
+        "saved copy differs"
+    );
+
+    // Without an output name the file is `<stem>_patched.<ext>`.
+    let (saved, is_error) = call_tool(&mut host, "save", json!({"path": path}));
+    assert!(!is_error, "save without output refused: {saved}");
+    let (name, _) = seen.lock().unwrap().take().expect("sink must be called");
+    assert!(name.ends_with("_patched"), "default name: {name}");
+    assert!(
+        name.starts_with("mcp_tests"),
+        "derived from the input: {name}"
+    );
+
+    // The input name and escapes are refused before anything is written.
+    let input_name = std::path::Path::new(&path)
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let (_, is_error) = call_tool(
+        &mut host,
+        "save",
+        json!({"path": path, "output": input_name}),
+    );
+    assert!(is_error, "saving over the input must be refused");
+    let (_, is_error) = call_tool(
+        &mut host,
+        "save",
+        json!({"path": path, "output": "../x.so"}),
+    );
+    assert!(is_error, "a path escape must be refused");
+    assert!(
+        seen.lock().unwrap().is_none(),
+        "nothing may be written on refusal"
+    );
+
+    mcp::set_publisher(None);
+
+    // Without a sink the bytes land in the import directory (the desktop and
+    // stdio path). Both halves stay in one test because the sink is global.
+    let dir = std::env::temp_dir().join(format!("elftrace-mcp-export-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create export dir");
+    mcp::set_import_dir(Some(dir.to_string_lossy().into_owned()));
+
+    let (saved, is_error) = call_tool(
+        &mut host,
+        "save",
+        json!({"path": path, "output": "desktop_patched.so"}),
+    );
+    assert!(!is_error, "save refused: {saved}");
+    let saved: Value = serde_json::from_str(&saved).expect("save JSON");
+    let written = saved["output"].as_str().expect("reported path").to_string();
+    assert!(written.ends_with("desktop_patched.so"), "{written}");
+    assert_eq!(
+        std::fs::read(&written).expect("written file"),
+        std::fs::read(&elf).expect("source"),
+        "fallback copy differs"
+    );
+    let _ = std::fs::remove_file(&written);
+
+    mcp::set_import_dir(None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn tools_work_without_a_path_when_a_file_is_open() {
     let elf = std::env::current_exe().expect("test binary path");
     let path = elf.to_string_lossy().into_owned();

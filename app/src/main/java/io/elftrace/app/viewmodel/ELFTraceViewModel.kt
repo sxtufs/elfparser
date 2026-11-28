@@ -2,17 +2,16 @@ package io.elftrace.app.viewmodel
 
 import android.app.Application
 import android.content.Context
-import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.elftrace.app.core.BinaryExport
 import io.elftrace.app.core.JNIBridge
 import io.elftrace.app.core.db.BookmarkRecord
 import io.elftrace.app.core.db.SessionRecord
 import io.elftrace.app.core.db.WorkspaceStore
 import io.elftrace.app.core.models.*
 import java.io.File
-import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -159,58 +158,14 @@ class ELFTraceViewModel(app: Application) : AndroidViewModel(app) {
             val patchedFileName = "${origName}_patched.so"
 
             // Always export to the real public Download/ folder — no app-scoped
-            // fallback and no runtime permission. On API 29+ a MediaStore insert
-            // into the Downloads collection needs zero permissions. On API < 29
-            // (minSdk 24) we use the legacy public dir + WRITE_EXTERNAL_STORAGE.
+            // fallback and no runtime permission; see BinaryExport.
             val outcome: SaveOutcome = try {
-                if (android.os.Build.VERSION.SDK_INT >= 29) {
-                    writeViaMediaStore(context, patchedFileName, bytes)
-                } else {
-                    val outDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val f = File(outDir, patchedFileName)
-                    FileOutputStream(f).use { it.write(bytes) }
-                    SaveOutcome.Public(f.absolutePath)
-                }
+                SaveOutcome.Public(BinaryExport.toDownloads(context, patchedFileName, bytes))
             } catch (_: Exception) {
                 SaveOutcome.Failed
             }
             launch(Dispatchers.Main) { onResult(outcome) }
         }
-    }
-
-    /**
-     * Insert the bytes into the shared Download/ collection via MediaStore.
-     * Requires no runtime permission on API 29+. If a file with the same name
-     * already exists (owned by this app), it is replaced so repeated exports
-     * don't accumulate duplicates.
-     */
-    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.Q)
-    private fun writeViaMediaStore(context: Context, displayName: String, bytes: ByteArray): SaveOutcome {
-        val resolver = context.contentResolver
-        val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
-
-        // Remove a previous export we own with the same display name.
-        try {
-            resolver.delete(
-                collection,
-                "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?",
-                arrayOf(displayName)
-            )
-        } catch (_: Exception) {
-        }
-
-        val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, displayName)
-            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
-            put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
-        }
-        val uri = resolver.insert(collection, values) ?: return SaveOutcome.Failed
-        resolver.openOutputStream(uri)?.use { os -> os.write(bytes) } ?: return SaveOutcome.Failed
-        values.clear()
-        values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
-        resolver.update(uri, values, null, null)
-        return SaveOutcome.Public("Download/$displayName")
     }
 
     fun resolveIl2CppMetadata(path: String, onComplete: (Int) -> Unit) {

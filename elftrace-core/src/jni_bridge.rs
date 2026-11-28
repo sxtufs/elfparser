@@ -1,12 +1,88 @@
-use jni::objects::{JClass, JString};
+use jni::objects::{GlobalRef, JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring, JNI_TRUE, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM};
 
 use crate::decompiler::{decompile_to_c, generate_disassembly_text, generate_flowchart_text};
 use crate::elf_parser::ElfContext;
 
+/// Class that publishes an MCP export into public `Download/` through
+/// MediaStore. Cached from `JNI_OnLoad`: `FindClass` on the server thread the
+/// MCP code runs on resolves against the bootstrap loader, which cannot see app
+/// classes.
+static EXPORT_CLASS: std::sync::Mutex<Option<GlobalRef>> = std::sync::Mutex::new(None);
+static JAVA_VM: std::sync::Mutex<Option<JavaVM>> = std::sync::Mutex::new(None);
+
+/// Export sink handed to `mcp::set_publisher`. Called on the MCP server thread,
+/// so the thread is attached to the VM for the duration of the call.
+fn publish_to_downloads(name: &str, bytes: &[u8]) -> Result<String, String> {
+    let class = {
+        let cached = match EXPORT_CLASS.lock() {
+            Ok(cached) => cached,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        cached
+            .clone()
+            .ok_or("the app has not registered its export sink")?
+    };
+    let vm_guard = match JAVA_VM.lock() {
+        Ok(vm) => vm,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let vm = vm_guard
+        .as_ref()
+        .ok_or("the app has not registered its export sink")?;
+    let mut attach = vm
+        .attach_current_thread()
+        .map_err(|e| format!("cannot attach to the Java VM: {e}"))?;
+    let env: &mut JNIEnv = &mut attach;
+    let jname = env
+        .new_string(name)
+        .map_err(|e| format!("cannot pass the file name: {e}"))?;
+    let jbytes = env
+        .byte_array_from_slice(bytes)
+        .map_err(|e| format!("cannot pass the image: {e}"))?;
+    let args: [jni::objects::JValue; 2] = [(&jname).into(), (&jbytes).into()];
+    let result = env.call_static_method(
+        &class,
+        "publish",
+        "(Ljava/lang/String;[B)Ljava/lang/String;",
+        &args,
+    );
+    let result = match result {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return Err("the app could not write to Download/".to_string());
+        }
+    };
+    let saved = result.l().map_err(|e| format!("bad return value: {e}"))?;
+    let saved: JString = saved.into();
+    env.get_string(&saved)
+        .map(|s| s.to_string_lossy().into_owned())
+        .map_err(|e| format!("bad return value: {e}"))
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn JNI_OnLoad(_vm: JavaVM, _reserved: *mut std::ffi::c_void) -> jint {
+pub unsafe extern "C" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut std::ffi::c_void) -> jint {
+    if let Ok(mut env) = vm.get_env() {
+        if let Ok(class) = env.find_class("io/elftrace/app/core/McpExport") {
+            if let Ok(global) = env.new_global_ref(&class) {
+                let mut cached = match EXPORT_CLASS.lock() {
+                    Ok(cached) => cached,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                *cached = Some(global);
+            }
+        }
+    }
+    {
+        let mut stored = match JAVA_VM.lock() {
+            Ok(stored) => stored,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *stored = Some(vm);
+    }
+    crate::mcp::set_publisher(Some(Box::new(publish_to_downloads)));
     JNI_VERSION_1_6
 }
 

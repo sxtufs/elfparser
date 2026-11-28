@@ -65,12 +65,38 @@ token and the token switch are behind a `Settings` button left of `Close`
   `Authorization: Bearer <token>` header. There is no separate hint line.
 - No amber warning text: the pane uses the normal `textSecondary` colour, and
   the "anyone on this Wi-Fi" paragraph was removed at the user's request.
-- `ThemedSwitch` paints the track with `colors.primary` so switches follow the
-  app accent instead of Material's default purple.
+- `ThemedSwitch` is a custom 36×20dp outlined pill (theme-coloured border and
+  small thumb, 44×32dp tap target), not a Material switch: the filled 52×32dp
+  accent track read louder than the rest of the panel. At user request it is
+  smaller and border-only; keep it that way.
+- The dialog title is `MCP Server`, and so is the foreground notification title
+  (it read `ELFTrace MCP server`).
 - The token is always visible in the pane; the Show/Hide link was removed at the
   user's request.
 - The running-server notification shows only the LAN URL: no "token required" /
   "no token" suffix and `setShowWhen(false)` so no timestamp is rendered.
+
+## 2026-11-28 — MCP `save` exports to public Download/, through a JNI sink
+A client-chosen `output` path could only mean app-private storage on Android, so
+a saved file was unreachable from a file manager. `save` now writes where the
+app's own export goes:
+- `output` is optional in `elftrace-core/src/mcp.rs`. A bare name,
+  `Download/<name>`, `Downloads/<name>` or `/sdcard/Download/<name>` all mean
+  public `Download/`; only the base name survives (`export_name`). No name →
+  `<stem>_patched.<ext>` (`default_output_name`). An absolute path is written
+  verbatim only on a desktop build. Path escapes, empty names and the input's
+  own name are refused before any write.
+- `publish_file` hands bytes to a sink installed with `set_publisher`; with no
+  sink (desktop binary, tests) it writes into the import directory or the temp
+  directory.
+- `jni_bridge.rs` `JNI_OnLoad` caches the `JavaVM` and a global ref to
+  `io.elftrace.app.core.McpExport` (cached there because `FindClass` on the MCP
+  thread cannot see app classes) and registers `publish_to_downloads`, which
+  attaches the thread and calls the static `publish(String, byte[])`.
+- Kotlin: `McpExport` (JNI target, kept in `proguard-rules.pro` because release
+  is minified) and `BinaryExport` (MediaStore on API 29+, legacy public dir
+  below). `ELFTraceViewModel` and the MCP path share `BinaryExport` so the two
+  cannot drift. `McpServerService` calls `McpExport.init(this)` before starting.
 
 ## 2026-11-28 — Annotation colour is warm sand, not loud amber
 Orange was the loudest thing on the disassembly screen and competed with the

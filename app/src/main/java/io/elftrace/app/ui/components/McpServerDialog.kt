@@ -8,17 +8,23 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -300,20 +306,50 @@ private fun SettingsBody(
     }
 }
 
+/**
+ * A quieter switch than the Material default: an outlined pill with no filled
+ * track, one theme-coloured thumb, and 36×20dp instead of 52×32dp so it sits
+ * level with the label text instead of shouting.
+ */
 @Composable
 private fun ThemedSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val colors = LocalELFTraceColors.current
-    Switch(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        colors = SwitchDefaults.colors(
-            checkedTrackColor = colors.primary,
-            checkedThumbColor = Color.White,
-            uncheckedTrackColor = colors.surface,
-            uncheckedThumbColor = colors.textSecondary,
-            uncheckedBorderColor = colors.border
-        )
+    val progress by animateFloatAsState(if (checked) 1f else 0f, label = "switch")
+    val thumbColor by animateColorAsState(
+        if (checked) colors.primary else colors.textSecondary.copy(alpha = 0.55f),
+        label = "switchThumb"
     )
+    val trackWidth = 36.dp
+    val trackHeight = 20.dp
+    val inset = 3.dp
+    val thumbSize = 12.dp
+    Box(
+        // 44×32dp tap target around the 36×20dp pill, flush with the row's
+        // right edge like the M3 switch it replaces.
+        modifier = Modifier
+            .size(width = 44.dp, height = 32.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        Box(
+            modifier = Modifier
+                .size(trackWidth, trackHeight)
+                .clip(CircleShape)
+                .border(
+                    1.dp,
+                    if (checked) colors.primary.copy(alpha = 0.75f) else colors.border,
+                    CircleShape
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = inset + (trackWidth - inset * 2 - thumbSize) * progress)
+                    .size(thumbSize)
+                    .background(thumbColor, CircleShape)
+            )
+        }
+    }
 }
 
 @Composable
