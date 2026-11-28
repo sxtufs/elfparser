@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -49,7 +50,11 @@ import kotlinx.coroutines.launch
  * panel turns it on for clients that can send headers, and changes the port.
  */
 @Composable
-fun McpServerDialog(onDismiss: () -> Unit) {
+fun McpServerDialog(
+    onDismiss: () -> Unit,
+    isDark: Boolean,
+    onToggleTheme: () -> Unit,
+) {
     val context = LocalContext.current
     val colors = LocalELFTraceColors.current
     val scope = rememberCoroutineScope()
@@ -141,16 +146,29 @@ fun McpServerDialog(onDismiss: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(18.dp)) {
-                Text(
-                    if (showSettings) "MCP Settings" else "MCP Server",
-                    color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (showSettings) "Port and access control for the MCP server."
-                    else "Let an AI agent call ELFTrace tools through the Model Context Protocol.",
-                    color = colors.textSecondary, fontSize = 12.sp, lineHeight = 16.sp
-                )
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            if (showSettings) "MCP Settings" else "MCP Server",
+                            color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (showSettings) "Port and access control for the MCP server."
+                            else "Let an AI agent call ELFTrace tools through the Model Context Protocol.",
+                            color = colors.textSecondary, fontSize = 12.sp, lineHeight = 16.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = onToggleTheme,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        ThemeToggleIcon(
+                            isDark = isDark,
+                            tint = if (isDark) Color(0xFFFFD54F) else colors.textSecondary
+                        )
+                    }
+                }
                 Spacer(Modifier.height(14.dp))
 
                 if (showSettings) {
