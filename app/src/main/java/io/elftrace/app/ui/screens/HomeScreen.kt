@@ -1200,7 +1200,7 @@ private fun SettingsMenu(
         containerColor = colors.card,
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-        modifier = Modifier.widthIn(min = 176.dp)
+        modifier = Modifier.widthIn(min = 152.dp)
     ) {
         DropdownMenuItem(
             text = {
